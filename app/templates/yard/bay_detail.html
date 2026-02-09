@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ bay.code }} - Yard Gate Álamo{% endblock %}
+{% block content %}
+<h2>Estiba {{ bay.code }}</h2>
+
+<div class="card" style="max-width: 1100px;">
+  <p><b>Capacidad:</b> {{ bay.max_depth_rows * bay.max_tiers }} slots ({{ bay.max_depth_rows }} filas × {{ bay.max_tiers }} niveles)</p>
+
+  <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end;">
+    <div style="min-width:220px;">
+      <label>Mover a bloque</label>
+      <select id="toBlock">
+        <option value="A" {% if bay.code[0] == 'A' %}selected{% endif %}>A</option>
+        <option value="B" {% if bay.code[0] == 'B' %}selected{% endif %}>B</option>
+        <option value="C" {% if bay.code[0] == 'C' %}selected{% endif %}>C</option>
+        <option value="D" {% if bay.code[0] == 'D' %}selected{% endif %}>D</option>
+      </select>
+    </div>
+
+    <div style="min-width:240px;">
+      <label>Mover a estiba</label>
+      <select id="toBay"></select>
+    </div>
+
+    <div style="display:flex; gap:10px; align-items:flex-end;">
+      <button id="refreshBtn" type="button">Refrescar</button>
+      <a href="{{ url_for('yard.map_view', block=bay.code[0]) }}">Volver al mapa</a>
+    </div>
+  </div>
+
+  <hr>
+
+  <p style="color:#444; margin-top:0;">
+    Puedes mover contenedores en <b>PC</b> (arrastrar con mouse) o en <b>tablet/celular</b> (mantener presionado y soltar).
+    El sistema los coloca automáticamente en el primer slot libre.
+  </p>
+
+  <div id="dropZone"
+       style="border:2px dashed #999; padding:12px; border-radius:10px; background:#fff;">
+    <b>Destino:</b> <span id="destText">—</span>
+    <div id="hintText" style="font-size:12px; color:#666; margin-top:4px;">
+      Selecciona bloque y estiba, luego arrastra o mantén presionado un contenedor y suéltalo aquí.
+    </div>
+  </div>
+
+  <h3 style="margin-top:16px;">Contenedores en {{ bay.code }}</h3>
+
+  <div id="containerList" style="display:flex; flex-wrap:wrap; gap:10px;">
+    {% for it in items %}
+      <div class="chip"
+           draggable="true"
+           data-container-id="{{ it.id }}"
+           data-code="{{ it.code }}"
+           style="padding:10px; border:1px solid #ddd; border-radius:12px; background:#f8fafc; cursor:grab; min-width:190px; user-select:none;">
+        <div style="font-weight:700;">{{ it.code }}</div>
+        <div style="font-size:12px; color:#555;">{{ it.size }} · F{{ "%02d"|format(it.depth_row) }} N{{ it.tier }}</div>
+        <div style="font-size:11px; color:#6b7280; margin-top:4px;">
+          Mantén presionado para mover (móvil)
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  window.BAY_CTX = {
+    currentBay: "{{ bay.code }}",
+    currentBlock: "{{ bay.code[0] }}"
+  };
+</script>
+<script src="{{ url_for('static', filename='js/yard_bay.js') }}"></script>
+{% endblock %}
+

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Auditoría - Yard Gate Álamo{% endblock %}
+{% block content %}
+<h2>Auditoría</h2>
+
+<div class="card" style="max-width:1000px;">
+  <form method="get">
+    <label>User ID (opcional)</label>
+    <input name="user" value="{{ request.args.get('user','') }}">
+
+    <label>Acción (opcional)</label>
+    <input name="action" value="{{ request.args.get('action','') }}">
+
+    <button type="submit">Filtrar</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:1000px; margin-top:16px;">
+  <h3>Últimos 500</h3>
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Fecha</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">User</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Acción</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Entidad</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Meta</th>
+    </tr>
+    {% for l in logs %}
+    <tr>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ l.at }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ l.user_id }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ l.action }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ l.entity_type }} #{{ l.entity_id }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee; white-space:pre-wrap;">{{ l.meta }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

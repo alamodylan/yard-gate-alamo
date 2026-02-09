@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Gate Out - Yard Gate Álamo{% endblock %}
+{% block content %}
+<h2>Gate Out</h2>
+
+<form method="post" enctype="multipart/form-data" class="card" style="max-width: 1000px;">
+  <label>Contenedor en patio</label>
+  <select name="container_id" required>
+    {% for c, p, b in rows %}
+      <option value="{{ c.id }}">
+        {{ c.code }} · {{ c.size }} · {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
+      </option>
+    {% endfor %}
+  </select>
+
+  <h3 style="margin-top:16px;">Chofer que retira</h3>
+  <label>Nombre completo</label>
+  <input name="driver_name">
+
+  <label>Documento de identidad</label>
+  <input name="driver_id_doc">
+
+  <label>Placa del cabezal</label>
+  <input name="truck_plate">
+
+  <label>Notas</label>
+  <textarea name="notes" rows="3"></textarea>
+
+  <label>Fotos (cédula / evidencia)</label>
+  <input type="file" name="photos" accept="image/*" multiple>
+
+  <button type="submit">Registrar Gate Out y generar ticket</button>
+</form>
+{% endblock %}

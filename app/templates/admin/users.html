@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Usuarios - Yard Gate Álamo{% endblock %}
+{% block content %}
+<h2>Usuarios</h2>
+
+<div class="card" style="max-width:900px;">
+  <h3>Crear usuario</h3>
+  <form method="post" action="{{ url_for('admin.users_create') }}">
+    <label>Usuario</label>
+    <input name="username" required>
+
+    <label>Contraseña</label>
+    <input name="password" type="password" required>
+
+    <label>Rol</label>
+    <select name="role">
+      <option value="predio">predio</option>
+      <option value="admin">admin</option>
+    </select>
+
+    <button type="submit">Crear</button>
+  </form>
+</div>
+
+<div class="card" style="max-width:900px; margin-top:16px;">
+  <h3>Lista</h3>
+  <table style="width:100%; border-collapse:collapse;">
+    <tr>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">ID</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Usuario</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Rol</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Activo</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Acción</th>
+    </tr>
+    {% for u in users %}
+    <tr>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ u.id }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ u.username }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ u.role }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">{{ "Sí" if u.is_active else "No" }}</td>
+      <td style="padding:8px; border-bottom:1px solid #eee;">
+        <form method="post" action="{{ url_for('admin.users_toggle', user_id=u.id) }}">
+          <button type="submit">{{ "Desactivar" if u.is_active else "Activar" }}</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

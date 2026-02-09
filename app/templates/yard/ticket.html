@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Ticket - Yard Gate Álamo{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:520px;">
+  <div style="text-align:center;">
+    <h2 style="margin:0;">Yard Gate Álamo</h2>
+    <div style="font-size:12px; color:#555;">
+      Ticket de Movimiento {% if is_reprint %}(Reimpresión){% endif %}
+    </div>
+  </div>
+
+  <hr>
+
+  <pre style="
+    white-space:pre-wrap;
+    font-family: monospace;
+    font-size:12px;
+    background:#f8fafc;
+    padding:10px;
+    border-radius:10px;
+    border:1px solid #e5e7eb;
+  ">{{ payload }}</pre>
+
+  <hr>
+
+  <!-- BOTONES -->
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <!-- Impresión por navegador -->
+    <button onclick="window.print()">Imprimir (Navegador)</button>
+
+    <!-- Impresión directa a Epson -->
+    <button
+      type="button"
+      data-movement-id="{{ mv.id }}"
+      onclick="printDirect(this)">
+      Imprimir (Epson)
+    </button>
+
+    <a href="{{ url_for('yard.map_view') }}">Volver al mapa</a>
+  </div>
+</div>
+
+<!-- JS ESPECÍFICO DEL TICKET -->
+<script>
+async function printDirect(btn){
+  const movementId = btn.dataset.movementId;
+
+  if(!movementId){
+    alert("ID de movimiento inválido");
+    return;
+  }
+
+  if(!confirm("¿Enviar ticket a la impresora Epson?")) return;
+
+  try {
+    const r = await fetch(`/print/${movementId}`, {
+      method: "POST",
+      headers: { "Accept": "application/json" }
+    });
+
+    const data = await r.json();
+
+    if(!r.ok){
+      alert(data.error || "Error al imprimir");
+      return;
+    }
+
+    alert("Ticket enviado a la impresora Epson ✅");
+  } catch (e){
+    alert("No se pudo conectar con el servicio de impresión");
+  }
+}
+</script>
+
+<style>
+@media print {
+  .topbar, a, button { display:none !important; }
+  body { background:#fff; }
+  .card { border:none; }
+}
+</style>
+{% endblock %}
+
+

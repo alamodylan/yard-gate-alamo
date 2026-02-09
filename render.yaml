@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: yard-gate
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
+      - key: APP_TZ
+        value: America/Costa_Rica
+      - key: STORAGE_PROVIDER
+        value: r2
+      # DATABASE_URL lo inyecta Render si vinculas Postgres desde el dashboard
+
+databases:
+  - name: yard-gate-db
+    plan: free

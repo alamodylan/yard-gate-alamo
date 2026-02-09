@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Mapa - Yard Gate Álamo{% endblock %}
+{% block content %}
+<h2>Mapa de Predio</h2>
+
+<div class="yard-layout">
+  <!-- ===== LEFT: Bandeja contenedores ===== -->
+  <div class="yard-panel card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div style="font-weight:700;">Contenedores en patio</div>
+      <button type="button" id="refreshContainersBtn" style="margin-top:0;">Refrescar</button>
+    </div>
+
+    <label style="margin-top:10px;">Buscar</label>
+    <input id="containerSearch" type="text" placeholder="Ej: CSNU-123456-7" />
+
+    <div id="touchHint" class="hint hidden" style="margin-top:10px;">
+      📌 Modo tablet/celular: toca un contenedor para seleccionarlo y luego toca el bloque destino.
+    </div>
+
+    <div id="selectedContainerBar" class="selected-bar hidden">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+        <div>
+          <div style="font-size:12px; color:#555;">Seleccionado</div>
+          <div id="selectedContainerText" style="font-weight:700;">—</div>
+        </div>
+        <button type="button" id="clearSelectedBtn" style="margin-top:0; background:#111;">Quitar</button>
+      </div>
+    </div>
+
+    <div id="containersList" class="containers-list" style="margin-top:10px;">
+      <div class="hint">Cargando contenedores…</div>
+    </div>
+  </div>
+
+  <!-- ===== RIGHT: Mapa ===== -->
+  <div class="yard-mapwrap card" style="max-width: 1000px;">
+    <label>Bloque</label>
+    <select id="blockSelect">
+      {% for b in blocks %}
+        <option value="{{ b.code }}" {% if b.code == selected_block %}selected{% endif %}>{{ b.code }}</option>
+      {% endfor %}
+    </select>
+
+    <div style="margin-top:12px; position:relative;">
+      <svg id="yardSvg" viewBox="0 0 1000 220"
+           style="width:100%; height:240px; border:1px solid #ddd; border-radius:10px; background:#fff;">
+      </svg>
+
+      <!-- Overlay: selección de "caminos disponibles" -->
+      <div id="availabilityOverlay" class="yard-overlay hidden">
+        <div class="yard-overlay-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div>
+              <div style="font-weight:700;">Selecciona un camino disponible</div>
+              <div id="overlaySubtitle" style="font-size:12px; color:#555;">
+                Suelta un contenedor en un bloque para ver estibas disponibles.
+              </div>
+            </div>
+            <button type="button" id="overlayCloseBtn">Cerrar</button>
+          </div>
+
+          <div id="overlayActions" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <span style="font-size:12px; color:#555;">Contenedor:</span>
+            <b id="overlayContainerCode">—</b>
+            <span id="overlaySelectedBay" style="margin-left:auto; font-size:12px; color:#555;"></span>
+          </div>
+
+          <div id="overlayConfirmWrap" class="hidden" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <div style="font-size:12px; color:#111;">
+              Sugerido: <b id="overlaySuggestedSlot">—</b>
+            </div>
+            <button type="button" id="overlayConfirmBtn">Confirmar colocación</button>
+          </div>
+
+          <div id="overlayHint" style="margin-top:10px; font-size:12px; color:#666;">
+            Toca una estiba resaltada para que el sistema elija la última posición disponible (más adentro).
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="margin-top:10px; color:#444;">
+      PC: arrastra un contenedor y suéltalo en el bloque destino. <br>
+      Tablet/Celular: toca el contenedor para seleccionarlo y luego toca el bloque destino.
+    </p>
+  </div>
+</div>
+
+<script>
+  window.YARD_INIT = { block: "{{ selected_block }}" };
+</script>
+<script src="{{ url_for('static', filename='js/yard_map.js') }}"></script>
+{% endblock %}

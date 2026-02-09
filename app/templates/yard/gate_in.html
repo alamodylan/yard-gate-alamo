@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Gate In - Yard Gate Álamo{% endblock %}
+{% block content %}
+<h2>Gate In</h2>
+
+<form method="post" enctype="multipart/form-data" class="card" style="max-width: 900px;">
+  <h3>Datos del contenedor</h3>
+
+  <label>Número de contenedor (AAAA-000000-0)</label>
+  <input id="container_code" name="container_code" placeholder="MSKU-123456-7" required>
+
+  <label>Tamaño</label>
+  <select name="size" required>
+    {% for s in sizes %}
+      <option value="{{ s }}">{{ s }}</option>
+    {% endfor %}
+  </select>
+
+  <label>Año</label>
+  <input name="year" inputmode="numeric" placeholder="Ej: 2017">
+
+  <label>Estado / Observaciones (golpes, cortes, etc.)</label>
+  <textarea name="status_notes" rows="3" placeholder="Describe daños o condición..."></textarea>
+
+  <h3 style="margin-top:18px;">Chofer que entrega</h3>
+  <label>Nombre completo</label>
+  <input name="driver_name" placeholder="Nombre y apellidos">
+
+  <label>Documento de identidad</label>
+  <input name="driver_id_doc" placeholder="Cédula / Pasaporte">
+
+  <label>Placa del cabezal</label>
+  <input name="truck_plate" placeholder="ABC-123">
+
+  <h3 style="margin-top:18px;">Ubicación en predio</h3>
+
+  <label>Bloque</label>
+  <select id="blockSelect" name="block" required>
+    {% for b in blocks %}
+      <option value="{{ b.code }}">{{ b.code }}</option>
+    {% endfor %}
+  </select>
+
+  <label>Estiba (1 a 15)</label>
+  <select id="baySelect" name="bay_number" required></select>
+
+  <label>Modo de colocación</label>
+  <select id="placementMode" name="placement_mode">
+    <option value="auto">Automática (primer espacio libre desde el fondo)</option>
+    <option value="manual">Manual (seleccionar fila y nivel)</option>
+  </select>
+
+  <div id="manualBox" style="display:none;">
+    <label>Fila (1 = fondo ... 20 = frente)</label>
+    <select name="depth_row">
+      {% for i in range(1, 21) %}
+        <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+
+    <label>Nivel (1 a 4)</label>
+    <select name="tier">
+      {% for i in range(1, 5) %}
+        <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <h3 style="margin-top:18px;">Fotos</h3>
+  <label>Fotos del contenedor (puedes seleccionar varias)</label>
+  <input type="file" name="photos" accept="image/*" multiple>
+
+  <button type="submit">Guardar Gate In y generar ticket</button>
+</form>
+
+<script src="{{ url_for('static', filename='js/container_mask.js') }}"></script>
+<script>
+  const blockSelect = document.getElementById("blockSelect");
+  const baySelect = document.getElementById("baySelect");
+  const placementMode = document.getElementById("placementMode");
+  const manualBox = document.getElementById("manualBox");
+
+  placementMode.addEventListener("change", () => {
+    manualBox.style.display = (placementMode.value === "manual") ? "block" : "none";
+  });
+
+  async function loadBaysForBlock(blockCode){
+    const r = await fetch(`/api/yard/bays?block=${encodeURIComponent(blockCode)}`);
+    const data = await r.json();
+
+    baySelect.innerHTML = "";
+    (data.bays || []).forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b.bay_number;       // <-- usamos bay_number para tu POST
+      opt.textContent = `${b.bay_number} (${b.code})`;
+      baySelect.appendChild(opt);
+    });
+  }
+
+  blockSelect.addEventListener("change", () => {
+    loadBaysForBlock(blockSelect.value);
+  });
+
+  // init
+  loadBaysForBlock(blockSelect.value);
+</script>
+{% endblock %}

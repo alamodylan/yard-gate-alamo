@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+{% block content %}
+<h2>Iniciar sesión</h2>
+<form method="post" class="card">
+  <label>Usuario</label>
+  <input name="username" autocomplete="username" required>
+
+  <label>Contraseña</label>
+  <input name="password" type="password" autocomplete="current-password" required>
+
+  <button type="submit">Entrar</button>
+</form>
+{% endblock %}
