@@ -14,6 +14,7 @@
       <a href="{{ url_for('yard.map_view') }}">Mapa</a>
       <a href="{{ url_for('yard.gate_in_view') }}">Gate In</a>
       <a href="{{ url_for('yard.gate_out_view') }}">Gate Out</a>
+      <a href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
       <a href="{{ url_for('yard.reports_view') }}">Reportes</a>
 
       {% if current_user.is_authenticated and current_user.role == 'admin' %}

@@ -1,0 +1,11 @@
+<form method="get" class="inventory-filters">
+  <label style="display:flex; gap:8px; align-items:center;">
+    <input type="checkbox" name="in_yard" value="1" onchange="this.form.submit()"
+           {% if in_yard == "1" %}checked{% endif %}>
+    Solo en patio
+  </label>
+
+  {% if in_yard == "1" %}
+    <a href="{{ url_for('inventory.inventory_index') }}" class="btn btn-light">Ver todos</a>
+  {% endif %}
+</form>
