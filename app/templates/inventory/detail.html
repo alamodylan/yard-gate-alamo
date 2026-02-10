@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}{{ c.code }} | Inventario{% endblock %}
+
+{% block content %}
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">{{ c.code }}</h2>
+      <div style="color:#666; margin-top:6px;">
+        {{ c.size }}{% if c.year %} · {{ c.year }}{% endif %}
+        · {% if c.is_in_yard %}<b style="color:#137333;">En patio</b>{% else %}<b style="color:#555;">Fuera de patio</b>{% endif %}
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px;">
+      <a href="{{ url_for('inventory.inventory_index') }}"
+         style="padding:8px 10px; border:1px solid #ddd; border-radius:10px; text-decoration:none; color:#111; font-weight:800;">
+        ← Volver
+      </a>
+    </div>
+  </div>
+
+  <div style="margin-top:12px; padding:12px; border:1px solid #eee; border-radius:12px;">
+    <div style="font-weight:900; margin-bottom:6px;">Posición actual</div>
+    {% if current_pos %}
+      <div>{{ current_pos.bay_code }} · F{{ "%02d"|format(current_pos.depth_row) }} · N{{ current_pos.tier }}</div>
+    {% else %}
+      <div style="color:#666;">—</div>
+    {% endif %}
+    {% if c.status_notes %}
+      <div style="margin-top:10px; color:#333;"><b>Notas:</b> {{ c.status_notes }}</div>
+    {% endif %}
+  </div>
+
+  <h3 style="margin-top:18px;">Movimientos y fotos</h3>
+
+  {% if not movements %}
+    <div style="color:#666;">Este contenedor no tiene movimientos registrados.</div>
+  {% endif %}
+
+  {% for mv in movements %}
+    <div style="margin-top:12px; border:1px solid #eee; border-radius:12px; padding:12px;">
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
+        <div style="font-weight:900;">
+          {{ mv.movement_type }} · {{ mv.occurred_at }}
+        </div>
+        <div style="color:#666;">
+          {% if mv.bay_code %}{{ mv.bay_code }}{% endif %}
+          {% if mv.depth_row %} · F{{ "%02d"|format(mv.depth_row) }}{% endif %}
+          {% if mv.tier %} · N{{ mv.tier }}{% endif %}
+        </div>
+      </div>
+
+      {% if mv.driver_name or mv.truck_plate %}
+        <div style="margin-top:6px; color:#444;">
+          <b>Chofer:</b> {{ mv.driver_name or "—" }}
+          {% if mv.driver_id_doc %} · <b>ID:</b> {{ mv.driver_id_doc }}{% endif %}
+          {% if mv.truck_plate %} · <b>Placa:</b> {{ mv.truck_plate }}{% endif %}
+        </div>
+      {% endif %}
+
+      {% if mv.notes %}
+        <div style="margin-top:6px; color:#333;"><b>Notas:</b> {{ mv.notes }}</div>
+      {% endif %}
+
+      {% set photos = photos_by_mv.get(mv.id, []) %}
+      {% if photos and photos|length > 0 %}
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          {% for ph in photos %}
+            <a href="{{ ph.url }}" target="_blank"
+               style="display:inline-block; border:1px solid #ddd; border-radius:12px; overflow:hidden; width:180px; text-decoration:none; color:#111;">
+              <div style="padding:6px 8px; font-size:12px; font-weight:800; background:#fafafa;">
+                {{ ph.photo_type }} · {{ ph.uploaded_at }}
+              </div>
+              <img src="{{ ph.url }}" alt="{{ ph.photo_type }}"
+                   style="width:180px; height:120px; object-fit:cover; display:block;">
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div style="margin-top:8px; color:#666;">Sin fotos en este movimiento.</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endblock %}

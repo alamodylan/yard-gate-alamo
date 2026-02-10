@@ -2,24 +2,38 @@
 {% block title %}Inventario | Yard Gate Álamo{% endblock %}
 
 {% block content %}
-  <h2>Inventario de Contenedores</h2>
+  <div style="display:flex; justify-content:space-between; align-items:flex-end; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">Inventario de Contenedores</h2>
+      <div style="color:#666; margin-top:6px;">Listado general con filtro y acceso a fotos por contenedor.</div>
+    </div>
 
-  <form method="get" style="display:flex; gap:12px; align-items:center; margin:12px 0 16px;">
-    <label style="display:flex; align-items:center; gap:8px; font-weight:700;">
-      <input type="checkbox" name="in_yard" value="1" onchange="this.form.submit()"
-             {% if in_yard == "1" %}checked{% endif %}>
-      Solo en patio
-    </label>
+    <form method="get" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar por código (ej: MSCU-123456-7)"
+             style="padding:8px 10px; border:1px solid #ddd; border-radius:10px; width:320px; max-width:85vw;">
 
-    {% if in_yard == "1" %}
-      <a href="{{ url_for('inventory.inventory_index') }}"
-         style="padding:6px 10px; border:1px solid #ddd; border-radius:10px; text-decoration:none;">
-        Ver todos
-      </a>
-    {% endif %}
-  </form>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:700;">
+        <input type="checkbox" name="in_yard" value="1"
+               onchange="this.form.submit()"
+               {% if in_yard == "1" %}checked{% endif %}>
+        Solo en patio
+      </label>
 
-  <div style="overflow:auto; border:1px solid #eee; border-radius:12px;">
+      {% if in_yard == "1" or q %}
+        <a href="{{ url_for('inventory.inventory_index') }}"
+           style="padding:8px 10px; border:1px solid #ddd; border-radius:10px; text-decoration:none; color:#111;">
+          Limpiar
+        </a>
+      {% endif %}
+
+      <button type="submit"
+              style="padding:8px 12px; border:1px solid #111; border-radius:10px; background:#111; color:#fff; font-weight:800;">
+        Filtrar
+      </button>
+    </form>
+  </div>
+
+  <div style="margin-top:14px; overflow:auto; border:1px solid #eee; border-radius:12px;">
     <table style="width:100%; border-collapse:collapse;">
       <thead>
         <tr style="background:#fafafa;">
@@ -29,32 +43,45 @@
           <th style="text-align:left; padding:10px;">En patio</th>
           <th style="text-align:left; padding:10px;">Posición</th>
           <th style="text-align:left; padding:10px;">Notas</th>
+          <th style="text-align:left; padding:10px;">Acción</th>
         </tr>
       </thead>
       <tbody>
         {% for it in items %}
           <tr style="border-top:1px solid #eee;">
-            <td style="padding:10px; font-weight:800;">{{ it.code }}</td>
+            <td style="padding:10px; font-weight:900;">{{ it.code }}</td>
             <td style="padding:10px;">{{ it.size }}</td>
             <td style="padding:10px;">{{ it.year or "" }}</td>
             <td style="padding:10px;">
-              {% if it.is_in_yard %}Sí{% else %}No{% endif %}
+              {% if it.is_in_yard %}
+                <span style="padding:3px 8px; border-radius:999px; background:#e7f6ec; color:#137333; font-weight:800;">Sí</span>
+              {% else %}
+                <span style="padding:3px 8px; border-radius:999px; background:#f2f2f2; color:#555; font-weight:800;">No</span>
+              {% endif %}
             </td>
             <td style="padding:10px;">
               {% if it.position %}
-                {{ it.position.bay_code }} F{{ "%02d"|format(it.position.depth_row) }} N{{ it.position.tier }}
+                {{ it.position.bay_code }} · F{{ "%02d"|format(it.position.depth_row) }} · N{{ it.position.tier }}
               {% else %}
                 —
               {% endif %}
             </td>
             <td style="padding:10px;">{{ it.status_notes or "" }}</td>
+            <td style="padding:10px;">
+              <a href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}"
+                 style="padding:7px 10px; border:1px solid #ddd; border-radius:10px; text-decoration:none; color:#111; font-weight:800;">
+                Ver
+              </a>
+            </td>
           </tr>
         {% endfor %}
+
         {% if not items %}
-          <tr><td colspan="6" style="padding:14px; color:#666;">No hay registros.</td></tr>
+          <tr><td colspan="7" style="padding:14px; color:#666;">No hay registros con ese filtro.</td></tr>
         {% endif %}
       </tbody>
     </table>
   </div>
 {% endblock %}
+
 
