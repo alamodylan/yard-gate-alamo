@@ -1,11 +1,60 @@
-<form method="get" class="inventory-filters">
-  <label style="display:flex; gap:8px; align-items:center;">
-    <input type="checkbox" name="in_yard" value="1" onchange="this.form.submit()"
-           {% if in_yard == "1" %}checked{% endif %}>
-    Solo en patio
-  </label>
+{% extends "base.html" %}
+{% block title %}Inventario | Yard Gate Álamo{% endblock %}
 
-  {% if in_yard == "1" %}
-    <a href="{{ url_for('inventory.inventory_index') }}" class="btn btn-light">Ver todos</a>
-  {% endif %}
-</form>
+{% block content %}
+  <h2>Inventario de Contenedores</h2>
+
+  <form method="get" style="display:flex; gap:12px; align-items:center; margin:12px 0 16px;">
+    <label style="display:flex; align-items:center; gap:8px; font-weight:700;">
+      <input type="checkbox" name="in_yard" value="1" onchange="this.form.submit()"
+             {% if in_yard == "1" %}checked{% endif %}>
+      Solo en patio
+    </label>
+
+    {% if in_yard == "1" %}
+      <a href="{{ url_for('inventory.inventory_index') }}"
+         style="padding:6px 10px; border:1px solid #ddd; border-radius:10px; text-decoration:none;">
+        Ver todos
+      </a>
+    {% endif %}
+  </form>
+
+  <div style="overflow:auto; border:1px solid #eee; border-radius:12px;">
+    <table style="width:100%; border-collapse:collapse;">
+      <thead>
+        <tr style="background:#fafafa;">
+          <th style="text-align:left; padding:10px;">Contenedor</th>
+          <th style="text-align:left; padding:10px;">Tamaño</th>
+          <th style="text-align:left; padding:10px;">Año</th>
+          <th style="text-align:left; padding:10px;">En patio</th>
+          <th style="text-align:left; padding:10px;">Posición</th>
+          <th style="text-align:left; padding:10px;">Notas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+          <tr style="border-top:1px solid #eee;">
+            <td style="padding:10px; font-weight:800;">{{ it.code }}</td>
+            <td style="padding:10px;">{{ it.size }}</td>
+            <td style="padding:10px;">{{ it.year or "" }}</td>
+            <td style="padding:10px;">
+              {% if it.is_in_yard %}Sí{% else %}No{% endif %}
+            </td>
+            <td style="padding:10px;">
+              {% if it.position %}
+                {{ it.position.bay_code }} F{{ "%02d"|format(it.position.depth_row) }} N{{ it.position.tier }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td style="padding:10px;">{{ it.status_notes or "" }}</td>
+          </tr>
+        {% endfor %}
+        {% if not items %}
+          <tr><td colspan="6" style="padding:14px; color:#666;">No hay registros.</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}
+

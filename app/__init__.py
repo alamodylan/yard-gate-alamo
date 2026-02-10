@@ -20,7 +20,8 @@ def create_app():
     from app.blueprints.auth import auth_bp
     from app.blueprints.yard import yard_bp
     from app.blueprints.admin import admin_bp
-
+    from app.blueprints.inventory import inventory_bp
+    app.register_blueprint(inventory_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(yard_bp)
     app.register_blueprint(admin_bp)
