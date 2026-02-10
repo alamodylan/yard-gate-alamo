@@ -127,6 +127,10 @@ def api_bays_by_block():
 @yard_bp.get("/api/yard/map")
 @login_required
 def api_yard_map():
+    """
+    Devuelve las estibas del bloque con conteo (used/capacity).
+    Ideal: incluye x,y,w,h y límites para permitir layout visual real en frontend.
+    """
     block_code = (request.args.get("block") or "A").upper()
     block = YardBlock.query.filter_by(code=block_code).first()
     if not block:
@@ -155,6 +159,12 @@ def api_yard_map():
                 "bay_number": b.bay_number,
                 "used": used,
                 "capacity": capacity,
+                "max_depth_rows": b.max_depth_rows,
+                "max_tiers": b.max_tiers,
+                "x": b.x,
+                "y": b.y,
+                "w": b.w,
+                "h": b.h,
             }
         )
 
@@ -164,6 +174,9 @@ def api_yard_map():
 @yard_bp.get("/api/yard/block/<string:block_code>/availability")
 @login_required
 def api_block_availability(block_code: str):
+    """
+    Disponibilidad por estiba (verde/rojo) basada en capacidad total.
+    """
     block_code = (block_code or "").upper()
     block = YardBlock.query.filter_by(code=block_code).first()
     if not block:
@@ -222,13 +235,94 @@ def api_bay_last_available(bay_code: str):
     return jsonify({"ok": True, "bay_code": bay.code, "depth_row": depth_row, "tier": tier})
 
 
+@yard_bp.get("/api/yard/bays/<string:bay_code>/rows-availability")
+@login_required
+def api_bay_rows_availability(bay_code: str):
+    """
+    Disponibilidad por FILAS para una estiba.
+    Ideal: incluye suggested_tier por fila para evitar request extra.
+    """
+    bay_code = (bay_code or "").upper()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    if not bay:
+        return jsonify({"error": "Estiba inválida"}), 400
+
+    max_levels = int(bay.max_tiers or 4)
+
+    counts_by_row = dict(
+        db.session.query(ContainerPosition.depth_row, db.func.count(ContainerPosition.container_id))
+        .filter(ContainerPosition.bay_id == bay.id)
+        .group_by(ContainerPosition.depth_row)
+        .all()
+    )
+
+    rows = []
+    for row_num in range(1, int(bay.max_depth_rows or 1) + 1):
+        used = int(counts_by_row.get(row_num, 0))
+        is_full = used >= max_levels
+
+        suggested_tier = None
+        if not is_full:
+            occ_tiers = {
+                int(t[0]) for t in db.session.query(ContainerPosition.tier)
+                .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_num)
+                .all()
+            }
+            for t in range(1, max_levels + 1):
+                if t not in occ_tiers:
+                    suggested_tier = t
+                    break
+
+        rows.append(
+            {
+                "row": row_num,
+                "levels_used": used,
+                "max_levels": max_levels,
+                "is_full": is_full,
+                "suggested_tier": suggested_tier,
+            }
+        )
+
+    return jsonify({"ok": True, "bay_code": bay.code, "rows": rows})
+
+
+@yard_bp.get("/api/yard/bays/<string:bay_code>/row/<int:row_number>/suggest-tier")
+@login_required
+def api_bay_row_suggest_tier(bay_code: str, row_number: int):
+    """
+    Sugerir tier exacto dentro de una fila específica (1..max_tiers).
+    Mantenerlo aunque rows-availability tenga suggested_tier, para “fuente de verdad”.
+    """
+    bay_code = (bay_code or "").upper()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    if not bay:
+        return jsonify({"error": "Estiba inválida"}), 400
+
+    if row_number < 1 or row_number > int(bay.max_depth_rows or 0):
+        return jsonify({"ok": False, "error": "ROW_OUT_OF_RANGE"}), 400
+
+    occupied = (
+        db.session.query(ContainerPosition.tier)
+        .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_number)
+        .all()
+    )
+    occupied_tiers = {int(t[0]) for t in occupied}
+
+    for tier in range(1, int(bay.max_tiers or 1) + 1):
+        if tier not in occupied_tiers:
+            return jsonify({"ok": True, "bay_code": bay.code, "depth_row": row_number, "tier": tier})
+
+    return jsonify({"ok": False, "error": "ROW_FULL"}), 409
+
+
 @yard_bp.post("/api/yard/place")
 @login_required
 def api_place_container():
     """
-    Coloca un contenedor en una estiba usando la regla del sistema (find_first_free_slot).
-    Payload:
-      { "container_id": 123, "to_bay_code": "A07" }
+    Coloca un contenedor en una estiba.
+    Compatibilidad:
+      - Viejo: { "container_id": 123, "to_bay_code": "A07" } -> AUTO (find_first_free_slot)
+      - Nuevo: { "container_id": 123, "to_bay_code": "A07", "to_depth_row": 10, "to_tier": 2 } -> EXACTO
     """
     data = request.get_json(silent=True) or {}
     container_id = data.get("container_id")
@@ -245,11 +339,34 @@ def api_place_container():
     if not to_bay:
         return jsonify({"error": "Estiba destino inválida"}), 400
 
-    slot = find_first_free_slot(to_bay.id)
-    if not slot:
-        return jsonify({"error": "Estiba llena"}), 409
+    # Lock de estiba para evitar colisiones en concurrencia (sin unique constraint DB)
+    db.session.query(YardBay).filter(YardBay.id == to_bay.id).with_for_update().one()
 
-    depth_row, tier = slot
+    to_depth_row = data.get("to_depth_row")
+    to_tier = data.get("to_tier")
+
+    if to_depth_row is not None and to_tier is not None:
+        try:
+            depth_row = int(to_depth_row)
+            tier = int(to_tier)
+        except Exception:
+            return jsonify({"error": "Fila/Nivel inválidos"}), 400
+
+        if not (1 <= depth_row <= to_bay.max_depth_rows) or not (1 <= tier <= to_bay.max_tiers):
+            return jsonify({"error": "Fila/Nivel fuera de rango"}), 400
+
+        occupied = ContainerPosition.query.filter_by(
+            bay_id=to_bay.id,
+            depth_row=depth_row,
+            tier=tier
+        ).first()
+        if occupied:
+            return jsonify({"error": "Slot ocupado"}), 409
+    else:
+        slot = find_first_free_slot(to_bay.id)
+        if not slot:
+            return jsonify({"error": "Estiba llena"}), 409
+        depth_row, tier = slot
 
     old_pos = ContainerPosition.query.filter_by(container_id=c.id).first()
     old = None
@@ -292,7 +409,7 @@ def api_place_container():
         {
             "from": old,
             "to": {"bay_code": to_bay.code, "depth_row": depth_row, "tier": tier},
-            "rule": "AUTO_LAST_AVAILABLE",
+            "rule": "AUTO_LAST_AVAILABLE" if (to_depth_row is None or to_tier is None) else "MANUAL_EXACT",
         },
     )
 
@@ -325,6 +442,9 @@ def api_move_container():
     to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True).first()
     if not to_bay:
         return jsonify({"error": "Estiba destino inválida"}), 400
+
+    # Lock de estiba destino
+    db.session.query(YardBay).filter(YardBay.id == to_bay.id).with_for_update().one()
 
     if mode == "manual":
         try:
@@ -455,6 +575,9 @@ def gate_in_post():
     if not bay:
         flash("Estiba no encontrada.", "danger")
         return redirect(url_for("yard.gate_in_view"))
+
+    # Lock de estiba durante asignación
+    db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()
 
     existing = Container.query.filter_by(code=code).first()
     if existing and existing.is_in_yard:
@@ -739,6 +862,7 @@ def ticket_reprint(print_id: int):
     db.session.commit()
 
     return render_template("yard/ticket.html", mv=mv, c=c, payload=tp.ticket_payload, is_reprint=True)
+
 
 
 

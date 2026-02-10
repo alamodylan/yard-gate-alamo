@@ -15,7 +15,7 @@
     <input id="containerSearch" type="text" placeholder="Ej: CSNU-123456-7" />
 
     <div id="touchHint" class="hint hidden" style="margin-top:10px;">
-      📌 Modo tablet/celular: toca un contenedor para seleccionarlo y luego toca el bloque destino.
+      📌 Modo tablet/celular: toca un contenedor para seleccionarlo y luego toca el bloque/estiba/fila.
     </div>
 
     <div id="selectedContainerBar" class="selected-bar hidden">
@@ -33,62 +33,110 @@
     </div>
   </div>
 
-  <!-- ===== RIGHT: Mapa ===== -->
-  <div class="yard-mapwrap card" style="max-width: 1000px;">
-    <label>Bloque</label>
-    <select id="blockSelect">
-      {% for b in blocks %}
-        <option value="{{ b.code }}" {% if b.code == selected_block %}selected{% endif %}>{{ b.code }}</option>
-      {% endfor %}
-    </select>
+  <!-- ===== RIGHT: Patio Visual ===== -->
+  <div class="yard-mapwrap card" style="max-width: 1100px;">
+    <!-- Header / Breadcrumb -->
+    <div class="yard-toolbar" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <button type="button" id="yardBackBtn" class="hidden" style="margin-top:0;">⬅ Atrás</button>
 
+        <div class="yard-breadcrumb" style="font-size:13px; color:#333;">
+          <b id="yardCrumbLevel">Bloques</b>
+          <span id="yardCrumbDetail" style="color:#666; margin-left:6px;"></span>
+        </div>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:12px; color:#666;">Contenedor:</span>
+        <b id="yardActiveContainer">—</b>
+      </div>
+    </div>
+
+    <!-- Mapa -->
     <div style="margin-top:12px; position:relative;">
-      <svg id="yardSvg" viewBox="0 0 1000 220"
-           style="width:100%; height:240px; border:1px solid #ddd; border-radius:10px; background:#fff;">
+      <!-- “Chip” flotante del contenedor seleccionado (para que se vea arrastrable) -->
+      <div id="dragChip" class="yard-dragchip hidden" draggable="true"
+           style="position:absolute; top:10px; left:10px; z-index:5;">
+        <span id="dragChipCode">—</span>
+      </div>
+
+      <!-- SVG principal: SOLO BLOQUES al inicio -->
+      <svg id="yardSvg"
+           viewBox="0 0 1100 520"
+           style="width:100%; height:520px; border:1px solid #ddd; border-radius:12px; background:#fff;">
       </svg>
 
-      <!-- Overlay: selección de "caminos disponibles" -->
-      <div id="availabilityOverlay" class="yard-overlay hidden">
-        <div class="yard-overlay-card">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <!-- Panel Estibas (aparece cuando eliges un bloque) -->
+      <div id="stacksPanel" class="yard-overlay hidden">
+        <div class="yard-overlay-card" style="max-width:980px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
             <div>
-              <div style="font-weight:700;">Selecciona un camino disponible</div>
-              <div id="overlaySubtitle" style="font-size:12px; color:#555;">
-                Suelta un contenedor en un bloque para ver estibas disponibles.
+              <div style="font-weight:800;">Estibas del bloque <span id="stacksBlockCode">—</span></div>
+              <div style="font-size:12px; color:#555;">Verde = disponible · Rojo = lleno</div>
+            </div>
+            <button type="button" id="stacksCloseBtn" style="margin-top:0;">Cerrar</button>
+          </div>
+
+          <div id="stacksGrid" class="yard-grid" style="margin-top:12px;">
+            <!-- JS pinta estibas aquí -->
+          </div>
+
+          <div style="margin-top:10px; font-size:12px; color:#666;">
+            Tip: toca/arrastra sobre una estiba <b>verde</b> para ver sus filas disponibles.
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Filas (aparece cuando eliges una estiba) -->
+      <div id="rowsPanel" class="yard-overlay hidden">
+        <div class="yard-overlay-card" style="max-width:980px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:800;">
+                Filas · Bloque <span id="rowsBlockCode">—</span> · Estiba <span id="rowsStackCode">—</span>
               </div>
+              <div style="font-size:12px; color:#555;">Rojo = fila con 4 niveles · Verde = admite más</div>
             </div>
-            <button type="button" id="overlayCloseBtn">Cerrar</button>
+            <button type="button" id="rowsCloseBtn" style="margin-top:0;">Cerrar</button>
           </div>
 
-          <div id="overlayActions" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <span style="font-size:12px; color:#555;">Contenedor:</span>
-            <b id="overlayContainerCode">—</b>
-            <span id="overlaySelectedBay" style="margin-left:auto; font-size:12px; color:#555;"></span>
+          <div id="rowsGrid" class="yard-grid" style="margin-top:12px;">
+            <!-- JS pinta filas aquí -->
           </div>
 
-          <div id="overlayConfirmWrap" class="hidden" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <div style="font-size:12px; color:#111;">
-              Sugerido: <b id="overlaySuggestedSlot">—</b>
+          <!-- Confirmación -->
+          <div id="confirmBar" class="hidden"
+               style="margin-top:12px; display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div style="font-size:13px;">
+              Sugerido: <b id="suggestedSlot">—</b>
             </div>
-            <button type="button" id="overlayConfirmBtn">Confirmar colocación</button>
+            <div style="display:flex; gap:10px; align-items:center;">
+              <button type="button" id="confirmPlacementBtn" style="margin-top:0;">Confirmar</button>
+              <button type="button" id="cancelPlacementBtn" style="margin-top:0; background:#111;">Cancelar</button>
+            </div>
           </div>
 
-          <div id="overlayHint" style="margin-top:10px; font-size:12px; color:#666;">
-            Toca una estiba resaltada para que el sistema elija la última posición disponible (más adentro).
+          <div style="margin-top:10px; font-size:12px; color:#666;">
+            Tip: al soltar en una fila verde, el sistema asigna el <b>nivel exacto</b> automáticamente.
           </div>
         </div>
       </div>
     </div>
 
     <p style="margin-top:10px; color:#444;">
-      PC: arrastra un contenedor y suéltalo en el bloque destino. <br>
-      Tablet/Celular: toca el contenedor para seleccionarlo y luego toca el bloque destino.
+      PC: selecciona contenedor → arrastra → bloque → estiba → fila → confirmar.<br>
+      Tablet/Celular: selecciona contenedor → toca bloque → toca estiba → toca fila → confirmar.
     </p>
   </div>
 </div>
 
 <script>
-  window.YARD_INIT = { block: "{{ selected_block }}" };
+  window.YARD_INIT = {
+    // ya NO dependemos de blockSelect para entrar al patio
+    // pero mantenemos compatibilidad por si usas un bloque “default”
+    block: "{{ selected_block }}",
+  };
 </script>
 <script src="{{ url_for('static', filename='js/yard_map.js') }}"></script>
 {% endblock %}
+
