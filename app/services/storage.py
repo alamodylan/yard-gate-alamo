@@ -1,91 +1,68 @@
+# app/services/storage.py
 import os
 import uuid
-from typing import Optional
-
 import boto3
-from botocore.client import Config as BotoConfig
-from flask import current_app
+from botocore.config import Config
 
-class StorageBase:
-    def upload_bytes(self, data: bytes, key: str, content_type: str) -> str:
-        raise NotImplementedError
 
-    def upload_fileobj(self, fileobj, key: str, content_type: str) -> str:
-        raise NotImplementedError
-
-def _safe_join(*parts: str) -> str:
-    return "/".join([p.strip("/").replace("\\", "/") for p in parts if p])
-
-class LocalStorage(StorageBase):
-    def __init__(self, base_dir: str = "uploads"):
-        self.base_dir = base_dir
-
-    def upload_fileobj(self, fileobj, key: str, content_type: str) -> str:
-        os.makedirs(self.base_dir, exist_ok=True)
-        path = os.path.join(self.base_dir, key)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        fileobj.save(path)
-        # En local devolvemos un path; luego podrías servirlo con send_from_directory si quieres
-        return path
-
-    def upload_bytes(self, data: bytes, key: str, content_type: str) -> str:
-        os.makedirs(self.base_dir, exist_ok=True)
-        path = os.path.join(self.base_dir, key)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(data)
-        return path
-
-class R2Storage(StorageBase):
+class Storage:
     def __init__(self):
-        cfg = current_app.config
-        self.bucket = cfg["R2_BUCKET"]
-        self.public_base = cfg.get("R2_PUBLIC_BASE_URL")  # opcional
+        self.bucket = os.environ.get("R2_BUCKET") or os.environ.get("S3_BUCKET")
+        self.endpoint_url = os.environ.get("R2_ENDPOINT_URL") or os.environ.get("S3_ENDPOINT_URL")
+        self.access_key = os.environ.get("R2_ACCESS_KEY_ID") or os.environ.get("AWS_ACCESS_KEY_ID")
+        self.secret_key = os.environ.get("R2_SECRET_ACCESS_KEY") or os.environ.get("AWS_SECRET_ACCESS_KEY")
+
+        if not self.bucket:
+            raise RuntimeError("Bucket no configurado (R2_BUCKET o S3_BUCKET).")
+        if not self.endpoint_url:
+            raise RuntimeError("Endpoint no configurado (R2_ENDPOINT_URL o S3_ENDPOINT_URL).")
+        if not self.access_key or not self.secret_key:
+            raise RuntimeError("Credenciales no configuradas (R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY o AWS_*).")
+
+        # Fuerza región para S3 compatible
+        os.environ.setdefault("AWS_DEFAULT_REGION", "auto")
+
+        cfg = Config(
+            region_name="auto",
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
+            retries={"max_attempts": 5, "mode": "standard"},
+            connect_timeout=10,
+            read_timeout=30,
+            tcp_keepalive=True,
+        )
 
         self.s3 = boto3.client(
             "s3",
-            endpoint_url=cfg["R2_ENDPOINT"],
-            aws_access_key_id=cfg["R2_ACCESS_KEY"],
-            aws_secret_access_key=cfg["R2_SECRET_KEY"],
-            config=BotoConfig(signature_version="s3v4"),
-            region_name="auto",
+            endpoint_url=self.endpoint_url.strip(),
+            aws_access_key_id=self.access_key.strip(),
+            aws_secret_access_key=self.secret_key.strip(),
+            config=cfg,
+            use_ssl=True,
+            verify=True,  # PROD
         )
 
-    def upload_fileobj(self, fileobj, key: str, content_type: str) -> str:
+    def upload_fileobj(self, fileobj, key: str, content_type: str):
+        extra = {"ContentType": content_type} if content_type else {}
+
         self.s3.upload_fileobj(
-            fileobj.stream,
-            self.bucket,
-            key,
-            ExtraArgs={"ContentType": content_type},
-        )
-        return self._url_for(key)
-
-    def upload_bytes(self, data: bytes, key: str, content_type: str) -> str:
-        self.s3.put_object(
+            Fileobj=fileobj,
             Bucket=self.bucket,
             Key=key,
-            Body=data,
-            ContentType=content_type,
+            ExtraArgs=extra,
         )
-        return self._url_for(key)
 
-    def _url_for(self, key: str) -> str:
-        # Si tienes public base url, úsala:
-        if self.public_base:
-            return _safe_join(self.public_base, key)
-        # Si no, devolvemos una URL "s3 style" (puede requerir signed URLs en futuro)
-        # Para este proyecto recomendamos configurar public base url.
-        return f"s3://{self.bucket}/{key}"
+        base = self.endpoint_url.rstrip("/")
+        return f"{base}/{self.bucket}/{key}"
 
-def get_storage() -> StorageBase:
-    provider = (current_app.config.get("STORAGE_PROVIDER") or "local").lower()
-    if provider == "r2":
-        return R2Storage()
-    return LocalStorage()
+
+def get_storage() -> Storage:
+    return Storage()
+
 
 def build_photo_key(container_code: str, movement_id: int, filename: str) -> str:
-    # Clave ordenada y única (evita colisiones)
-    ext = (filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin")
-    uid = uuid.uuid4().hex[:12]
-    safe_code = container_code.replace("-", "")
-    return f"photos/{safe_code}/movement_{movement_id}/{uid}.{ext}"
+    ext = (filename.rsplit(".", 1)[-1] if "." in filename else "jpg").lower()
+    safe = container_code.replace("-", "")
+    rand = uuid.uuid4().hex[:12]
+    return f"photos/{safe}/movement_{movement_id}/{rand}.{ext}"
+

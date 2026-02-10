@@ -231,4 +231,25 @@ button { margin-top:14px; padding:10px 14px; border:0; border-radius:8px; backgr
   font-size: 12px;
   color: #666;
 }
+/* Celdas (estibas/filas) */
+.yard-cell{
+  color:#111;               /* texto negro */
+  font-weight:800;
+}
+
+/* Título principal dentro de la celda: A01 / F03 */
+.yard-cell > div > div:first-child{
+  color:#111;
+  font-size:16px;
+  letter-spacing:0.2px;
+}
+
+/* Subtexto: 0/80, Disponible, etc */
+.yard-cell div{
+  color:#333;
+}
+
+/* Si querés que "Disponible" se siga viendo verde, SOLO ese badge */
+.yard-cell .badge-ok{ color:#137333; font-weight:800; }
+.yard-cell .badge-bad{ color:#b3261e; font-weight:800; }
 

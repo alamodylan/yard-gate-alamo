@@ -654,12 +654,33 @@ def gate_in_post():
 
     storage = get_storage()
     photos = request.files.getlist("photos") or []
+
     for f in photos:
         if not f or not f.filename:
             continue
-        key = build_photo_key(c.code, mv.id, f.filename)
-        url = storage.upload_fileobj(f, key, f.mimetype or "application/octet-stream")
-        db.session.add(MovementPhoto(movement_id=mv.id, photo_type="CONTAINER", url=url))
+        try:
+            key = build_photo_key(c.code, mv.id, f.filename)
+            url = storage.upload_fileobj(
+                f,
+                key,
+                f.mimetype or "application/octet-stream"
+            )
+            db.session.add(
+                MovementPhoto(
+                    movement_id=mv.id,
+                    photo_type="CONTAINER",
+                    url=url
+                )
+            )
+        except Exception as e:
+            # 🔒 No tumbamos el Gate In por error de fotos
+            db.session.add(
+                MovementPhoto(
+                    movement_id=mv.id,
+                    photo_type="UPLOAD_ERROR",
+                    url=str(e)
+                )
+            )
 
     audit_log(
         current_user.id,
