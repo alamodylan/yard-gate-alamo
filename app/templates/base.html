@@ -36,7 +36,7 @@
 
         <a class="navlink" href="{{ url_for('yard.reports_view') }}">Reportes</a>
 
-        {% if current_user.is_authenticated and current_user.role == 'admin' %}
+        {% if current_user.is_authenticated and (current_user.role or '')|lower == 'admin' %}
           {% if has_endpoint is defined and has_endpoint('admin.users_view') %}
             <a class="navlink" href="{{ url_for('admin.users_view') }}">Usuarios</a>
           {% endif %}
