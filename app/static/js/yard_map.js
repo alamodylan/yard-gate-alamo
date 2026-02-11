@@ -3,6 +3,8 @@
    - Sin blockSelect
    - Sin availabilityOverlay
    - UI por paneles: stacksPanel + rowsPanel
+   - Mejora: DnD real (bloque → estiba → fila)
+   - Mejora: colores compatibles con theme dark
    ========================================== */
 
 const svg = document.getElementById("yardSvg");
@@ -61,12 +63,23 @@ let state = {
 
   // Selection path
   blockCode: null,
-  bayCode: null, // estiba
-  rowNumber: null, // fila
-  tier: null, // nivel sugerido o calculado
+  bayCode: null,    // estiba
+  rowNumber: null,  // fila
+  tier: null,       // nivel sugerido o calculado
 
   // suggestion payload
-  suggested: null, // { bay_code, depth_row, tier } o similar
+  suggested: null,  // { bay_code, depth_row, tier }
+};
+
+// ------------------------
+// Theme helpers (dark-friendly)
+// ------------------------
+const THEME = {
+  text: "rgba(229,231,235,.95)",
+  muted: "rgba(148,163,184,.92)",
+  stroke: "rgba(148,163,184,.20)",
+  primaryFill: "rgba(37,99,235,0.16)",
+  primaryStroke: "rgba(37,99,235,0.40)",
 };
 
 // ------------------------
@@ -98,9 +111,7 @@ function setView(view) {
   }
 
   // Back button
-  if (yardBackBtn) {
-    yardBackBtn.classList.toggle("hidden", view === VIEW.BLOCKS);
-  }
+  if (yardBackBtn) yardBackBtn.classList.toggle("hidden", view === VIEW.BLOCKS);
 
   // Panels
   if (stacksPanel) stacksPanel.classList.toggle("hidden", view !== VIEW.STACKS);
@@ -116,6 +127,14 @@ function setSelectedBar(open, text) {
   if (selectedContainerText) selectedContainerText.textContent = text || "—";
 }
 
+function highlightSelectedContainerInList() {
+  if (!containersList) return;
+  containersList.querySelectorAll(".container-item").forEach(el => {
+    const id = parseInt(el.getAttribute("data-container-id"), 10);
+    el.classList.toggle("is-selected", state.containerId === id);
+  });
+}
+
 function setSelectedContainer(containerId, containerCode) {
   state.containerId = containerId;
   state.containerCode = containerCode;
@@ -129,6 +148,8 @@ function setSelectedContainer(containerId, containerCode) {
   }
 
   if (IS_TOUCH) setSelectedBar(true, `${containerCode} (#${containerId})`);
+
+  highlightSelectedContainerInList();
 }
 
 function clearSelectedContainer() {
@@ -139,6 +160,7 @@ function clearSelectedContainer() {
   if (dragChip) dragChip.classList.add("hidden");
 
   setSelectedBar(false, "");
+  highlightSelectedContainerInList();
 }
 
 function hasActiveContainer() {
@@ -163,7 +185,6 @@ function setSuggestionText(text) {
 function drawBlocks() {
   clearSvg();
 
-  // 4 bloques fijos (los tuyos)
   const blocks = [
     { code: "A", x: 20,  y: 20,  w: 520, h: 220 },
     { code: "B", x: 560, y: 20,  w: 520, h: 220 },
@@ -180,9 +201,8 @@ function drawBlocks() {
     r.setAttribute("rx", 18);
     r.setAttribute("data-block", b.code);
 
-    // Visual base
-    r.setAttribute("fill", "rgba(37,99,235,0.06)");
-    r.setAttribute("stroke", "rgba(37,99,235,0.35)");
+    r.setAttribute("fill", THEME.primaryFill);
+    r.setAttribute("stroke", THEME.primaryStroke);
     r.setAttribute("stroke-width", "2");
     r.classList.add("yard-block-dropzone");
 
@@ -205,8 +225,6 @@ function drawBlocks() {
     // Touch click on block
     r.addEventListener("click", async () => {
       if (!IS_TOUCH) return;
-
-      // Sin contenedor seleccionado: igual dejemos abrir estibas (solo lectura)
       await openBlock(b.code);
     });
 
@@ -218,7 +236,7 @@ function drawBlocks() {
     t.setAttribute("y", b.y + 32);
     t.setAttribute("font-size", "16");
     t.setAttribute("font-weight", "800");
-    t.setAttribute("fill", "#111");
+    t.setAttribute("fill", THEME.text);
     t.textContent = `Bloque ${b.code}`;
     svg.appendChild(t);
 
@@ -227,7 +245,7 @@ function drawBlocks() {
     t2.setAttribute("x", b.x + 18);
     t2.setAttribute("y", b.y + 55);
     t2.setAttribute("font-size", "12");
-    t2.setAttribute("fill", "#666");
+    t2.setAttribute("fill", THEME.muted);
     t2.textContent = hasActiveContainer()
       ? "Suelta / toca para ver estibas"
       : "Toca para ver estibas (modo lectura)";
@@ -247,19 +265,27 @@ async function openBlock(blockCode) {
 
   if (stacksBlockCode) stacksBlockCode.textContent = blockCode;
 
-  // Cargar bays (estibas) desde endpoint existente
-  // Nota: ya lo usabas en loadMap(block)
-  const r = await fetch(`/api/yard/map?block=${encodeURIComponent(blockCode)}`);
-  const data = await r.json();
+  if (stacksGrid) stacksGrid.innerHTML = `<div class="hint">Cargando estibas…</div>`;
 
-  const bays = (data && data.bays) ? data.bays : [];
+  try {
+    const r = await fetch(`/api/yard/map?block=${encodeURIComponent(blockCode)}`);
+    if (!r.ok) {
+      if (stacksGrid) stacksGrid.innerHTML = `<div class="hint">Error cargando estibas (HTTP ${r.status}).</div>`;
+      setView(VIEW.STACKS);
+      return;
+    }
 
-  // Orden consistente
-  bays.sort((a, b) => (a.bay_number || 0) - (b.bay_number || 0));
+    const data = await r.json();
+    const bays = (data && data.bays) ? data.bays : [];
 
-  renderStacksGrid(bays);
+    bays.sort((a, b) => (a.bay_number || 0) - (b.bay_number || 0));
 
-  setView(VIEW.STACKS);
+    renderStacksGrid(bays);
+    setView(VIEW.STACKS);
+  } catch (e) {
+    if (stacksGrid) stacksGrid.innerHTML = `<div class="hint">Error de red cargando estibas.</div>`;
+    setView(VIEW.STACKS);
+  }
 }
 
 function renderStacksGrid(bays) {
@@ -273,7 +299,7 @@ function renderStacksGrid(bays) {
   const html = bays.map(b => {
     const used = b.used || 0;
     const cap = b.capacity || 0;
-    const available = cap > 0 ? (used < cap) : true; // si no hay cap, asumimos disponible
+    const available = cap > 0 ? (used < cap) : true;
     const cls = available ? "yard-cell available" : "yard-cell unavailable";
     const badge = available ? "Disponible" : "Lleno";
 
@@ -284,22 +310,43 @@ function renderStacksGrid(bays) {
               ${available ? "" : "disabled"}
               style="text-align:left;">
         <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
-          <div style="font-weight:800;">${b.code}</div>
-          <div style="font-size:11px; color:${available ? "#137333" : "#b3261e"}; font-weight:700;">${badge}</div>
+          <div style="font-weight:950;">${b.code}</div>
+          <div style="font-size:11px; font-weight:900;"
+               class="${available ? "badge-ok" : "badge-bad"}">${badge}</div>
         </div>
-        <div style="font-size:12px; color:#555; margin-top:4px;">
+        <div class="hint" style="margin-top:6px;">
           ${cap ? `${used}/${cap}` : `${used} usados`}
         </div>
+        ${hasActiveContainer() ? `<div class="hint" style="margin-top:6px;">Suelta aquí para ver filas</div>` : ``}
       </button>
     `;
   }).join("");
 
   stacksGrid.innerHTML = html;
 
-  // Bind
   stacksGrid.querySelectorAll("[data-bay]").forEach(btn => {
+    const bayCode = btn.getAttribute("data-bay");
+
+    // Click (touch + desktop)
     btn.addEventListener("click", async () => {
-      const bayCode = btn.getAttribute("data-bay");
+      await openBay(bayCode);
+    });
+
+    // Dragover / Drop (PC): drop on bay to open rows
+    btn.addEventListener("dragover", (ev) => {
+      if (!hasActiveContainer()) return;
+      ev.preventDefault();
+      btn.classList.add("yard-block-highlight");
+    });
+
+    btn.addEventListener("dragleave", () => {
+      btn.classList.remove("yard-block-highlight");
+    });
+
+    btn.addEventListener("drop", async (ev) => {
+      btn.classList.remove("yard-block-highlight");
+      if (!hasActiveContainer()) return;
+      ev.preventDefault();
       await openBay(bayCode);
     });
   });
@@ -317,8 +364,11 @@ async function openBay(bayCode) {
   if (rowsBlockCode) rowsBlockCode.textContent = state.blockCode || "—";
   if (rowsStackCode) rowsStackCode.textContent = bayCode;
 
+  if (rowsGrid) rowsGrid.innerHTML = `<div class="hint">Cargando filas…</div>`;
+  if (confirmBar) confirmBar.classList.add("hidden");
+  setSuggestionText("—");
+
   // Intento 1: endpoint de filas (ideal)
-  // Esperado: { ok:true, bay_code:"X", rows:[ { row:1, levels_used:2, max_levels:4, is_full:false }, ... ] }
   let rowsData = null;
   try {
     const rr = await fetch(`/api/yard/bays/${encodeURIComponent(bayCode)}/rows-availability`);
@@ -333,12 +383,11 @@ async function openBay(bayCode) {
     return;
   }
 
-  // Fallback: si no hay endpoint de filas, mostramos “modo simple”
-  // y usamos last-available para sugerir una fila/nivel.
+  // Fallback: no hay disponibilidad por filas
   renderRowsGridFallback(bayCode);
   setView(VIEW.ROWS);
 
-  // Llamamos last-available para sugerir slot
+  // Sugerimos última disponible
   await suggestLastAvailable(bayCode);
 }
 
@@ -363,11 +412,11 @@ function renderRowsGrid(rows) {
               data-row="${r.row}"
               ${isFull ? "disabled" : ""}>
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div style="font-weight:800;">${fmtRow(r.row)}</div>
-          <div style="font-size:12px; color:#555;">${badge}</div>
+          <div style="font-weight:950;">${fmtRow(r.row)}</div>
+          <div class="hint" style="margin:0;">${badge}</div>
         </div>
-        <div style="font-size:11px; color:#666; margin-top:4px;">
-          ${isFull ? "Fila llena" : "Disponible"}
+        <div class="hint" style="margin-top:6px;">
+          ${isFull ? "Fila llena" : (hasActiveContainer() ? "Suelta aquí para sugerir nivel" : "Disponible")}
         </div>
       </button>
     `;
@@ -375,10 +424,29 @@ function renderRowsGrid(rows) {
 
   rowsGrid.innerHTML = html;
 
-  // Bind: elegir fila
   rowsGrid.querySelectorAll("[data-row]").forEach(btn => {
+    const row = parseInt(btn.getAttribute("data-row"), 10);
+
+    // Click
     btn.addEventListener("click", async () => {
-      const row = parseInt(btn.getAttribute("data-row"), 10);
+      await chooseRow(row);
+    });
+
+    // Dragover / Drop (PC): drop on row to choose row + show suggestion/confirm
+    btn.addEventListener("dragover", (ev) => {
+      if (!hasActiveContainer()) return;
+      ev.preventDefault();
+      btn.classList.add("yard-block-highlight");
+    });
+
+    btn.addEventListener("dragleave", () => {
+      btn.classList.remove("yard-block-highlight");
+    });
+
+    btn.addEventListener("drop", async (ev) => {
+      btn.classList.remove("yard-block-highlight");
+      if (!hasActiveContainer()) return;
+      ev.preventDefault();
       await chooseRow(row);
     });
   });
@@ -427,8 +495,7 @@ async function chooseRow(rowNumber) {
   state.tier = null;
   state.suggested = null;
 
-  // Intento 1 (ideal): endpoint que devuelve nivel sugerido para una fila específica
-  // Esperado: { ok:true, bay_code, depth_row, tier }
+  // Endpoint ideal: sugerir nivel para fila específica
   try {
     const r = await fetch(`/api/yard/bays/${encodeURIComponent(state.bayCode)}/row/${encodeURIComponent(rowNumber)}/suggest-tier`);
     if (r.ok) {
@@ -446,8 +513,7 @@ async function chooseRow(rowNumber) {
     // ignore and fallback
   }
 
-  // Fallback: si no existe suggest-tier, usamos last-available (puede no caer en esa fila exacta)
-  // Para no mentirle al usuario, mostramos que es “auto”.
+  // Fallback: sugerir última disponible (puede no caer EXACTO en esa fila)
   await suggestLastAvailable(state.bayCode);
 }
 
@@ -460,14 +526,11 @@ async function confirmPlacement() {
     return;
   }
 
-  // Si tenemos suggested, lo ideal es colocar exactamente ahí.
-  // Si tu backend hoy solo acepta to_bay_code, igual funciona, pero se perderá el control por fila/nivel.
   const payload = {
     container_id: state.containerId,
     to_bay_code: state.bayCode
   };
 
-  // Si backend lo soporta, mandamos el destino completo
   if (state.suggested) {
     payload.to_depth_row = state.suggested.depth_row;
     payload.to_tier = state.suggested.tier;
@@ -488,16 +551,12 @@ async function confirmPlacement() {
       return;
     }
 
-    // Mensaje
     const bay = data.bay_code || state.bayCode;
     const row = data.depth_row || (state.suggested ? state.suggested.depth_row : null);
     const tier = data.tier || (state.suggested ? state.suggested.tier : null);
 
-    if (row && tier) {
-      alert(`Colocado en ${bay} ${fmtRow(row)} ${fmtTier(tier)}`);
-    } else {
-      alert(`Colocado en ${bay}`);
-    }
+    if (row && tier) alert(`Colocado en ${bay} ${fmtRow(row)} ${fmtTier(tier)}`);
+    else alert(`Colocado en ${bay}`);
 
     // Reset navegación (volvemos a bloques)
     state.blockCode = null;
@@ -509,12 +568,9 @@ async function confirmPlacement() {
     setView(VIEW.BLOCKS);
     drawBlocks();
 
-    // refrescar bandeja (para ver nueva posición)
     await loadContainersInYard();
 
-    // touch: limpio selección para evitar meter el mismo contenedor por accidente
     if (IS_TOUCH) clearSelectedContainer();
-
   } catch (e) {
     alert("Error de red al colocar contenedor");
   } finally {
@@ -523,7 +579,6 @@ async function confirmPlacement() {
 }
 
 function cancelPlacement() {
-  // Solo ocultamos confirm
   if (confirmBar) confirmBar.classList.add("hidden");
   state.suggested = null;
   state.tier = null;
@@ -553,11 +608,13 @@ function renderContainersList(list) {
            data-container-code="${item.code}">
         <div style="display:flex; justify-content:space-between; gap:10px;">
           <div>
-            <div style="font-weight:800;">${item.code}</div>
-            <div style="font-size:12px; color:#555;">${item.size}${item.year ? " · " + item.year : ""}</div>
-            <div style="font-size:12px; color:#111; margin-top:4px;">${pos}</div>
+            <div style="font-weight:950;">${item.code}</div>
+            <div class="hint" style="margin-top:6px;">${item.size}${item.year ? " · " + item.year : ""}</div>
+            <div style="font-size:12px; margin-top:6px; color:rgba(229,231,235,.92); font-weight:800;">
+              ${pos}
+            </div>
           </div>
-          <div style="font-size:12px; color:#666; text-align:right;">
+          <div class="hint" style="text-align:right;">
             ${item.status_notes ? "📝" : ""}
           </div>
         </div>
@@ -579,11 +636,19 @@ function renderContainersList(list) {
     });
 
     // PC: dragstart sets selection
-    el.addEventListener("dragstart", () => {
+    el.addEventListener("dragstart", (ev) => {
       if (IS_TOUCH) return;
+
+      // Firefox necesita dataTransfer.setData para iniciar drag 😅
+      try {
+        ev.dataTransfer.setData("text/plain", code || String(id));
+      } catch (_) {}
+
       setSelectedContainer(id, code);
     });
   });
+
+  highlightSelectedContainerInList();
 }
 
 function filterContainers(query) {
@@ -597,11 +662,19 @@ async function loadContainersInYard() {
 
   containersList.innerHTML = `<div class="hint">Cargando contenedores…</div>`;
 
-  const r = await fetch(`/api/yard/containers-in-yard`);
-  const data = await r.json();
+  try {
+    const r = await fetch(`/api/yard/containers-in-yard`);
+    if (!r.ok) {
+      containersList.innerHTML = `<div class="hint">Error cargando contenedores (HTTP ${r.status}).</div>`;
+      return;
+    }
 
-  allContainers = (data && data.rows) ? data.rows : [];
-  renderContainersList(filterContainers(containerSearch ? containerSearch.value : ""));
+    const data = await r.json();
+    allContainers = (data && data.rows) ? data.rows : [];
+    renderContainersList(filterContainers(containerSearch ? containerSearch.value : ""));
+  } catch (e) {
+    containersList.innerHTML = `<div class="hint">Error de red cargando contenedores.</div>`;
+  }
 }
 
 // ------------------------
@@ -619,30 +692,30 @@ if (containerSearch) {
 
 if (refreshContainersBtn) refreshContainersBtn.addEventListener("click", loadContainersInYard);
 
-// Drag chip (no es obligatorio, pero queda “pro”)
+// Drag chip (mejorado)
 if (dragChip) {
   dragChip.addEventListener("dragstart", (ev) => {
     if (!hasActiveContainer()) {
       ev.preventDefault();
       return;
     }
-    // nada: el “active container” ya está en state
+    try {
+      ev.dataTransfer.setData("text/plain", state.containerCode || String(state.containerId));
+    } catch (_) {}
   });
 }
 
 // Close panel buttons
 if (stacksCloseBtn) stacksCloseBtn.addEventListener("click", () => {
-  // volver a bloques
   setView(VIEW.BLOCKS);
   drawBlocks();
 });
 
 if (rowsCloseBtn) rowsCloseBtn.addEventListener("click", () => {
-  // volver a estibas del bloque actual
   setView(VIEW.STACKS);
 });
 
-// Back button (breadcrumbs)
+// Back button
 if (yardBackBtn) {
   yardBackBtn.addEventListener("click", () => {
     if (state.view === VIEW.ROWS) {

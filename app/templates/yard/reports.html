@@ -1,82 +1,124 @@
 {% extends "base.html" %}
 {% block title %}Reportes - Yard Gate Álamo{% endblock %}
+
 {% block content %}
-<h2>Reportes</h2>
+<div class="card card-pad">
+  <h2 style="margin:0;">Reportes</h2>
+  <p class="card-sub" style="margin-top:6px;">
+    Genera reportes por rango de fechas y tipo de movimiento. Exporta a Excel con los mismos filtros.
+  </p>
+</div>
 
-<div class="card" style="max-width:1000px;">
+<div class="card card-pad" style="margin-top:14px; max-width: 1000px;">
   <form method="get" action="{{ url_for('yard.reports_run') }}">
-    <label>Tipo de reporte</label>
-    <select name="movement_type">
-      <option value="" {% if not movement_type %}selected{% endif %}>Todos (Gate In / Gate Out / Moves)</option>
-      <option value="GATE_IN" {% if movement_type == "GATE_IN" %}selected{% endif %}>Solo Gate In</option>
-      <option value="GATE_OUT" {% if movement_type == "GATE_OUT" %}selected{% endif %}>Solo Gate Out</option>
-      <option value="MOVE" {% if movement_type == "MOVE" %}selected{% endif %}>Solo Movimientos (Mapa)</option>
-    </select>
+    <div class="grid grid-2">
+      <div>
+        <label for="movement_type">Tipo de reporte</label>
+        <select id="movement_type" name="movement_type">
+          <option value="" {% if not movement_type %}selected{% endif %}>Todos (Gate In / Gate Out / Moves)</option>
+          <option value="GATE_IN" {% if movement_type == "GATE_IN" %}selected{% endif %}>Solo Gate In</option>
+          <option value="GATE_OUT" {% if movement_type == "GATE_OUT" %}selected{% endif %}>Solo Gate Out</option>
+          <option value="MOVE" {% if movement_type == "MOVE" %}selected{% endif %}>Solo Movimientos (Mapa)</option>
+        </select>
+      </div>
 
-    <label>Desde</label>
-    <input type="date" name="date_from" value="{{ date_from or '' }}" required>
+      <div>
+        <label for="date_from">Desde</label>
+        <input id="date_from" type="date" name="date_from" value="{{ date_from or '' }}" required>
+      </div>
 
-    <label>Hasta</label>
-    <input type="date" name="date_to" value="{{ date_to or '' }}" required>
+      <div>
+        <label for="date_to">Hasta</label>
+        <input id="date_to" type="date" name="date_to" value="{{ date_to or '' }}" required>
+      </div>
 
-    <button type="submit">Generar</button>
+      <div style="display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap;">
+        <button type="submit" class="btn primary" style="width:100%;">Generar</button>
+      </div>
+    </div>
   </form>
 </div>
 
 {% if rows is not none %}
-<div class="card" style="max-width:1000px; margin-top:16px;">
-  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-    <h3 style="margin:0;">Resultados</h3>
-    <div style="font-size:12px; color:#555;">
-      {% if date_from and date_to %}
-        Rango: <b>{{ date_from }}</b> a <b>{{ date_to }}</b>
-      {% endif %}
-      {% if movement_type %}
-        · Tipo: <b>{{ movement_type }}</b>
-      {% endif %}
+  <div class="card card-pad" style="margin-top:14px; max-width: 1000px;">
+    <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0;">Resultados</h3>
+        <div class="hint" style="margin-top:6px;">
+          {% if date_from and date_to %}
+            Rango: <b>{{ date_from }}</b> → <b>{{ date_to }}</b>
+          {% endif %}
+          {% if movement_type %}
+            · Tipo: <b>{{ movement_type }}</b>
+          {% else %}
+            · Tipo: <b>Todos</b>
+          {% endif %}
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        {% if rows|length > 0 %}
+          <a class="btn"
+             href="{{ url_for('yard.reports_export',
+                              movement_type=movement_type or '',
+                              date_from=date_from or '',
+                              date_to=date_to or '') }}">
+            ⬇ Exportar Excel
+          </a>
+        {% endif %}
+      </div>
     </div>
-  </div>
 
-  <div style="overflow:auto; margin-top:10px;">
-    <table style="width:100%; min-width:860px; border-collapse:collapse;">
-      <thead>
-        <tr>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Fecha/Hora</th>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Movimiento</th>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Contenedor</th>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Ubicación</th>
-          <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Chofer / Placa</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for mv, c in rows %}
-        <tr>
-          <td style="padding:8px; border-bottom:1px solid #eee;">{{ mv.occurred_at }}</td>
-          <td style="padding:8px; border-bottom:1px solid #eee;">{{ mv.movement_type }}</td>
-          <td style="padding:8px; border-bottom:1px solid #eee;">{{ c.code }}</td>
-          <td style="padding:8px; border-bottom:1px solid #eee;">
-            {% if mv.bay_code %}
-              {{ mv.bay_code }}
-              {% if mv.depth_row %} F{{ "%02d"|format(mv.depth_row) }}{% endif %}
-              {% if mv.tier %} N{{ mv.tier }}{% endif %}
-            {% else %}
-              -
-            {% endif %}
-          </td>
-          <td style="padding:8px; border-bottom:1px solid #eee;">
-            {{ (mv.driver_name or "-") }} / {{ (mv.truck_plate or "-") }}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+    <div style="overflow:auto; margin-top:12px;">
+      <table class="table" style="min-width: 860px;">
+        <thead>
+          <tr>
+            <th>Fecha/Hora</th>
+            <th>Movimiento</th>
+            <th>Contenedor</th>
+            <th>Ubicación</th>
+            <th>Chofer / Placa</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mv, c in rows %}
+          <tr>
+            <td>{{ mv.occurred_at }}</td>
+            <td>
+              {% if mv.movement_type == "GATE_IN" %}
+                <span class="badge success">GATE_IN</span>
+              {% elif mv.movement_type == "GATE_OUT" %}
+                <span class="badge danger">GATE_OUT</span>
+              {% else %}
+                <span class="badge muted">{{ mv.movement_type }}</span>
+              {% endif %}
+            </td>
+            <td><b>{{ c.code }}</b></td>
+            <td>
+              {% if mv.bay_code %}
+                {{ mv.bay_code }}
+                {% if mv.depth_row %} {{ "F%02d"|format(mv.depth_row) }}{% endif %}
+                {% if mv.tier %} N{{ mv.tier }}{% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ (mv.driver_name or "—") }} / {{ (mv.truck_plate or "—") }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
 
-  {% if rows|length == 0 %}
-    <div class="flash info" style="margin-top:12px;">No hay movimientos en ese rango / filtro.</div>
-  {% endif %}
-</div>
+    {% if rows|length == 0 %}
+      <div class="flash info" style="margin-top:12px;">
+        No hay movimientos en ese rango / filtro.
+      </div>
+    {% endif %}
+  </div>
 {% endif %}
 {% endblock %}
+
+
 
 

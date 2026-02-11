@@ -3,39 +3,90 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>{% block title %}Yard Gate Álamo{% endblock %}</title>
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}Yard Gate Alamo{% endblock %}</title>
+
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  {% block head %}{% endblock %}
 </head>
+
 <body>
-  <nav class="topbar">
-    <div class="brand">Yard Gate Álamo</div>
+  <header class="topbar">
+    <div class="topbar-inner">
 
-    <div class="links">
-      <a href="{{ url_for('yard.map_view') }}">Mapa</a>
-      <a href="{{ url_for('yard.gate_in_view') }}">Gate In</a>
-      <a href="{{ url_for('yard.gate_out_view') }}">Gate Out</a>
-      <a href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
-      <a href="{{ url_for('yard.reports_view') }}">Reportes</a>
+      <!-- BRAND CON LOGO -->
+      <a class="brand" href="{{ url_for('yard.map_view') }}" aria-label="Ir al mapa">
+        <img class="brand-logo"
+             src="{{ url_for('static', filename='img/logo.png') }}"
+             alt="Logo Álamo">
+        <div class="brand-text">
+          <div class="brand-title">Yard Gate Álamo</div>
+          <div class="brand-sub">Control de patio · Gate In/Out · Reportes</div>
+        </div>
+      </a>
 
-      {% if current_user.is_authenticated and current_user.role == 'admin' %}
-        <a href="{{ url_for('admin.users_view') }}">Usuarios</a>
-        <a href="{{ url_for('admin.audit_view') }}">Auditoría</a>
-      {% endif %}
+      <nav class="navlinks" aria-label="Navegación principal">
+        <a class="navlink" href="{{ url_for('yard.map_view') }}">Mapa</a>
+        <a class="navlink" href="{{ url_for('yard.gate_in_view') }}">Gate In</a>
+        <a class="navlink" href="{{ url_for('yard.gate_out_view') }}">Gate Out</a>
 
-      <a href="{{ url_for('auth.logout') }}">Salir</a>
+        {% if has_endpoint is defined and has_endpoint('inventory.inventory_index') %}
+          <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
+        {% endif %}
+
+        <a class="navlink" href="{{ url_for('yard.reports_view') }}">Reportes</a>
+
+        {% if current_user.is_authenticated and current_user.role == 'admin' %}
+          {% if has_endpoint is defined and has_endpoint('admin.users_view') %}
+            <a class="navlink" href="{{ url_for('admin.users_view') }}">Usuarios</a>
+          {% endif %}
+          {% if has_endpoint is defined and has_endpoint('admin.audit_view') %}
+            <a class="navlink" href="{{ url_for('admin.audit_view') }}">Auditoría</a>
+          {% endif %}
+        {% endif %}
+
+        <div class="nav-sep"></div>
+
+        {% if current_user.is_authenticated %}
+          <div class="userchip">
+            <span class="userchip-dot"></span>
+            <span class="userchip-name">
+              {{ current_user.name if current_user.name is defined else 'Usuario' }}
+            </span>
+            {% if current_user.role is defined %}
+              <span class="badge badge-soft">{{ current_user.role|capitalize }}</span>
+            {% endif %}
+          </div>
+          <a class="navlink navlink-danger" href="{{ url_for('auth.logout') }}">Salir</a>
+        {% else %}
+          {% if has_endpoint is defined and has_endpoint('auth.login') %}
+            <a class="navlink" href="{{ url_for('auth.login') }}">Ingresar</a>
+          {% endif %}
+        {% endif %}
+      </nav>
+
     </div>
-  </nav>
+  </header>
 
   <main class="container">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        {% for cat, msg in messages %}
-          <div class="flash {{ cat }}">{{ msg }}</div>
-        {% endfor %}
+        <section class="flash-stack">
+          {% for cat, msg in messages %}
+            <div class="flash {{ cat }}">
+              <div class="flash-dot"></div>
+              <div class="flash-msg">{{ msg }}</div>
+            </div>
+          {% endfor %}
+        </section>
       {% endif %}
     {% endwith %}
 
     {% block content %}{% endblock %}
   </main>
+
+  {% block scripts %}{% endblock %}
 </body>
 </html>
+
+

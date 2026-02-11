@@ -3,8 +3,9 @@ import re
 from datetime import datetime
 import os
 import requests
+import io
 
-from flask import render_template, request, redirect, url_for, flash, jsonify
+from flask import render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import login_required, current_user
 
 from app.blueprints.yard import yard_bp
@@ -21,6 +22,8 @@ from app.services.ticketing import build_ticket_payload, register_ticket_print
 CONTAINER_RE = re.compile(r"^[A-Z]{4}-\d{6}-\d$")
 SIZES = ["20ST", "40ST", "40HC", "45ST"]
 APP_NAME = "Yard Gate Álamo"
+
+REPORT_TYPES = {"GATE_IN", "GATE_OUT", "MOVE"}
 
 
 @yard_bp.get("/")
@@ -510,6 +513,40 @@ def api_move_container():
     return jsonify({"ok": True, "bay_code": to_bay.code, "depth_row": depth_row, "tier": tier})
 
 
+@yard_bp.get("/api/yard/bays/<string:bay_code>/row/<int:row_number>/containers")
+@login_required
+def api_bay_row_containers(bay_code: str, row_number: int):
+    bay_code = (bay_code or "").upper()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    if not bay:
+        return jsonify({"ok": False, "error": "BAY_NOT_FOUND"}), 404
+
+    if row_number < 1 or row_number > int(bay.max_depth_rows or 0):
+        return jsonify({"ok": False, "error": "ROW_OUT_OF_RANGE"}), 400
+
+    rows = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            ContainerPosition.bay_id == bay.id,
+            ContainerPosition.depth_row == row_number
+        )
+        .order_by(ContainerPosition.tier.asc())
+        .all()
+    )
+
+    items = []
+    for c, p in rows:
+        items.append({
+            "id": c.id,
+            "code": c.code,
+            "size": c.size,
+            "tier": p.tier
+        })
+
+    return jsonify({"ok": True, "bay_code": bay.code, "depth_row": row_number, "containers": items})
+
+
 # =========================
 # Gate In / Gate Out
 # =========================
@@ -780,44 +817,155 @@ def gate_out_post():
 
 
 # =========================
-# Reportes (básico por ahora)
+# Reportes (respetar filtros + export Excel)
 # =========================
 
-@yard_bp.get("/reports")
-@login_required
-def reports_view():
-    return render_template("yard/reports.html", rows=None)
+def _parse_report_filters(args):
+    movement_type = (args.get("movement_type") or "").strip().upper()
+    if movement_type and movement_type not in REPORT_TYPES:
+        movement_type = ""
 
-
-@yard_bp.get("/reports/run")
-@login_required
-def reports_run():
-    date_from = request.args.get("date_from")
-    date_to = request.args.get("date_to")
+    date_from = args.get("date_from")
+    date_to = args.get("date_to")
 
     if not date_from or not date_to:
-        flash("Indica rango de fechas.", "danger")
-        return redirect(url_for("yard.reports_view"))
+        return None, None, None, "Indica rango de fechas."
 
     try:
         d1 = datetime.fromisoformat(date_from + "T00:00:00")
         d2 = datetime.fromisoformat(date_to + "T23:59:59")
     except Exception:
-        flash("Formato de fecha inválido (usa YYYY-MM-DD).", "danger")
-        return redirect(url_for("yard.reports_view"))
+        return None, None, None, "Formato de fecha inválido (usa YYYY-MM-DD)."
 
-    rows = (
+    if d2 < d1:
+        return None, None, None, "El rango de fechas es inválido (Hasta < Desde)."
+
+    return movement_type, d1, d2, None
+
+
+def _query_report_rows(movement_type, d1, d2):
+    q = (
         db.session.query(Movement, Container)
         .join(Container, Container.id == Movement.container_id)
         .filter(Movement.occurred_at >= d1, Movement.occurred_at <= d2)
-        .order_by(Movement.occurred_at.asc())
-        .all()
     )
 
-    audit_log(current_user.id, "REPORT_RUN", "report", None, {"from": date_from, "to": date_to})
+    if movement_type:
+        q = q.filter(Movement.movement_type == movement_type)
+
+    return q.order_by(Movement.occurred_at.asc()).all()
+
+
+@yard_bp.get("/reports")
+@login_required
+def reports_view():
+    # Vista “limpia” sin resultados (pero con campos disponibles)
+    return render_template("yard/reports.html", rows=None, movement_type="", date_from="", date_to="")
+
+
+@yard_bp.get("/reports/run")
+@login_required
+def reports_run():
+    movement_type, d1, d2, err = _parse_report_filters(request.args)
+    if err:
+        flash(err, "danger")
+        return redirect(url_for("yard.reports_view"))
+
+    rows = _query_report_rows(movement_type, d1, d2)
+
+    audit_log(
+        current_user.id,
+        "REPORT_RUN",
+        "report",
+        None,
+        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL"},
+    )
     db.session.commit()
 
-    return render_template("yard/reports.html", rows=rows, date_from=date_from, date_to=date_to)
+    return render_template(
+        "yard/reports.html",
+        rows=rows,
+        date_from=request.args.get("date_from"),
+        date_to=request.args.get("date_to"),
+        movement_type=movement_type,
+    )
+
+
+@yard_bp.get("/reports/export")
+@login_required
+def reports_export():
+    movement_type, d1, d2, err = _parse_report_filters(request.args)
+    if err:
+        flash(err, "danger")
+        return redirect(url_for("yard.reports_view"))
+
+    rows = _query_report_rows(movement_type, d1, d2)
+
+    # Import local para no romper la app si falta la dependencia
+    try:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+    except Exception:
+        flash("No se puede exportar: falta openpyxl en requirements.txt", "danger")
+        return redirect(url_for("yard.reports_run", **request.args))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Reportes"
+
+    headers = ["Fecha/Hora", "Movimiento", "Contenedor", "Ubicación", "Chofer", "Placa"]
+    ws.append(headers)
+
+    for mv, c in rows:
+        loc = "—"
+        if mv.bay_code:
+            parts = [mv.bay_code]
+            if mv.depth_row:
+                parts.append(f"F{int(mv.depth_row):02d}")
+            if mv.tier:
+                parts.append(f"N{int(mv.tier)}")
+            loc = " ".join(parts)
+
+        ws.append([
+            mv.occurred_at.strftime("%Y-%m-%d %H:%M:%S") if mv.occurred_at else "",
+            mv.movement_type or "",
+            c.code if c else "",
+            loc,
+            mv.driver_name or "",
+            mv.truck_plate or "",
+        ])
+
+    # Auto ancho de columnas (simple y efectivo)
+    for col_idx in range(1, len(headers) + 1):
+        max_len = 0
+        for cell in ws[get_column_letter(col_idx)]:
+            v = "" if cell.value is None else str(cell.value)
+            if len(v) > max_len:
+                max_len = len(v)
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(max_len + 2, 40)
+
+    buff = io.BytesIO()
+    wb.save(buff)
+    buff.seek(0)
+
+    audit_log(
+        current_user.id,
+        "REPORT_EXPORTED",
+        "report",
+        None,
+        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL", "rows": len(rows)},
+    )
+    db.session.commit()
+
+    mt = movement_type or "ALL"
+    fname = f"reportes_{mt}_{request.args.get('date_from')}_a_{request.args.get('date_to')}.xlsx"
+
+    return send_file(
+        buff,
+        as_attachment=True,
+        download_name=fname,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 # =========================
@@ -883,6 +1031,7 @@ def ticket_reprint(print_id: int):
     db.session.commit()
 
     return render_template("yard/ticket.html", mv=mv, c=c, payload=tp.ticket_payload, is_reprint=True)
+
 
 
 
