@@ -31,54 +31,72 @@
     {% endif %}
   </div>
 
-  <h3 style="margin-top:18px;">Movimientos y fotos</h3>
+  <h3 style="margin-top:18px; margin-bottom:8px;">Fotos</h3>
+  <div style="color:#666; font-size:13px; margin-bottom:10px;">
+    Mostrando solo imágenes válidas. Errores de carga se listan abajo.
+  </div>
 
   {% if not movements %}
     <div style="color:#666;">Este contenedor no tiene movimientos registrados.</div>
   {% endif %}
 
-  {% for mv in movements %}
-    <div style="margin-top:12px; border:1px solid #eee; border-radius:12px; padding:12px;">
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-        <div style="font-weight:900;">
-          {{ mv.movement_type }} · {{ mv.occurred_at }}
-        </div>
-        <div style="color:#666;">
-          {% if mv.bay_code %}{{ mv.bay_code }}{% endif %}
-          {% if mv.depth_row %} · F{{ "%02d"|format(mv.depth_row) }}{% endif %}
-          {% if mv.tier %} · N{{ mv.tier }}{% endif %}
-        </div>
-      </div>
-
-      {% if mv.driver_name or mv.truck_plate %}
-        <div style="margin-top:6px; color:#444;">
-          <b>Chofer:</b> {{ mv.driver_name or "—" }}
-          {% if mv.driver_id_doc %} · <b>ID:</b> {{ mv.driver_id_doc }}{% endif %}
-          {% if mv.truck_plate %} · <b>Placa:</b> {{ mv.truck_plate }}{% endif %}
-        </div>
-      {% endif %}
-
-      {% if mv.notes %}
-        <div style="margin-top:6px; color:#333;"><b>Notas:</b> {{ mv.notes }}</div>
-      {% endif %}
-
+  {# ====== GALERÍA (solo fotos válidas) ====== #}
+  {% set any_valid_photo = false %}
+  <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    {% for mv in movements %}
       {% set photos = photos_by_mv.get(mv.id, []) %}
-      {% if photos and photos|length > 0 %}
-        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-          {% for ph in photos %}
-            <a href="{{ ph.url }}" target="_blank"
-               style="display:inline-block; border:1px solid #ddd; border-radius:12px; overflow:hidden; width:180px; text-decoration:none; color:#111;">
-              <div style="padding:6px 8px; font-size:12px; font-weight:800; background:#fafafa;">
-                {{ ph.photo_type }} · {{ ph.uploaded_at }}
+      {% for ph in photos %}
+        {% set u = (ph.url or "") %}
+        {% set is_http = u.startswith("http://") or u.startswith("https://") %}
+        {% set is_error = (ph.photo_type == "UPLOAD_ERROR") or (not is_http) %}
+        {% if not is_error %}
+          {% set any_valid_photo = true %}
+          <a href="{{ u }}" target="_blank"
+             title="{{ mv.movement_type }} · {{ mv.occurred_at }}"
+             style="display:inline-block; border:1px solid #ddd; border-radius:12px; overflow:hidden; width:190px; text-decoration:none; color:#111; background:#fff;">
+            <img src="{{ u }}" alt="{{ ph.photo_type }}"
+                 style="width:190px; height:140px; object-fit:cover; display:block;">
+            <div style="padding:8px 10px;">
+              <div style="font-weight:900; font-size:12px; margin-bottom:4px;">{{ ph.photo_type }}</div>
+              <div style="font-size:11px; color:#666;">
+                {{ mv.movement_type }} · {{ mv.occurred_at }}
               </div>
-              <img src="{{ ph.url }}" alt="{{ ph.photo_type }}"
-                   style="width:180px; height:120px; object-fit:cover; display:block;">
-            </a>
-          {% endfor %}
+            </div>
+          </a>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+  </div>
+
+  {% if not any_valid_photo %}
+    <div style="margin-top:8px; color:#666;">Aún no hay fotos válidas para mostrar.</div>
+  {% endif %}
+
+  {# ====== ERRORES (no rompen la página) ====== #}
+  <h3 style="margin-top:18px; margin-bottom:8px;">Log de errores de fotos</h3>
+
+  {% set any_error = false %}
+  {% for mv in movements %}
+    {% set photos = photos_by_mv.get(mv.id, []) %}
+    {% for ph in photos %}
+      {% set u = (ph.url or "") %}
+      {% set is_http = u.startswith("http://") or u.startswith("https://") %}
+      {% set is_error = (ph.photo_type == "UPLOAD_ERROR") or (not is_http) %}
+      {% if is_error %}
+        {% set any_error = true %}
+        <div style="margin-top:8px; border:1px solid #f3d5d5; background:#fff5f5; padding:10px 12px; border-radius:12px;">
+          <div style="font-weight:900; color:#b3261e;">
+            {{ mv.movement_type }} · {{ mv.occurred_at }} — {{ ph.photo_type }}
+          </div>
+          <div style="margin-top:6px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; font-size:12px; color:#333; white-space:pre-wrap;">
+            {{ u }}
+          </div>
         </div>
-      {% else %}
-        <div style="margin-top:8px; color:#666;">Sin fotos en este movimiento.</div>
       {% endif %}
-    </div>
+    {% endfor %}
   {% endfor %}
+
+  {% if not any_error %}
+    <div style="color:#666;">Sin errores registrados.</div>
+  {% endif %}
 {% endblock %}
