@@ -25,14 +25,21 @@
     <div class="ticket-kv">
       <div class="ticket-k">Contenedor</div>
       <div class="ticket-v">{{ c.code }}</div>
-      <div class="ticket-m">{{ c.size }}{% if c.year %} · Año: {{ c.year }}{% endif %}</div>
+
+      <!-- ✅ tamaño + año más legibles (sin verse “aplastados”) -->
+      <div class="ticket-m">
+        <b>{{ c.size }}</b>
+        {% if c.year %} · Año {{ c.year }}{% endif %}
+      </div>
     </div>
 
     <div class="ticket-kv">
       <div class="ticket-k">Ubicación</div>
       <div class="ticket-v">
         {% if mv.bay_code %}
-          {{ mv.bay_code }} · F{{ "%02d"|format(mv.depth_row or 0) }} · N{{ mv.tier or 0 }}
+          {{ mv.bay_code }}
+          {% if mv.depth_row %} · F{{ "%02d"|format(mv.depth_row) }}{% endif %}
+          {% if mv.tier %} · N{{ mv.tier }}{% endif %}
         {% else %}
           —
         {% endif %}
@@ -47,6 +54,12 @@
     <div class="ticket-kv">
       <div class="ticket-k">Placa</div>
       <div class="ticket-v">{{ mv.truck_plate or "—" }}</div>
+    </div>
+
+    <!-- ✅ CÉDULA (lo pediste y es clave) -->
+    <div class="ticket-kv">
+      <div class="ticket-k">Cédula</div>
+      <div class="ticket-v">{{ mv.driver_id_doc or "—" }}</div>
     </div>
   </div>
 
@@ -72,6 +85,9 @@
         <div class="sign-line"></div>
       </div>
     </div>
+
+    <!-- ✅ un poquito más de aire abajo, sin agrandar “mucho” -->
+    <div style="height:8px;"></div>
   </div>
 
   <!-- ✅ Payload (solo para ver / debug en pantalla, NO se imprime por navegador) -->
@@ -158,7 +174,9 @@ async function printDirect(btn){
 
 .ticket-k{ color:var(--muted); font-weight:900; font-size:12px; }
 .ticket-v{ font-weight:950; font-size:18px; margin-top:2px; }
-.ticket-m{ color:rgba(229,231,235,.78); font-weight:800; font-size:12px; margin-top:4px; }
+
+/* ✅ Subtexto (tamaño/año) un poquito más visible */
+.ticket-m{ color:rgba(229,231,235,.82); font-weight:900; font-size:13px; margin-top:4px; }
 
 .ticket-notes{ margin-top:14px; }
 .ticket-notes-box{
@@ -218,28 +236,34 @@ async function printDirect(btn){
 @media print {
   .topbar,
   .ticket-actions,
-  .flash-stack {   /* 🔥 esto oculta el mensaje verde */
+  .flash-stack{
     display: none !important;
   }
 
-  /* 🔥 Esto es lo que quita el cuadro duplicado */
   .payload-box { display:none !important; }
 
-  /* Fondo blanco para impresión */
-  body { background:#fff !important; color:#000 !important; }
-  .card{ box-shadow:none !important; border:0 !important; }
+  body {
+    background:#fff !important;
+    color:#000 !important;
+    width:80mm;
+    margin:0 auto !important;
+  }
+
+  .card{
+    box-shadow:none !important;
+    border:0 !important;
+  }
+
   .ticket-sub, .ticket-k { color:#333 !important; }
   .ticket-notes-box, .sign-box { background:#fff !important; border:1px solid #bbb !important; }
 
-@media print {
-  body {
-    width: 80mm;
-    margin: 0 auto;
-  }
-}
+  /* ✅ Para que no se “corte” texto por padding/anchos */
+  .ticket-v{ font-size:16px !important; }
+  .ticket-title{ font-size:16px !important; }
 }
 </style>
 {% endblock %}
+
 
 
 

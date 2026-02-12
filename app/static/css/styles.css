@@ -656,3 +656,41 @@ button:not(.btn):hover{
   color: var(--muted);
   font-weight: 700;
 }
+/* ===== Ajustes ticket térmico ===== */
+
+.ticket-size-year{
+  font-size:13px;
+  margin-top:4px;
+}
+
+.ticket-field{
+  margin-top:6px;
+}
+
+.ticket-k{
+  font-size:11px;
+  opacity:.7;
+}
+
+.ticket-v{
+  font-weight:700;
+  font-size:13px;
+}
+
+.sign-box{
+  background:#fff;
+}
+
+@media print {
+
+  body{
+    width:80mm;
+    font-size:13px;
+  }
+
+  .card{
+    width:100% !important;
+    padding:8px !important;
+  }
+
+}
