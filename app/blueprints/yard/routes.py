@@ -4,6 +4,9 @@ from datetime import datetime
 import os
 import requests
 import io
+import pytz
+CR_TZ = pytz.timezone("America/Costa_Rica")
+UTC_TZ = pytz.utc
 
 from flask import render_template, request, redirect, url_for, flash, jsonify, send_file
 from flask_login import login_required, current_user
@@ -820,6 +823,19 @@ def gate_out_post():
 # Reportes (respetar filtros + export Excel)
 # =========================
 
+def _cr_range_to_utc_naive(date_from: str, date_to: str):
+    """
+    date_from/date_to vienen como YYYY-MM-DD (día CR).
+    Convertimos [00:00:00 .. 23:59:59] CR -> UTC naive (para comparar con occurred_at guardado con utcnow()).
+    """
+    d1_local_naive = datetime.fromisoformat(date_from + "T00:00:00")
+    d2_local_naive = datetime.fromisoformat(date_to + "T23:59:59")
+
+    d1_utc = CR_TZ.localize(d1_local_naive).astimezone(UTC_TZ)
+    d2_utc = CR_TZ.localize(d2_local_naive).astimezone(UTC_TZ)
+
+    return d1_utc.replace(tzinfo=None), d2_utc.replace(tzinfo=None)
+
 def _parse_report_filters(args):
     movement_type = (args.get("movement_type") or "").strip().upper()
     if movement_type and movement_type not in REPORT_TYPES:
@@ -832,8 +848,7 @@ def _parse_report_filters(args):
         return None, None, None, "Indica rango de fechas."
 
     try:
-        d1 = datetime.fromisoformat(date_from + "T00:00:00")
-        d2 = datetime.fromisoformat(date_to + "T23:59:59")
+        d1, d2 = _cr_range_to_utc_naive(date_from, date_to)
     except Exception:
         return None, None, None, "Formato de fecha inválido (usa YYYY-MM-DD)."
 

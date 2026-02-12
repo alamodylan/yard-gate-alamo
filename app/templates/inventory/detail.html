@@ -78,7 +78,7 @@
                 <span class="badge muted">{{ mv.movement_type }}</span>
               </div>
               <div class="hint" style="margin-top:6px;">
-                {{ mv.occurred_at }}
+                {{ fmt_dt(mv.occurred_at, "%d/%m/%Y %H:%M") }}
               </div>
             </div>
           </a>
@@ -123,7 +123,7 @@
       <tbody>
         {% for mv in movements %}
           <tr>
-            <td>{{ mv.occurred_at }}</td>
+            <td>{{ fmt_dt(mv.occurred_at, "%d/%m/%Y %H:%M") }}</td>
             <td><span class="badge">{{ mv.movement_type }}</span></td>
             <td>
               {% if mv.bay_code %}

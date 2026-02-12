@@ -2,46 +2,116 @@
 {% block title %}Ticket - Yard Gate Álamo{% endblock %}
 
 {% block content %}
-<div class="card" style="max-width:520px;">
-  <div style="text-align:center;">
-    <h2 style="margin:0;">Yard Gate Álamo</h2>
-    <div style="font-size:12px; color:#555;">
-      Ticket de Movimiento {% if is_reprint %}(Reimpresión){% endif %}
+<div class="card card-pad" style="max-width:720px; margin: 0 auto;">
+
+  {# ===== ENCABEZADO (logo + título + hora CR) ===== #}
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap;">
+    <div style="display:flex; gap:12px; align-items:center;">
+      {# Logo (si no existe, se oculta solo) #}
+      <img
+        src="{{ url_for('static', filename='img/logo.png') }}"
+        alt="Logo empresa"
+        style="height:54px; width:auto; object-fit:contain;"
+        onerror="this.style.display='none'"
+      >
+
+      <div>
+        <div style="font-weight:950; font-size:18px; line-height:1.1;">
+          Yard Gate Álamo
+        </div>
+        <div class="hint" style="margin-top:4px;">
+          Ticket de Movimiento {% if is_reprint %}(Reimpresión){% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div style="text-align:right;">
+      <span class="badge">{{ mv.movement_type }}</span>
+      <div class="hint" style="margin-top:6px;">
+        {# ✅ Hora Costa Rica (requiere helper fmt_dt en create_app) #}
+        {{ fmt_dt(mv.occurred_at, "%d/%m/%Y %H:%M") }}
+      </div>
     </div>
   </div>
 
-  <hr>
+  <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
+    <div class="grid grid-2">
+      <div>
+        <div class="hint">Contenedor</div>
+        <div style="font-weight:950; font-size:18px;">{{ c.code }}</div>
+        <div class="hint" style="margin-top:6px;">
+          Tamaño: <b>{{ c.size }}</b>
+          {% if c.year %} · Año: <b>{{ c.year }}</b>{% endif %}
+        </div>
+      </div>
 
-  <pre style="
-    white-space:pre-wrap;
-    font-family: monospace;
-    font-size:12px;
-    background:#f8fafc;
-    padding:10px;
-    border-radius:10px;
-    border:1px solid #e5e7eb;
-  ">{{ payload }}</pre>
+      <div>
+        <div class="hint">Ubicación</div>
+        <div style="font-weight:900;">
+          {% if mv.bay_code %}
+            {{ mv.bay_code }}
+            {% if mv.depth_row %} · F{{ "%02d"|format(mv.depth_row) }}{% endif %}
+            {% if mv.tier %} · N{{ mv.tier }}{% endif %}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+      </div>
+    </div>
 
-  <hr>
+    <div class="grid grid-2" style="margin-top:12px;">
+      <div>
+        <div class="hint">Chofer</div>
+        <div style="font-weight:900;">{{ mv.driver_name or "—" }}</div>
+      </div>
+      <div>
+        <div class="hint">Placa</div>
+        <div style="font-weight:900;">{{ mv.truck_plate or "—" }}</div>
+      </div>
+    </div>
+  </div>
 
-  <!-- BOTONES -->
-  <div style="display:flex; gap:10px; flex-wrap:wrap;">
-    <!-- Impresión por navegador -->
-    <button onclick="window.print()">Imprimir (Navegador)</button>
+  <div style="margin-top:14px;">
+    <div class="hint" style="margin-bottom:8px;">Payload enviado a impresión (Epson / Agent)</div>
 
-    <!-- Impresión directa a Epson -->
+    <pre style="
+      white-space:pre-wrap;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+      font-size:12px;
+      background: rgba(255,255,255,.03);
+      padding:12px;
+      border-radius:14px;
+      border:1px solid var(--border);
+      margin:0;
+    ">{{ payload }}</pre>
+  </div>
+
+  {# ===== FIRMA ===== #}
+  <div style="margin-top:16px; border-top:1px dashed rgba(148,163,184,.35); padding-top:14px;">
+    <div class="hint" style="margin-bottom:8px;">Firma transportista</div>
+    <div style="height:70px; border:1px solid rgba(148,163,184,.28); border-radius:12px; background:rgba(255,255,255,.02);"></div>
+    <div style="display:flex; justify-content:space-between; gap:12px; margin-top:10px; flex-wrap:wrap;">
+      <div class="hint">Nombre: ____________________________</div>
+      <div class="hint">Cédula: ____________________________</div>
+    </div>
+  </div>
+
+  {# ===== BOTONES ===== #}
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+    <button class="btn primary" onclick="window.print()">Imprimir (Navegador)</button>
+
     <button
       type="button"
+      class="btn"
       data-movement-id="{{ mv.id }}"
       onclick="printDirect(this)">
       Imprimir (Epson)
     </button>
 
-    <a href="{{ url_for('yard.map_view') }}">Volver al mapa</a>
+    <a class="btn" href="{{ url_for('yard.map_view') }}">Volver al mapa</a>
   </div>
 </div>
 
-<!-- JS ESPECÍFICO DEL TICKET -->
 <script>
 async function printDirect(btn){
   const movementId = btn.dataset.movementId;
@@ -76,8 +146,9 @@ async function printDirect(btn){
 <style>
 @media print {
   .topbar, a, button { display:none !important; }
-  body { background:#fff; }
-  .card { border:none; }
+  body { background:#fff !important; color:#111 !important; }
+  .card { border:1px solid #ddd !important; box-shadow:none !important; background:#fff !important; }
+  pre { background:#fff !important; border:1px solid #ddd !important; }
 }
 </style>
 {% endblock %}
