@@ -1,4 +1,3 @@
-#app/templates/yard/reports.html
 {% extends "base.html" %}
 {% block title %}Reportes - Yard Gate Álamo{% endblock %}
 
@@ -84,7 +83,7 @@
         <tbody>
           {% for mv, c in rows %}
           <tr>
-            <td>{{ fmt_dt(mv.occurred_at, "%d/%m/%Y %H:%M") }}</td>
+            <td>{{ mv.occurred_at|dt_cr("%d/%m/%Y %H:%M") }}</td>
             <td>
               {% if mv.movement_type == "GATE_IN" %}
                 <span class="badge success">GATE_IN</span>

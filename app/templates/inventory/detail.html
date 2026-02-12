@@ -123,7 +123,7 @@
       <tbody>
         {% for mv in movements %}
           <tr>
-            <td>{{ fmt_dt(mv.occurred_at, "%d/%m/%Y %H:%M") }}</td>
+            <td>{{ mv.occurred_at|dt_cr("%d/%m/%Y %H:%M") }}</td>
             <td><span class="badge">{{ mv.movement_type }}</span></td>
             <td>
               {% if mv.bay_code %}

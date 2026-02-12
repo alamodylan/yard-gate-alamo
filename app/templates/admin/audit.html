@@ -29,7 +29,7 @@
     {% for log, username in logs %}
     <tr>
       <td style="padding:8px; border-bottom:1px solid #eee;">
-        {{ log.at }}
+        {{ log.at|dt_cr("%d/%m/%Y %H:%M") }}
       </td>
 
       <td style="padding:8px; border-bottom:1px solid #eee;">
