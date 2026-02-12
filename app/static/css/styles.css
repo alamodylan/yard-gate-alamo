@@ -725,22 +725,43 @@ button:not(.btn):hover{
   }
 
   /* Fecha / hora más fuerte */
-  .ticket-dt{
-    font-size:16px !important;
-    font-weight:950 !important;
-    color:#000 !important;
-  }
+  /* FECHA / HORA (ULTRA legible) */
+.ticket-dt .dt-date{
+  font-size: 15px !important;
+  font-weight: 1000 !important;
+  color:#000 !important;
+  line-height: 1.05 !important;
+}
+.ticket-dt .dt-time{
+  font-size: 17px !important;
+  font-weight: 1000 !important;
+  color:#000 !important;
+  letter-spacing: .3px !important;
+  line-height: 1.05 !important;
+}
 
-  /* Tamaño + Año más fuerte */
-  .ticket-m{
-    font-size:14px !important;
-    font-weight:950 !important;
-    color:#000 !important;
-  }
+/* TAMAÑO + AÑO (ultra legible) */
+.ticket-m{
+  font-size: 14px !important;
+  font-weight: 1000 !important;
+  color:#000 !important;
+  line-height: 1.1 !important;
+}
 
-  /* Mejor contraste en térmica */
-  *{
-    -webkit-print-color-adjust: economy !important;
-    print-color-adjust: economy !important;
-  }
+/* Labels (Contenedor / Ubicación / etc) más visibles */
+.ticket-k{
+  font-size: 12px !important;
+  font-weight: 950 !important;
+  color:#000 !important;
+}
+
+/* Evita que Chrome “suavice” demasiado el texto */
+.ticket-card, .card, body{
+  -webkit-font-smoothing: none !important;
+  text-rendering: geometricPrecision !important;
+}
+*{
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
 }

@@ -17,7 +17,10 @@
       <div class="badge {% if mv.movement_type == 'GATE_IN' %}success{% elif mv.movement_type=='GATE_OUT' %}danger{% else %}muted{% endif %}">
         {{ mv.movement_type }}
       </div>
-      <div class="ticket-dt">{{ mv.occurred_at|dt_cr("%d/%m/%Y %H:%M") }}</div>
+      <div class="ticket-dt">
+        <div class="dt-date">{{ mv.occurred_at|dt_cr("%d/%m/%Y") }}</div>
+        <div class="dt-time">{{ mv.occurred_at|dt_cr("%H:%M") }}</div>
+      </div>
     </div>
   </div>
 
