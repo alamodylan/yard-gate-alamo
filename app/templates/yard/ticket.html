@@ -2,107 +2,91 @@
 {% block title %}Ticket - Yard Gate Álamo{% endblock %}
 
 {% block content %}
-<div class="card card-pad" style="max-width:720px; margin: 0 auto;">
-
-  {# ===== ENCABEZADO (logo + título + hora CR) ===== #}
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:14px; flex-wrap:wrap;">
-    <div style="display:flex; gap:12px; align-items:center;">
-      {# Logo (si no existe, se oculta solo) #}
-      <img
-        src="{{ url_for('static', filename='img/logo.png') }}"
-        alt="Logo empresa"
-        style="height:54px; width:auto; object-fit:contain;"
-        onerror="this.style.display='none'"
-      >
-
+<div class="card card-pad ticket-card" style="max-width:820px;">
+  <!-- Header -->
+  <div class="ticket-head">
+    <div class="ticket-brand">
+      <img class="ticket-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Álamo Terminales Marítimas">
       <div>
-        <div style="font-weight:950; font-size:18px; line-height:1.1;">
-          Yard Gate Álamo
-        </div>
-        <div class="hint" style="margin-top:4px;">
-          Ticket de Movimiento {% if is_reprint %}(Reimpresión){% endif %}
-        </div>
+        <div class="ticket-title">Yard Gate Álamo</div>
+        <div class="ticket-sub">Ticket de Movimiento {% if is_reprint %}(Reimpresión){% endif %}</div>
       </div>
     </div>
 
-    <div style="text-align:right;">
-      <span class="badge">{{ mv.movement_type }}</span>
-      <div class="hint" style="margin-top:6px;">
-        {# ✅ Hora Costa Rica (requiere helper fmt_dt en create_app) #}
-        {{ mv.occurred_at|dt_cr("%d/%m/%Y %H:%M") }}
+    <div class="ticket-right">
+      <div class="badge {% if mv.movement_type == 'GATE_IN' %}success{% elif mv.movement_type=='GATE_OUT' %}danger{% else %}muted{% endif %}">
+        {{ mv.movement_type }}
+      </div>
+      <div class="ticket-dt">{{ mv.occurred_at|dt_cr("%d/%m/%Y %H:%M") }}</div>
+    </div>
+  </div>
+
+  <div class="ticket-grid">
+    <div class="ticket-kv">
+      <div class="ticket-k">Contenedor</div>
+      <div class="ticket-v">{{ c.code }}</div>
+      <div class="ticket-m">{{ c.size }}{% if c.year %} · Año: {{ c.year }}{% endif %}</div>
+    </div>
+
+    <div class="ticket-kv">
+      <div class="ticket-k">Ubicación</div>
+      <div class="ticket-v">
+        {% if mv.bay_code %}
+          {{ mv.bay_code }} · F{{ "%02d"|format(mv.depth_row or 0) }} · N{{ mv.tier or 0 }}
+        {% else %}
+          —
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="ticket-kv">
+      <div class="ticket-k">Chofer</div>
+      <div class="ticket-v">{{ mv.driver_name or "—" }}</div>
+    </div>
+
+    <div class="ticket-kv">
+      <div class="ticket-k">Placa</div>
+      <div class="ticket-v">{{ mv.truck_plate or "—" }}</div>
+    </div>
+  </div>
+
+  {% if mv.notes %}
+    <div class="ticket-notes">
+      <div class="ticket-k">Observaciones</div>
+      <div class="ticket-notes-box">{{ mv.notes }}</div>
+    </div>
+  {% endif %}
+
+  <!-- Firma -->
+  <div class="ticket-sign">
+    <div class="ticket-k">Firma transportista</div>
+    <div class="sign-box"></div>
+
+    <div class="sign-row">
+      <div class="sign-field">
+        <div class="ticket-k">Nombre</div>
+        <div class="sign-line"></div>
+      </div>
+      <div class="sign-field">
+        <div class="ticket-k">Cédula</div>
+        <div class="sign-line"></div>
       </div>
     </div>
   </div>
 
-  <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
-    <div class="grid grid-2">
-      <div>
-        <div class="hint">Contenedor</div>
-        <div style="font-weight:950; font-size:18px;">{{ c.code }}</div>
-        <div class="hint" style="margin-top:6px;">
-          Tamaño: <b>{{ c.size }}</b>
-          {% if c.year %} · Año: <b>{{ c.year }}</b>{% endif %}
-        </div>
-      </div>
-
-      <div>
-        <div class="hint">Ubicación</div>
-        <div style="font-weight:900;">
-          {% if mv.bay_code %}
-            {{ mv.bay_code }}
-            {% if mv.depth_row %} · F{{ "%02d"|format(mv.depth_row) }}{% endif %}
-            {% if mv.tier %} · N{{ mv.tier }}{% endif %}
-          {% else %}
-            —
-          {% endif %}
-        </div>
-      </div>
-    </div>
-
-    <div class="grid grid-2" style="margin-top:12px;">
-      <div>
-        <div class="hint">Chofer</div>
-        <div style="font-weight:900;">{{ mv.driver_name or "—" }}</div>
-      </div>
-      <div>
-        <div class="hint">Placa</div>
-        <div style="font-weight:900;">{{ mv.truck_plate or "—" }}</div>
-      </div>
-    </div>
+  <!-- ✅ Payload (solo para ver / debug en pantalla, NO se imprime por navegador) -->
+  <div class="payload-box">
+    <div class="ticket-k" style="margin-bottom:8px;">Payload enviado a impresión (Epson / Agent)</div>
+    <pre class="payload-pre">{{ payload }}</pre>
   </div>
 
-  <div style="margin-top:14px;">
-    <div class="hint" style="margin-bottom:8px;">Payload enviado a impresión (Epson / Agent)</div>
-
-    <pre style="
-      white-space:pre-wrap;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-      font-size:12px;
-      background: rgba(255,255,255,.03);
-      padding:12px;
-      border-radius:14px;
-      border:1px solid var(--border);
-      margin:0;
-    ">{{ payload }}</pre>
-  </div>
-
-  {# ===== FIRMA ===== #}
-  <div style="margin-top:16px; border-top:1px dashed rgba(148,163,184,.35); padding-top:14px;">
-    <div class="hint" style="margin-bottom:8px;">Firma transportista</div>
-    <div style="height:70px; border:1px solid rgba(148,163,184,.28); border-radius:12px; background:rgba(255,255,255,.02);"></div>
-    <div style="display:flex; justify-content:space-between; gap:12px; margin-top:10px; flex-wrap:wrap;">
-      <div class="hint">Nombre: ____________________________</div>
-      <div class="hint">Cédula: ____________________________</div>
-    </div>
-  </div>
-
-  {# ===== BOTONES ===== #}
-  <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;">
+  <!-- Botones -->
+  <div class="ticket-actions">
     <button class="btn primary" onclick="window.print()">Imprimir (Navegador)</button>
 
     <button
-      type="button"
       class="btn"
+      type="button"
       data-movement-id="{{ mv.id }}"
       onclick="printDirect(this)">
       Imprimir (Epson)
@@ -115,12 +99,10 @@
 <script>
 async function printDirect(btn){
   const movementId = btn.dataset.movementId;
-
   if(!movementId){
     alert("ID de movimiento inválido");
     return;
   }
-
   if(!confirm("¿Enviar ticket a la impresora Epson?")) return;
 
   try {
@@ -128,14 +110,11 @@ async function printDirect(btn){
       method: "POST",
       headers: { "Accept": "application/json" }
     });
-
     const data = await r.json();
-
     if(!r.ok){
       alert(data.error || "Error al imprimir");
       return;
     }
-
     alert("Ticket enviado a la impresora Epson ✅");
   } catch (e){
     alert("No se pudo conectar con el servicio de impresión");
@@ -144,13 +123,113 @@ async function printDirect(btn){
 </script>
 
 <style>
+/* ===== Ticket layout ===== */
+.ticket-card{ overflow:hidden; }
+.ticket-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+  padding-bottom:12px;
+  border-bottom:1px solid var(--border);
+}
+.ticket-brand{ display:flex; gap:12px; align-items:center; }
+.ticket-logo{
+  height:44px; width:auto; object-fit:contain;
+  border-radius:10px;
+}
+.ticket-title{ font-weight:950; font-size:18px; }
+.ticket-sub{ color:var(--muted); font-weight:800; font-size:12px; margin-top:2px; }
+
+.ticket-right{ text-align:right; display:grid; gap:6px; justify-items:end; }
+.ticket-dt{ font-weight:900; color:rgba(229,231,235,.92); }
+
+.ticket-grid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:14px;
+  padding-top:14px;
+}
+@media (max-width: 760px){
+  .ticket-grid{ grid-template-columns: 1fr; }
+  .ticket-right{ justify-items:start; text-align:left; }
+  .ticket-head{ align-items:flex-start; }
+}
+
+.ticket-k{ color:var(--muted); font-weight:900; font-size:12px; }
+.ticket-v{ font-weight:950; font-size:18px; margin-top:2px; }
+.ticket-m{ color:rgba(229,231,235,.78); font-weight:800; font-size:12px; margin-top:4px; }
+
+.ticket-notes{ margin-top:14px; }
+.ticket-notes-box{
+  margin-top:8px;
+  padding:10px 12px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  background:rgba(255,255,255,.03);
+  font-weight:850;
+  white-space:pre-wrap;
+}
+
+.ticket-sign{ margin-top:14px; }
+.sign-box{
+  margin-top:8px;
+  border:1px solid var(--border);
+  border-radius:14px;
+  height:78px;
+  background:rgba(255,255,255,.02);
+}
+.sign-row{
+  margin-top:12px;
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:14px;
+}
+.sign-line{
+  margin-top:8px;
+  height:18px;
+  border-bottom:1px solid rgba(229,231,235,.45);
+}
+
+.payload-box{
+  margin-top:14px;
+  border-top:1px solid var(--border);
+  padding-top:14px;
+}
+.payload-pre{
+  white-space:pre-wrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size:12px;
+  padding:12px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.03);
+  overflow:auto;
+}
+
+.ticket-actions{
+  margin-top:14px;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+/* ===== Print rules (NAVEGADOR) ===== */
 @media print {
-  .topbar, a, button { display:none !important; }
-  body { background:#fff !important; color:#111 !important; }
-  .card { border:1px solid #ddd !important; box-shadow:none !important; background:#fff !important; }
-  pre { background:#fff !important; border:1px solid #ddd !important; }
+  /* Oculta topbar y botones */
+  .topbar, .ticket-actions { display:none !important; }
+
+  /* 🔥 Esto es lo que quita el cuadro duplicado */
+  .payload-box { display:none !important; }
+
+  /* Fondo blanco para impresión */
+  body { background:#fff !important; color:#000 !important; }
+  .card{ box-shadow:none !important; border:0 !important; }
+  .ticket-sub, .ticket-k { color:#333 !important; }
+  .ticket-notes-box, .sign-box { background:#fff !important; border:1px solid #bbb !important; }
 }
 </style>
 {% endblock %}
+
 
 
