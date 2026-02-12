@@ -260,6 +260,36 @@ async function printDirect(btn){
   /* ✅ Para que no se “corte” texto por padding/anchos */
   .ticket-v{ font-size:16px !important; }
   .ticket-title{ font-size:16px !important; }
+
+  /* ✅ Fecha / Hora (arriba a la derecha) */
+  .ticket-dt{
+    font-size: 15px !important;      /* más grande */
+    font-weight: 950 !important;     /* más negrita */
+    color:#000 !important;           /* negro real */
+    letter-spacing: .2px !important; /* ayuda en térmica */
+  }
+
+  /* ✅ Tamaño + Año (debajo del contenedor) */
+  .ticket-m{
+    font-size: 13px !important;      /* más visible */
+    font-weight: 950 !important;     /* más negrita */
+    color:#000 !important;           /* negro real */
+    margin-top: 2px !important;      /* compacto */
+    line-height: 1.2 !important;     /* más legible sin crecer */
+  }
+
+  /* ✅ Labels de esas secciones (opcional pero ayuda) */
+  .ticket-k{
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    color:#000 !important;
+  }
+
+  /* ✅ Para que la Epson no lo “lave” */
+  *{
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 </style>
 {% endblock %}
