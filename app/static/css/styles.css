@@ -683,14 +683,64 @@ button:not(.btn):hover{
 
 @media print {
 
-  body{
+  html, body{
+    background:#fff !important;
+    color:#000 !important;
     width:80mm;
+    margin:0 auto !important;
     font-size:13px;
   }
 
-  .card{
-    width:100% !important;
-    padding:8px !important;
+  /* Quitar todo lo que no es ticket */
+  .topbar,
+  .ticket-actions,
+  .flash-stack,
+  .payload-box{
+    display:none !important;
   }
 
+  /* Forzar blanco real en el ticket */
+  .card,
+  .ticket-card,
+  .ticket-head,
+  .ticket-grid,
+  .ticket-kv,
+  .ticket-notes,
+  .ticket-notes-box,
+  .ticket-sign,
+  .sign-box{
+    background:#fff !important;
+    box-shadow:none !important;
+    border:0 !important;
+  }
+
+  /* Mantener bordes visibles en térmica */
+  .ticket-head{
+    border-bottom:1px solid #bbb !important;
+  }
+
+  .ticket-notes-box,
+  .sign-box{
+    border:1px solid #bbb !important;
+  }
+
+  /* Fecha / hora más fuerte */
+  .ticket-dt{
+    font-size:16px !important;
+    font-weight:950 !important;
+    color:#000 !important;
+  }
+
+  /* Tamaño + Año más fuerte */
+  .ticket-m{
+    font-size:14px !important;
+    font-weight:950 !important;
+    color:#000 !important;
+  }
+
+  /* Mejor contraste en térmica */
+  *{
+    -webkit-print-color-adjust: economy !important;
+    print-color-adjust: economy !important;
+  }
 }
