@@ -216,8 +216,11 @@ async function printDirect(btn){
 
 /* ===== Print rules (NAVEGADOR) ===== */
 @media print {
-  /* Oculta topbar y botones */
-  .topbar, .ticket-actions { display:none !important; }
+  .topbar,
+  .ticket-actions,
+  .flash-stack {   /* 🔥 esto oculta el mensaje verde */
+    display: none !important;
+  }
 
   /* 🔥 Esto es lo que quita el cuadro duplicado */
   .payload-box { display:none !important; }
@@ -227,6 +230,13 @@ async function printDirect(btn){
   .card{ box-shadow:none !important; border:0 !important; }
   .ticket-sub, .ticket-k { color:#333 !important; }
   .ticket-notes-box, .sign-box { background:#fff !important; border:1px solid #bbb !important; }
+
+@media print {
+  body {
+    width: 80mm;
+    margin: 0 auto;
+  }
+}
 }
 </style>
 {% endblock %}
