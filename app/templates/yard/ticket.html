@@ -29,7 +29,7 @@
       <span class="badge">{{ mv.movement_type }}</span>
       <div class="hint" style="margin-top:6px;">
         {# ✅ Hora Costa Rica (requiere helper fmt_dt en create_app) #}
-        {{ fmt_dt(mv.occurred_at, "%d/%m/%Y %H:%M") }}
+        {{ mv.occurred_at|dt_cr("%d/%m/%Y %H:%M") }}
       </div>
     </div>
   </div>
