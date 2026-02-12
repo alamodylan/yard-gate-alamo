@@ -1,5 +1,6 @@
 from flask import render_template, request, redirect, url_for, flash
 from flask_login import login_required, current_user
+from app.models.user import User
 
 from app.blueprints.admin import admin_bp
 from app.extensions import db
@@ -71,15 +72,17 @@ def users_toggle(user_id: int):
 @login_required
 @admin_required
 def audit_view():
-    # filtros opcionales
     q_user = (request.args.get("user") or "").strip()
     q_action = (request.args.get("action") or "").strip()
 
-    query = AuditLog.query
-    if q_user.isdigit():
-        query = query.filter(AuditLog.user_id == int(q_user))
-    if q_action:
-        query = query.filter(AuditLog.action.ilike(f"%{q_action}%"))
+    q = db.session.query(AuditLog, User.username).outerjoin(User, User.id == AuditLog.user_id)
 
-    logs = query.order_by(AuditLog.at.desc()).limit(500).all()
+    if q_user.isdigit():
+        q = q.filter(AuditLog.user_id == int(q_user))
+
+    if q_action:
+        q = q.filter(AuditLog.action.ilike(f"%{q_action}%"))
+
+    logs = q.order_by(AuditLog.at.desc()).limit(500).all()
+
     return render_template("admin/audit.html", logs=logs)
