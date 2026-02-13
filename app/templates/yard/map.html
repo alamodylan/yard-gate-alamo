@@ -5,9 +5,9 @@
 <div class="card card-pad">
   <h2 style="margin:0;">Mapa de Predio</h2>
   <p class="card-sub" style="margin-top:6px;">
-    PC: selecciona contenedor → arrastra → bloque → estiba → fila → confirmar.
+    PC: selecciona contenedor → arrastra → bloque → (rack) → elegir slot → confirmar.
     <br>
-    Tablet/Celular: selecciona contenedor → toca bloque → toca estiba → toca fila → confirmar.
+    Tablet/Celular: selecciona contenedor → toca bloque → toca slot verde → confirmar.
   </p>
 </div>
 
@@ -31,7 +31,7 @@
     <input id="containerSearch" type="text" placeholder="Ej: CSNU-123456-7" />
 
     <div id="touchHint" class="hint hidden" style="margin-top:10px;">
-      📌 Modo tablet/celular: toca un contenedor para seleccionarlo y luego toca el bloque/estiba/fila.
+      📌 Modo tablet/celular: toca un contenedor para seleccionarlo y luego toca el bloque y el slot verde del rack.
     </div>
 
     <div id="selectedContainerBar" class="selected-bar hidden" style="margin-top:12px;">
@@ -90,7 +90,7 @@
            style="width:100%; height:520px; border:1px solid rgba(148,163,184,.18); border-radius:18px; background:rgba(255,255,255,.02);">
       </svg>
 
-      <!-- Panel Estibas -->
+      <!-- Panel Estibas (RACK tipo Excel) -->
       <div id="stacksPanel" class="yard-overlay hidden">
         <div class="yard-overlay-card">
           <div class="yard-overlay-head">
@@ -98,7 +98,9 @@
               <div class="card-title" style="margin:0;">
                 Estibas del bloque <span id="stacksBlockCode">—</span>
               </div>
-              <div class="card-sub" style="margin-top:6px;">Verde = disponible · Rojo = lleno</div>
+              <div class="card-sub" style="margin-top:6px;">
+                Azul = ocupado · Verde = disponible (cuando hay contenedor seleccionado) · Azul fuerte = destino seleccionado
+              </div>
             </div>
 
             <button type="button" id="stacksCloseBtn" class="btn small">
@@ -106,13 +108,14 @@
             </button>
           </div>
 
-          <div id="stacksGrid" class="yard-grid" style="margin-top:12px;"></div>
+          <!-- ✅ IMPORTANTE: ya NO usa yard-grid -->
+          <div id="stacksGrid" class="stacks-list" style="margin-top:12px;"></div>
 
-          <!-- Confirmación (reubicada para usarla desde Estibas / Rack) -->
+          <!-- Confirmación -->
           <div id="confirmBar" class="hidden" style="margin-top:12px;">
             <div class="yard-confirm-row">
               <div style="font-size:13px;">
-                Selección: <b id="suggestedSlot">—</b>
+                Destino: <b id="suggestedSlot">—</b>
               </div>
 
               <div style="display:flex; gap:10px; align-items:center;">
@@ -127,36 +130,25 @@
           </div>
 
           <div class="hint" style="margin-top:10px;">
-            Tip: toca un contenedor para seleccionarlo y luego toca un espacio <b>verde</b> para elegir destino.
+            Tip: puedes tocar un contenedor dentro del rack para seleccionarlo y moverlo.
           </div>
         </div>
       </div>
 
-      <!-- Panel Filas (se mantiene por compatibilidad / fallback) -->
+      <!-- Panel Filas (ya no se usa, lo dejamos para compatibilidad sin romper nada) -->
       <div id="rowsPanel" class="yard-overlay hidden">
         <div class="yard-overlay-card">
           <div class="yard-overlay-head">
             <div>
-              <div class="card-title" style="margin:0;">
-                Filas · Bloque <span id="rowsBlockCode">—</span> · Estiba <span id="rowsStackCode">—</span>
-              </div>
-              <div class="card-sub" style="margin-top:6px;">
-                Rojo = fila con 4 niveles · Verde = admite más
-              </div>
+              <div class="card-title" style="margin:0;">Filas</div>
+              <div class="card-sub" style="margin-top:6px;">Vista antigua (no usada).</div>
             </div>
-
-            <button type="button" id="rowsCloseBtn" class="btn small">
-              Cerrar
-            </button>
+            <button type="button" id="rowsCloseBtn" class="btn small">Cerrar</button>
           </div>
-
           <div id="rowsGrid" class="yard-grid" style="margin-top:12px;"></div>
-
-          <div class="hint" style="margin-top:10px;">
-            Tip: al soltar en una fila verde, el sistema asigna el <b>nivel exacto</b> automáticamente.
-          </div>
         </div>
       </div>
+
     </div>
   </section>
 </div>
@@ -168,5 +160,6 @@
 </script>
 <script src="{{ url_for('static', filename='js/yard_map.js') }}"></script>
 {% endblock %}
+
 
 
