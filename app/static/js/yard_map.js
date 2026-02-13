@@ -1,10 +1,9 @@
 /* ==========================================
    Yard Map v2 (Bloques → Estibas → Filas)
-   - Sin blockSelect
-   - Sin availabilityOverlay
+   - Sin modificar endpoints existentes
    - UI por paneles: stacksPanel + rowsPanel
-   - Mejora: DnD real (bloque → estiba → fila)
-   - Mejora: colores compatibles con theme dark
+   - Mejora: Rack real en Estibas (N1–N4 y F01–F10)
+   - Mantiene drag & drop funcional (PC) + tap (touch)
    ========================================== */
 
 const svg = document.getElementById("yardSvg");
@@ -49,6 +48,9 @@ const IS_TOUCH = ("ontouchstart" in window) || (navigator.maxTouchPoints && navi
 // In-memory cache
 let allContainers = [];
 
+// Remember last bays rendered (for re-render on select)
+let currentBaysList = [];
+
 // UX state machine
 const VIEW = {
   BLOCKS: "BLOCKS",
@@ -65,9 +67,9 @@ let state = {
   blockCode: null,
   bayCode: null,    // estiba
   rowNumber: null,  // fila
-  tier: null,       // nivel sugerido o calculado
+  tier: null,       // nivel exacto
 
-  // suggestion payload
+  // suggestion payload (for POST)
   suggested: null,  // { bay_code, depth_row, tier }
 };
 
@@ -81,6 +83,13 @@ const THEME = {
   primaryFill: "rgba(37,99,235,0.16)",
   primaryStroke: "rgba(37,99,235,0.40)",
 };
+
+// ========================
+// CONFIG Rack (v2)
+// ========================
+const RACK_ROWS_VISIBLE = 10;  // F01–F10 por ahora
+const RACK_TIERS = 4;          // N1–N4
+const ROW_ENTRY_IS_F01 = true; // F01 = entrada (visual)
 
 // ------------------------
 // Helpers
@@ -119,6 +128,7 @@ function setView(view) {
 
   // Confirm bar
   if (confirmBar) confirmBar.classList.add("hidden");
+  setSuggestionText("—");
 }
 
 function setSelectedBar(open, text) {
@@ -161,6 +171,9 @@ function clearSelectedContainer() {
 
   setSelectedBar(false, "");
   highlightSelectedContainerInList();
+
+  // Clear any destination selection
+  clearDestinationSelection();
 }
 
 function hasActiveContainer() {
@@ -177,6 +190,59 @@ function fmtTier(tier) {
 
 function setSuggestionText(text) {
   if (suggestedSlot) suggestedSlot.textContent = text || "—";
+}
+
+function shortCode(code) {
+  if (!code) return "";
+  if (code.length <= 8) return code;
+  return `${code.slice(0, 4)}…${code.slice(-3)}`;
+}
+
+function getRowOrderVisible() {
+  const rows = [];
+  for (let r = 1; r <= RACK_ROWS_VISIBLE; r++) rows.push(r);
+  return ROW_ENTRY_IS_F01 ? rows : rows.reverse();
+}
+
+function getTierOrderVisual() {
+  // Visual rack: N4 arriba -> N1 abajo
+  return [4, 3, 2, 1];
+}
+
+function clearDestinationSelection() {
+  // Remove blue selection
+  if (stacksGrid) stacksGrid.querySelectorAll(".rack-slot.is-selected").forEach(el => el.classList.remove("is-selected"));
+  if (confirmBar) confirmBar.classList.add("hidden");
+  setSuggestionText("—");
+
+  state.bayCode = null;
+  state.rowNumber = null;
+  state.tier = null;
+  state.suggested = null;
+}
+
+// ------------------------
+// Occupancy helpers (from containers-in-yard)
+// ------------------------
+function buildOccupancyIndexForBlock(blockCode) {
+  // Map: bay_code -> Map "row-tier" -> {id, code}
+  const idx = new Map();
+  const rows = Array.isArray(allContainers) ? allContainers : [];
+
+  for (const c of rows) {
+    if (!c || !c.position) continue;
+
+    const bay = c.position.bay_code;
+    const row = c.position.depth_row;
+    const tier = c.position.tier;
+
+    if (!bay || !row || !tier) continue;
+    if (String(bay)[0] !== String(blockCode)) continue;
+
+    if (!idx.has(bay)) idx.set(bay, new Map());
+    idx.get(bay).set(`${row}-${tier}`, { id: c.id, code: c.code });
+  }
+  return idx;
 }
 
 // ------------------------
@@ -254,17 +320,13 @@ function drawBlocks() {
 }
 
 // ------------------------
-// Stacks panel (Estibas)
+// Stacks panel (Estibas) — now vertical list with mini-rack
 // ------------------------
 async function openBlock(blockCode) {
   state.blockCode = blockCode;
-  state.bayCode = null;
-  state.rowNumber = null;
-  state.tier = null;
-  state.suggested = null;
+  clearDestinationSelection();
 
   if (stacksBlockCode) stacksBlockCode.textContent = blockCode;
-
   if (stacksGrid) stacksGrid.innerHTML = `<div class="hint">Cargando estibas…</div>`;
 
   try {
@@ -277,9 +339,9 @@ async function openBlock(blockCode) {
 
     const data = await r.json();
     const bays = (data && data.bays) ? data.bays : [];
-
     bays.sort((a, b) => (a.bay_number || 0) - (b.bay_number || 0));
 
+    currentBaysList = bays;
     renderStacksGrid(bays);
     setView(VIEW.STACKS);
   } catch (e) {
@@ -296,64 +358,184 @@ function renderStacksGrid(bays) {
     return;
   }
 
+  const occ = buildOccupancyIndexForBlock(state.blockCode);
+  const rowOrder = getRowOrderVisible();
+  const tierOrder = getTierOrderVisual();
+
   const html = bays.map(b => {
     const used = b.used || 0;
     const cap = b.capacity || 0;
     const available = cap > 0 ? (used < cap) : true;
-    const cls = available ? "yard-cell available" : "yard-cell unavailable";
+
     const badge = available ? "Disponible" : "Lleno";
+    const badgeCls = available ? "badge-ok" : "badge-bad";
+
+    const bayOcc = occ.get(b.code) || new Map();
+
+    const header = `
+      <div class="rack-header">
+        <div class="rack-corner"></div>
+        ${rowOrder.map(r => `<div class="rack-colhdr">${fmtRow(r)}</div>`).join("")}
+      </div>
+    `;
+
+    const body = tierOrder.map(t => {
+      return `
+        <div class="rack-row">
+          <div class="rack-tierlbl">${fmtTier(t)}</div>
+          ${rowOrder.map(r => {
+            const key = `${r}-${t}`;
+            const item = bayOcc.get(key);
+
+            if (item) {
+              return `
+                <div class="rack-slot is-occupied"
+                     draggable="${IS_TOUCH ? "false" : "true"}"
+                     data-action="pick-container"
+                     data-container-id="${item.id}"
+                     data-container-code="${item.code}"
+                     data-bay="${b.code}"
+                     data-row="${r}"
+                     data-tier="${t}"
+                     title="${item.code} · ${b.code} · ${fmtRow(r)} · ${fmtTier(t)}">
+                  <span class="rack-code">${shortCode(item.code)}</span>
+                </div>
+              `;
+            }
+
+            const canPickDest = hasActiveContainer();
+            return `
+              <div class="rack-slot ${canPickDest ? "is-available" : "is-empty"}"
+                   data-action="pick-destination"
+                   data-bay="${b.code}"
+                   data-row="${r}"
+                   data-tier="${t}"
+                   title="${b.code} · ${fmtRow(r)} · ${fmtTier(t)}">
+              </div>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }).join("");
 
     return `
-      <button type="button"
-              class="${cls}"
-              data-bay="${b.code}"
-              ${available ? "" : "disabled"}
-              style="text-align:left;">
-        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
-          <div style="font-weight:950;">${b.code}</div>
-          <div style="font-size:11px; font-weight:900;"
-               class="${available ? "badge-ok" : "badge-bad"}">${badge}</div>
+      <div class="stack-card" data-baycard="${b.code}">
+        <div class="stack-card-head">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+            <div>
+              <div style="font-weight:950; font-size:16px;">${b.code}</div>
+              <div class="hint" style="margin-top:6px;">
+                ${cap ? `${used}/${cap}` : `${used} usados`}
+              </div>
+            </div>
+            <div class="${badgeCls}" style="font-size:11px; font-weight:900;">${badge}</div>
+          </div>
+          <div class="hint" style="margin-top:8px;">
+            Toca un contenedor para seleccionarlo · Toca un espacio <b>verde</b> para destino
+          </div>
         </div>
-        <div class="hint" style="margin-top:6px;">
-          ${cap ? `${used}/${cap}` : `${used} usados`}
+
+        <div class="rack">
+          ${header}
+          ${body}
         </div>
-        ${hasActiveContainer() ? `<div class="hint" style="margin-top:6px;">Suelta aquí para ver filas</div>` : ``}
-      </button>
+      </div>
     `;
   }).join("");
 
   stacksGrid.innerHTML = html;
 
-  stacksGrid.querySelectorAll("[data-bay]").forEach(btn => {
-    const bayCode = btn.getAttribute("data-bay");
+  // Attach per-slot drag/drop behavior (drop on destination slots)
+  stacksGrid.querySelectorAll(".rack-slot").forEach(slot => {
+    // Make occupied slots draggable (PC) so they can be "picked" by dragstart
+    if (!IS_TOUCH && slot.classList.contains("is-occupied")) {
+      slot.addEventListener("dragstart", (ev) => {
+        const id = parseInt(slot.getAttribute("data-container-id"), 10);
+        const code = slot.getAttribute("data-container-code");
+        try { ev.dataTransfer.setData("text/plain", code || String(id)); } catch (_) {}
+        setSelectedContainer(id, code);
+        clearDestinationSelection();
+        renderStacksGrid(currentBaysList);
+      });
+    }
 
-    // Click (touch + desktop)
-    btn.addEventListener("click", async () => {
-      await openBay(bayCode);
-    });
-
-    // Dragover / Drop (PC): drop on bay to open rows
-    btn.addEventListener("dragover", (ev) => {
+    // Allow drop on empty destination
+    slot.addEventListener("dragover", (ev) => {
       if (!hasActiveContainer()) return;
+      if (slot.getAttribute("data-action") !== "pick-destination") return;
       ev.preventDefault();
-      btn.classList.add("yard-block-highlight");
+      slot.classList.add("yard-block-highlight");
     });
 
-    btn.addEventListener("dragleave", () => {
-      btn.classList.remove("yard-block-highlight");
-    });
+    slot.addEventListener("dragleave", () => slot.classList.remove("yard-block-highlight"));
 
-    btn.addEventListener("drop", async (ev) => {
-      btn.classList.remove("yard-block-highlight");
+    slot.addEventListener("drop", (ev) => {
+      slot.classList.remove("yard-block-highlight");
       if (!hasActiveContainer()) return;
+      if (slot.getAttribute("data-action") !== "pick-destination") return;
       ev.preventDefault();
-      await openBay(bayCode);
+      // emulate click on destination
+      pickDestinationFromSlot(slot);
     });
+  });
+
+  // Hide confirm if no destination yet
+  if (confirmBar) confirmBar.classList.add("hidden");
+  setSuggestionText("—");
+}
+
+// Single click handler (delegation) for stacksGrid
+function attachStacksGridClickHandler() {
+  if (!stacksGrid) return;
+
+  stacksGrid.addEventListener("click", (ev) => {
+    const slot = ev.target.closest(".rack-slot");
+    if (!slot) return;
+
+    const action = slot.getAttribute("data-action");
+    if (action === "pick-container") {
+      const id = parseInt(slot.getAttribute("data-container-id"), 10);
+      const code = slot.getAttribute("data-container-code");
+      setSelectedContainer(id, code);
+
+      // Enter "modo mover": re-render to paint empty slots as green
+      clearDestinationSelection();
+      renderStacksGrid(currentBaysList);
+      return;
+    }
+
+    if (action === "pick-destination") {
+      if (!hasActiveContainer()) return;
+      pickDestinationFromSlot(slot);
+      return;
+    }
   });
 }
 
+function pickDestinationFromSlot(slot) {
+  if (!slot || slot.classList.contains("is-occupied")) return;
+
+  // Clear old selection
+  stacksGrid.querySelectorAll(".rack-slot.is-selected").forEach(el => el.classList.remove("is-selected"));
+
+  // Mark new selection
+  slot.classList.add("is-selected");
+
+  const bay = slot.getAttribute("data-bay");
+  const row = parseInt(slot.getAttribute("data-row"), 10);
+  const tier = parseInt(slot.getAttribute("data-tier"), 10);
+
+  state.bayCode = bay;
+  state.rowNumber = row;
+  state.tier = tier;
+  state.suggested = { bay_code: bay, depth_row: row, tier: tier };
+
+  setSuggestionText(`${bay} · ${fmtRow(row)} · ${fmtTier(tier)}`);
+  if (confirmBar) confirmBar.classList.remove("hidden");
+}
+
 // ------------------------
-// Rows panel (Filas)
+// Rows panel (Filas) — kept for compatibility/fallback
 // ------------------------
 async function openBay(bayCode) {
   state.bayCode = bayCode;
@@ -368,14 +550,11 @@ async function openBay(bayCode) {
   if (confirmBar) confirmBar.classList.add("hidden");
   setSuggestionText("—");
 
-  // Intento 1: endpoint de filas (ideal)
   let rowsData = null;
   try {
     const rr = await fetch(`/api/yard/bays/${encodeURIComponent(bayCode)}/rows-availability`);
     if (rr.ok) rowsData = await rr.json();
-  } catch (e) {
-    // ignore
-  }
+  } catch (e) {}
 
   if (rowsData && rowsData.rows) {
     renderRowsGrid(rowsData.rows);
@@ -383,11 +562,8 @@ async function openBay(bayCode) {
     return;
   }
 
-  // Fallback: no hay disponibilidad por filas
   renderRowsGridFallback(bayCode);
   setView(VIEW.ROWS);
-
-  // Sugerimos última disponible
   await suggestLastAvailable(bayCode);
 }
 
@@ -427,21 +603,17 @@ function renderRowsGrid(rows) {
   rowsGrid.querySelectorAll("[data-row]").forEach(btn => {
     const row = parseInt(btn.getAttribute("data-row"), 10);
 
-    // Click
     btn.addEventListener("click", async () => {
       await chooseRow(row);
     });
 
-    // Dragover / Drop (PC): drop on row to choose row + show suggestion/confirm
     btn.addEventListener("dragover", (ev) => {
       if (!hasActiveContainer()) return;
       ev.preventDefault();
       btn.classList.add("yard-block-highlight");
     });
 
-    btn.addEventListener("dragleave", () => {
-      btn.classList.remove("yard-block-highlight");
-    });
+    btn.addEventListener("dragleave", () => btn.classList.remove("yard-block-highlight"));
 
     btn.addEventListener("drop", async (ev) => {
       btn.classList.remove("yard-block-highlight");
@@ -495,7 +667,6 @@ async function chooseRow(rowNumber) {
   state.tier = null;
   state.suggested = null;
 
-  // Endpoint ideal: sugerir nivel para fila específica
   try {
     const r = await fetch(`/api/yard/bays/${encodeURIComponent(state.bayCode)}/row/${encodeURIComponent(rowNumber)}/suggest-tier`);
     if (r.ok) {
@@ -509,11 +680,8 @@ async function chooseRow(rowNumber) {
         return;
       }
     }
-  } catch (e) {
-    // ignore and fallback
-  }
+  } catch (e) {}
 
-  // Fallback: sugerir última disponible (puede no caer EXACTO en esa fila)
   await suggestLastAvailable(state.bayCode);
 }
 
@@ -525,16 +693,17 @@ async function confirmPlacement() {
     alert("Primero selecciona un contenedor.");
     return;
   }
+  if (!state.bayCode || !state.suggested) {
+    alert("Selecciona un destino (espacio verde) antes de confirmar.");
+    return;
+  }
 
   const payload = {
     container_id: state.containerId,
-    to_bay_code: state.bayCode
+    to_bay_code: state.bayCode,
+    to_depth_row: state.suggested.depth_row,
+    to_tier: state.suggested.tier
   };
-
-  if (state.suggested) {
-    payload.to_depth_row = state.suggested.depth_row;
-    payload.to_tier = state.suggested.tier;
-  }
 
   confirmPlacementBtn.disabled = true;
 
@@ -552,25 +721,25 @@ async function confirmPlacement() {
     }
 
     const bay = data.bay_code || state.bayCode;
-    const row = data.depth_row || (state.suggested ? state.suggested.depth_row : null);
-    const tier = data.tier || (state.suggested ? state.suggested.tier : null);
+    const row = data.depth_row || state.suggested.depth_row;
+    const tier = data.tier || state.suggested.tier;
 
-    if (row && tier) alert(`Colocado en ${bay} ${fmtRow(row)} ${fmtTier(tier)}`);
-    else alert(`Colocado en ${bay}`);
+    alert(`Colocado en ${bay} ${fmtRow(row)} ${fmtTier(tier)}`);
 
-    // Reset navegación (volvemos a bloques)
-    state.blockCode = null;
-    state.bayCode = null;
-    state.rowNumber = null;
-    state.tier = null;
-    state.suggested = null;
+    // Reset destination selection
+    clearDestinationSelection();
 
-    setView(VIEW.BLOCKS);
-    drawBlocks();
-
+    // Refresh data + re-render stacks (so the moved container appears)
     await loadContainersInYard();
 
+    // If still in stacks view, repaint
+    if (state.view === VIEW.STACKS && currentBaysList.length) {
+      renderStacksGrid(currentBaysList);
+    }
+
+    // Touch: optionally clear selection after move
     if (IS_TOUCH) clearSelectedContainer();
+
   } catch (e) {
     alert("Error de red al colocar contenedor");
   } finally {
@@ -579,10 +748,7 @@ async function confirmPlacement() {
 }
 
 function cancelPlacement() {
-  if (confirmBar) confirmBar.classList.add("hidden");
-  state.suggested = null;
-  state.tier = null;
-  setSuggestionText("—");
+  clearDestinationSelection();
 }
 
 // ------------------------
@@ -633,18 +799,22 @@ function renderContainersList(list) {
     el.addEventListener("click", () => {
       if (!IS_TOUCH) return;
       setSelectedContainer(id, code);
+      clearDestinationSelection();
+      // If on stacks view, repaint to show greens
+      if (state.view === VIEW.STACKS && currentBaysList.length) {
+        renderStacksGrid(currentBaysList);
+      }
     });
 
     // PC: dragstart sets selection
     el.addEventListener("dragstart", (ev) => {
       if (IS_TOUCH) return;
-
-      // Firefox necesita dataTransfer.setData para iniciar drag 😅
-      try {
-        ev.dataTransfer.setData("text/plain", code || String(id));
-      } catch (_) {}
-
+      try { ev.dataTransfer.setData("text/plain", code || String(id)); } catch (_) {}
       setSelectedContainer(id, code);
+      clearDestinationSelection();
+      if (state.view === VIEW.STACKS && currentBaysList.length) {
+        renderStacksGrid(currentBaysList);
+      }
     });
   });
 
@@ -672,6 +842,7 @@ async function loadContainersInYard() {
     const data = await r.json();
     allContainers = (data && data.rows) ? data.rows : [];
     renderContainersList(filterContainers(containerSearch ? containerSearch.value : ""));
+
   } catch (e) {
     containersList.innerHTML = `<div class="hint">Error de red cargando contenedores.</div>`;
   }
@@ -690,18 +861,23 @@ if (containerSearch) {
   });
 }
 
-if (refreshContainersBtn) refreshContainersBtn.addEventListener("click", loadContainersInYard);
+if (refreshContainersBtn) {
+  refreshContainersBtn.addEventListener("click", async () => {
+    await loadContainersInYard();
+    if (state.view === VIEW.STACKS && currentBaysList.length) {
+      renderStacksGrid(currentBaysList);
+    }
+  });
+}
 
-// Drag chip (mejorado)
+// Drag chip
 if (dragChip) {
   dragChip.addEventListener("dragstart", (ev) => {
     if (!hasActiveContainer()) {
       ev.preventDefault();
       return;
     }
-    try {
-      ev.dataTransfer.setData("text/plain", state.containerCode || String(state.containerId));
-    } catch (_) {}
+    try { ev.dataTransfer.setData("text/plain", state.containerCode || String(state.containerId)); } catch (_) {}
   });
 }
 
@@ -737,7 +913,9 @@ if (cancelPlacementBtn) cancelPlacementBtn.addEventListener("click", cancelPlace
 // ------------------------
 // Init
 // ------------------------
+attachStacksGridClickHandler();
 setView(VIEW.BLOCKS);
 drawBlocks();
 loadContainersInYard();
+
 

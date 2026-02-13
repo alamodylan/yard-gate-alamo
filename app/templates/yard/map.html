@@ -108,13 +108,31 @@
 
           <div id="stacksGrid" class="yard-grid" style="margin-top:12px;"></div>
 
+          <!-- Confirmación (reubicada para usarla desde Estibas / Rack) -->
+          <div id="confirmBar" class="hidden" style="margin-top:12px;">
+            <div class="yard-confirm-row">
+              <div style="font-size:13px;">
+                Selección: <b id="suggestedSlot">—</b>
+              </div>
+
+              <div style="display:flex; gap:10px; align-items:center;">
+                <button type="button" id="confirmPlacementBtn" class="btn success">
+                  Confirmar
+                </button>
+                <button type="button" id="cancelPlacementBtn" class="btn">
+                  Cancelar
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="hint" style="margin-top:10px;">
-            Tip: toca/arrastra sobre una estiba <b>verde</b> para ver sus filas disponibles.
+            Tip: toca un contenedor para seleccionarlo y luego toca un espacio <b>verde</b> para elegir destino.
           </div>
         </div>
       </div>
 
-      <!-- Panel Filas -->
+      <!-- Panel Filas (se mantiene por compatibilidad / fallback) -->
       <div id="rowsPanel" class="yard-overlay hidden">
         <div class="yard-overlay-card">
           <div class="yard-overlay-head">
@@ -133,24 +151,6 @@
           </div>
 
           <div id="rowsGrid" class="yard-grid" style="margin-top:12px;"></div>
-
-          <!-- Confirmación -->
-          <div id="confirmBar" class="hidden" style="margin-top:12px;">
-            <div class="yard-confirm-row">
-              <div style="font-size:13px;">
-                Sugerido: <b id="suggestedSlot">—</b>
-              </div>
-
-              <div style="display:flex; gap:10px; align-items:center;">
-                <button type="button" id="confirmPlacementBtn" class="btn success">
-                  Confirmar
-                </button>
-                <button type="button" id="cancelPlacementBtn" class="btn">
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
 
           <div class="hint" style="margin-top:10px;">
             Tip: al soltar en una fila verde, el sistema asigna el <b>nivel exacto</b> automáticamente.
