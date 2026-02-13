@@ -7,7 +7,7 @@
    - Selección de contenedor:
        desde lista izquierda o tocando un contenedor dentro del rack
    - Destino:
-       tocar slot verde => azul + confirm
+       tocar slot verde => confirm inmediato (sin bajar)
    ========================================================== */
 
 const svg = document.getElementById("yardSvg");
@@ -42,7 +42,7 @@ const rowsPanel = document.getElementById("rowsPanel");
 const rowsCloseBtn = document.getElementById("rowsCloseBtn");
 const rowsGrid = document.getElementById("rowsGrid");
 
-// Confirm bar
+// Confirm bar (lo dejamos por compat, pero ya no es obligatorio)
 const confirmBar = document.getElementById("confirmBar");
 const suggestedSlot = document.getElementById("suggestedSlot");
 const confirmPlacementBtn = document.getElementById("confirmPlacementBtn");
@@ -332,8 +332,7 @@ async function openBlock(blockCode) {
 }
 
 // ------------------------
-// Render racks using YOUR CSS classes:
-// .stack-card, .rack, .rack-header, .rack-row, .rack-slot, .rack-code
+// Render racks
 // ------------------------
 function renderStacksGrid(bays) {
   if (!stacksGrid) return;
@@ -357,18 +356,13 @@ function renderStacksGrid(bays) {
 
     const bayOcc = occ.get(b.code) || new Map();
 
-    // Header row: F01..F10
-    const headerCols = rowOrder.map(rn => {
-      return `<div class="rack-colhdr">${fmtRow(rn)}</div>`;
-    }).join("");
+    const headerCols = rowOrder.map(rn => `<div class="rack-colhdr">${fmtRow(rn)}</div>`).join("");
 
-    // Tier rows: N4..N1 with 10 slots each
     const rowsHtml = tierOrder.map(tn => {
       const slots = rowOrder.map(rn => {
         const key = `${rn}-${tn}`;
         const item = bayOcc.get(key);
 
-        // occupied slot = container
         if (item) {
           return `
             <div class="rack-slot is-occupied"
@@ -385,7 +379,6 @@ function renderStacksGrid(bays) {
           `;
         }
 
-        // empty slot: becomes green only if there is active container selected
         const canDrop = hasActiveContainer();
         const cls = canDrop ? "is-available" : "is-empty";
 
@@ -440,14 +433,13 @@ function renderStacksGrid(bays) {
 
   stacksGrid.innerHTML = html;
 
-  // Click delegation
-  stacksGrid.addEventListener("click", onStacksGridClick, { once: true });
+  // ✅ IMPORTANTE: no "once:true". Lo dejamos permanente.
+  stacksGrid.onclick = onStacksGridClick;
 
-  // Drag/drop handlers per slot
+  // Drag/drop handlers
   stacksGrid.querySelectorAll(".rack-slot").forEach(slot => {
     const action = slot.getAttribute("data-action");
 
-    // Drag start from occupied -> selects container
     if (!IS_TOUCH && action === "pick-container") {
       slot.addEventListener("dragstart", (ev) => {
         const id = parseInt(slot.getAttribute("data-container-id"), 10);
@@ -459,7 +451,6 @@ function renderStacksGrid(bays) {
       });
     }
 
-    // Drag over for destination slots
     slot.addEventListener("dragover", (ev) => {
       if (!hasActiveContainer()) return;
       if (slot.getAttribute("data-action") !== "pick-destination") return;
@@ -470,24 +461,23 @@ function renderStacksGrid(bays) {
 
     slot.addEventListener("dragleave", () => slot.classList.remove("yard-block-highlight"));
 
-    slot.addEventListener("drop", (ev) => {
+    slot.addEventListener("drop", async (ev) => {
       slot.classList.remove("yard-block-highlight");
       if (!hasActiveContainer()) return;
       if (slot.getAttribute("data-action") !== "pick-destination") return;
       if (!slot.classList.contains("is-available")) return;
       ev.preventDefault();
-      pickDestinationFromSlot(slot);
+      await pickDestinationFromSlot(slot); // ✅ await
     });
   });
 
-  // if destination already selected, keep UI
   if (state.suggested) {
     setSuggestionText(`${state.suggested.bay_code} · ${fmtRow(state.suggested.depth_row)} · ${fmtTier(state.suggested.tier)}`);
     if (confirmBar) confirmBar.classList.remove("hidden");
   }
 }
 
-function onStacksGridClick(ev) {
+async function onStacksGridClick(ev) {
   const slot = ev.target.closest(".rack-slot");
   if (!slot) return;
 
@@ -505,15 +495,13 @@ function onStacksGridClick(ev) {
   if (action === "pick-destination") {
     if (!hasActiveContainer()) return;
     if (!slot.classList.contains("is-available")) return;
-    pickDestinationFromSlot(slot);
+    await pickDestinationFromSlot(slot); // ✅ await
     return;
   }
 }
 
-function pickDestinationFromSlot(slot) {
-  // Remove previous selected
+async function pickDestinationFromSlot(slot) {
   stacksGrid.querySelectorAll(".rack-slot.is-selected").forEach(el => el.classList.remove("is-selected"));
-
   slot.classList.add("is-selected");
 
   const bay = slot.getAttribute("data-bay");
@@ -525,8 +513,15 @@ function pickDestinationFromSlot(slot) {
   state.tier = tier;
   state.suggested = { bay_code: bay, depth_row: row, tier: tier };
 
-  setSuggestionText(`${bay} · ${fmtRow(row)} · ${fmtTier(tier)}`);
-  if (confirmBar) confirmBar.classList.remove("hidden");
+  const msg = `¿Deseas mover el contenedor ${state.containerCode} a:\n\n${bay} · ${fmtRow(row)} · ${fmtTier(tier)} ?`;
+
+  const ok = window.confirm(msg);
+  if (ok) {
+    await confirmPlacement();
+  } else {
+    setSuggestionText(`${bay} · ${fmtRow(row)} · ${fmtTier(tier)}`);
+    if (confirmBar) confirmBar.classList.remove("hidden");
+  }
 }
 
 // ------------------------
@@ -549,7 +544,7 @@ async function confirmPlacement() {
     to_tier: state.suggested.tier,
   };
 
-  confirmPlacementBtn.disabled = true;
+  if (confirmPlacementBtn) confirmPlacementBtn.disabled = true;
 
   try {
     const r = await fetch(`/api/yard/place`, {
@@ -570,7 +565,6 @@ async function confirmPlacement() {
 
     alert(`Colocado en ${bay} ${fmtRow(row)} ${fmtTier(tier)}`);
 
-    // Reload data, rebuild occupancy, re-render
     await loadContainersInYard();
     occupancyIndex = buildOccupancyIndexForBlock(state.blockCode);
 
@@ -580,7 +574,7 @@ async function confirmPlacement() {
   } catch (e) {
     alert("Error de red al colocar contenedor");
   } finally {
-    confirmPlacementBtn.disabled = false;
+    if (confirmPlacementBtn) confirmPlacementBtn.disabled = false;
   }
 }
 
@@ -719,7 +713,7 @@ if (yardBackBtn) {
   });
 }
 
-// Confirm/Cancel
+// Confirm/Cancel (compat)
 if (confirmPlacementBtn) confirmPlacementBtn.addEventListener("click", confirmPlacement);
 if (cancelPlacementBtn) cancelPlacementBtn.addEventListener("click", cancelPlacement);
 
