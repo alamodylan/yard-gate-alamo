@@ -907,3 +907,93 @@ button:not(.btn):hover{
   text-align: center;
   word-break: break-word;
 }
+/* =========================================================
+   Yard Map — Mobile improvements (Racks)
+   - En móvil: rack con scroll horizontal
+   - Columna N4..N1 fija y visible
+   - Contenedor se lee mejor
+   ========================================================= */
+
+@media (max-width: 720px){
+
+  /* La tarjeta de estiba: menos padding para aprovechar pantalla */
+  .stack-card{
+    padding: 12px;
+  }
+
+  /* El header de cada estiba: que no se aplaste */
+  .stack-card-head > div:first-child{
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  /* ✅ Convertimos el rack en zona scrolleable */
+  .rack{
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
+  }
+
+  /* Ancho mínimo para que F01..F10 quepan sin comprimirse */
+  .rack-header,
+  .rack-row{
+    min-width: 780px; /* ajusta si quieres más ancho */
+  }
+
+  /* Columna de niveles (N4..N1) fija y más clara */
+  .rack-tierlbl{
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: rgba(15,26,46,.92);
+    border: 1px solid rgba(148,163,184,.18);
+    border-radius: 10px;
+    padding: 6px 8px;
+  }
+
+  /* Esquina superior izquierda también sticky */
+  .rack-corner{
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: rgba(15,26,46,.92);
+    border-radius: 10px;
+  }
+
+  /* F01..F10: un poquito más legible */
+  .rack-colhdr{
+    font-size: 12px;
+    font-weight: 950;
+  }
+
+  /* Slots más altos y más anchos en móvil */
+  .rack-slot{
+    aspect-ratio: auto;
+    height: 42px;
+    font-size: 12px;
+    border-radius: 10px;
+  }
+
+  /* Mostrar el código completo en 2 líneas (en vez de ... ultra pronto) */
+  .rack-code{
+    padding: 0 6px;
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: clip;
+
+    display: -webkit-box;
+    -webkit-line-clamp: 2; /* iOS ok */
+    line-clamp: 2;         /* para el warning */
+    -webkit-box-orient: vertical;
+
+    line-height: 1.05;
+    text-align: center;
+  }
+
+  /* Que la estiba no parezca “apretada” verticalmente */
+  .rack-header{
+    margin-bottom: 8px;
+  }
+}
+
