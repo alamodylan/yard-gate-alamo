@@ -782,7 +782,7 @@ button:not(.btn):hover{
   margin-bottom: 12px;
 }
 
-/* Rack grid */
+/* Rack grid wrapper */
 .rack{
   display:flex;
   flex-direction:column;
@@ -825,13 +825,7 @@ button:not(.btn):hover{
 
 /* Slots */
 .rack-slot{
-  /* ⬇️ antes: aspect-ratio 2.6/1 (muy bajo y corta texto) */
-  aspect-ratio: 2.0 / 1;
-
-  /* ⬇️ le damos un alto mínimo para que siempre quepa el código */
-  min-height: 34px;
-
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: rgba(255,255,255,.03);
 
@@ -839,15 +833,17 @@ button:not(.btn):hover{
   align-items:center;
   justify-content:center;
 
+  /* un poquito más alto para que el código respire */
+  min-height: 34px;
+  padding: 4px 6px;
+
   font-size:10px;
   font-weight:900;
+
   cursor:pointer;
   transition: all .12s ease;
   user-select:none;
-
-  /* ⬇️ importante para permitir 2 líneas */
   overflow:hidden;
-  padding: 4px 6px;
 }
 
 .rack-slot:hover{
@@ -867,7 +863,6 @@ button:not(.btn):hover{
   background: rgba(22,163,74,.15);
   border-color: rgba(22,163,74,.35);
 }
-
 .rack-slot.is-available:hover{
   background: rgba(22,163,74,.22);
 }
@@ -885,116 +880,14 @@ button:not(.btn):hover{
   cursor:default;
 }
 
-/* Code inside slot */
+/* Code inside slot (desktop: 1 línea) */
 .rack-code{
-  /* Permitir wrap y cortar a 2 líneas */
-  white-space: normal;
-  overflow: hidden;
-  text-overflow: clip;
-
-  /* Estándar (para compatibilidad / linter) */
-  line-clamp: 2;
-
-  /* Soporte real en navegadores basados en WebKit/Blink (Chrome/Edge/Safari) */
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-
-  /* Algunas herramientas sugieren esto (no rompe nada) */
-  box-orient: vertical;
-
-  line-height: 1.05;
-  text-align: center;
-  word-break: break-word;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  padding:0 4px;
+  text-align:center;
 }
-/* =========================================================
-   Yard Map — Mobile improvements (Racks)
-   - En móvil: rack con scroll horizontal
-   - Columna N4..N1 fija y visible
-   - Contenedor se lee mejor
-   ========================================================= */
-
-@media (max-width: 720px){
-
-  /* La tarjeta de estiba: menos padding para aprovechar pantalla */
-  .stack-card{
-    padding: 12px;
-  }
-
-  /* El header de cada estiba: que no se aplaste */
-  .stack-card-head > div:first-child{
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  /* ✅ Convertimos el rack en zona scrolleable */
-  .rack{
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 10px;
-  }
-
-  /* Ancho mínimo para que F01..F10 quepan sin comprimirse */
-  .rack-header,
-  .rack-row{
-    min-width: 780px; /* ajusta si quieres más ancho */
-  }
-
-  /* Columna de niveles (N4..N1) fija y más clara */
-  .rack-tierlbl{
-    position: sticky;
-    left: 0;
-    z-index: 3;
-    background: rgba(15,26,46,.92);
-    border: 1px solid rgba(148,163,184,.18);
-    border-radius: 10px;
-    padding: 6px 8px;
-  }
-
-  /* Esquina superior izquierda también sticky */
-  .rack-corner{
-    position: sticky;
-    left: 0;
-    z-index: 4;
-    background: rgba(15,26,46,.92);
-    border-radius: 10px;
-  }
-
-  /* F01..F10: un poquito más legible */
-  .rack-colhdr{
-    font-size: 12px;
-    font-weight: 950;
-  }
-
-  /* Slots más altos y más anchos en móvil */
-  .rack-slot{
-    aspect-ratio: auto;
-    height: 42px;
-    font-size: 12px;
-    border-radius: 10px;
-  }
-
-  /* Mostrar el código completo en 2 líneas (en vez de ... ultra pronto) */
-  .rack-code{
-    padding: 0 6px;
-    white-space: normal;
-    overflow: hidden;
-    text-overflow: clip;
-
-    display: -webkit-box;
-    -webkit-line-clamp: 2; /* iOS ok */
-    line-clamp: 2;         /* para el warning */
-    -webkit-box-orient: vertical;
-
-    line-height: 1.05;
-    text-align: center;
-  }
-
-  /* Que la estiba no parezca “apretada” verticalmente */
-  .rack-header{
-    margin-bottom: 8px;
-  }
 
 /* =========================================================
    Rack — Mostrar códigos completos SIEMPRE en móvil
@@ -1054,5 +947,5 @@ button:not(.btn):hover{
     padding: 12px;
   }
 }
-}
+
 
