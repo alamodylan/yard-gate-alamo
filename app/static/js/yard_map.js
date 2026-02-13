@@ -380,15 +380,28 @@ function renderStacksGrid(bays) {
         }
 
         const canDrop = hasActiveContainer();
-        const cls = canDrop ? "is-available" : "is-empty";
+
+        // ✅ Solo el nivel más bajo disponible debe verse verde
+        let cls = "is-empty";
+        if (canDrop) {
+          // tier más bajo libre para esa columna rn en esta estiba b.code
+          const lowestFreeTier = [1, 2, 3, 4].find(t => !bayOcc.get(`${rn}-${t}`));
+
+          // solo marcamos disponible el tier que sea el más bajo libre
+          if (lowestFreeTier === tn) {
+            cls = "is-available";
+          } else {
+            cls = "is-empty"; // no verde para niveles superiores
+          }
+        }
 
         return `
           <div class="rack-slot ${cls}"
-               data-action="pick-destination"
-               data-bay="${b.code}"
-               data-row="${rn}"
-               data-tier="${tn}"
-               title="${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
+              data-action="pick-destination"
+              data-bay="${b.code}"
+              data-row="${rn}"
+              data-tier="${tn}"
+              title="${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
             <span class="rack-code"></span>
           </div>
         `;

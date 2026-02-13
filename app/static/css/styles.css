@@ -47,7 +47,7 @@ a{ color:inherit; text-decoration:none; }
    ====================== */
 .container{
   width: 100%;
-  max-width: 1700px;   /* 1600–1900 es buena zona */
+  max-width: 1700px;   /* PC usa más pantalla */
   margin: 0 auto;
   padding: 18px 22px;
 }
@@ -62,8 +62,8 @@ a{ color:inherit; text-decoration:none; }
    Topbar / Nav
    ====================== */
 .topbar{
-  position: relative;   /* antes: sticky */
-  top: auto;            /* antes: 0 */
+  position: relative;
+  top: auto;
   z-index: 50;
   backdrop-filter: blur(10px);
   background: rgba(15,26,46,.75);
@@ -71,9 +71,10 @@ a{ color:inherit; text-decoration:none; }
 }
 
 .topbar-inner{
-  max-width: 1200px;
+  width: 100%;
+  max-width: 1700px;      /* ✅ nav también ancho */
   margin: 0 auto;
-  padding: 14px 18px;
+  padding: 14px 22px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -649,7 +650,7 @@ button:not(.btn):hover{
 }
 
 .brand-title{
-  font-size: 15px; /* ya lo tenías, lo mantengo coherente */
+  font-size: 15px;
   font-weight: 950;
 }
 .brand-sub{
@@ -657,30 +658,13 @@ button:not(.btn):hover{
   color: var(--muted);
   font-weight: 700;
 }
+
 /* ===== Ajustes ticket térmico ===== */
-
-.ticket-size-year{
-  font-size:13px;
-  margin-top:4px;
-}
-
-.ticket-field{
-  margin-top:6px;
-}
-
-.ticket-k{
-  font-size:11px;
-  opacity:.7;
-}
-
-.ticket-v{
-  font-weight:700;
-  font-size:13px;
-}
-
-.sign-box{
-  background:#fff;
-}
+.ticket-size-year{ font-size:13px; margin-top:4px; }
+.ticket-field{ margin-top:6px; }
+.ticket-k{ font-size:11px; opacity:.7; }
+.ticket-v{ font-weight:700; font-size:13px; }
+.sign-box{ background:#fff; }
 
 @media print {
 
@@ -692,7 +676,6 @@ button:not(.btn):hover{
     font-size:13px;
   }
 
-  /* Quitar todo lo que no es ticket */
   .topbar,
   .ticket-actions,
   .flash-stack,
@@ -700,7 +683,6 @@ button:not(.btn):hover{
     display:none !important;
   }
 
-  /* Forzar blanco real en el ticket */
   .card,
   .ticket-card,
   .ticket-head,
@@ -715,60 +697,51 @@ button:not(.btn):hover{
     border:0 !important;
   }
 
-  /* Mantener bordes visibles en térmica */
-  .ticket-head{
-    border-bottom:1px solid #bbb !important;
-  }
+  .ticket-head{ border-bottom:1px solid #bbb !important; }
 
   .ticket-notes-box,
-  .sign-box{
-    border:1px solid #bbb !important;
+  .sign-box{ border:1px solid #bbb !important; }
+
+  .ticket-dt .dt-date{
+    font-size: 15px !important;
+    font-weight: 1000 !important;
+    color:#000 !important;
+    line-height: 1.05 !important;
+  }
+  .ticket-dt .dt-time{
+    font-size: 17px !important;
+    font-weight: 1000 !important;
+    color:#000 !important;
+    letter-spacing: .3px !important;
+    line-height: 1.05 !important;
   }
 
-  /* Fecha / hora más fuerte */
-  /* FECHA / HORA (ULTRA legible) */
-.ticket-dt .dt-date{
-  font-size: 15px !important;
-  font-weight: 1000 !important;
-  color:#000 !important;
-  line-height: 1.05 !important;
-}
-.ticket-dt .dt-time{
-  font-size: 17px !important;
-  font-weight: 1000 !important;
-  color:#000 !important;
-  letter-spacing: .3px !important;
-  line-height: 1.05 !important;
-}
+  .ticket-m{
+    font-size: 14px !important;
+    font-weight: 1000 !important;
+    color:#000 !important;
+    line-height: 1.1 !important;
+  }
 
-/* TAMAÑO + AÑO (ultra legible) */
-.ticket-m{
-  font-size: 14px !important;
-  font-weight: 1000 !important;
-  color:#000 !important;
-  line-height: 1.1 !important;
-}
+  .ticket-k{
+    font-size: 12px !important;
+    font-weight: 950 !important;
+    color:#000 !important;
+  }
 
-/* Labels (Contenedor / Ubicación / etc) más visibles */
-.ticket-k{
-  font-size: 12px !important;
-  font-weight: 950 !important;
-  color:#000 !important;
-}
-
-/* Evita que Chrome “suavice” demasiado el texto */
-.ticket-card, .card, body{
-  -webkit-font-smoothing: none !important;
-  text-rendering: geometricPrecision !important;
-}
-*{
-  -webkit-print-color-adjust: exact !important;
-  print-color-adjust: exact !important;
-}
+  .ticket-card, .card, body{
+    -webkit-font-smoothing: none !important;
+    text-rendering: geometricPrecision !important;
+  }
+  *{
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 /* =========================================================
    Yard Rack View (Estibas 4x10 Visual Real)
+   ✅ SIEMPRE mostrar el código completo
    ========================================================= */
 
 .stack-card{
@@ -794,27 +767,27 @@ button:not(.btn):hover{
 .rack-header{
   display:grid;
   grid-template-columns: 70px repeat(10, 1fr);
-  gap:4px;
-  margin-bottom:4px;
+  gap:6px;
+  margin-bottom:6px;
 }
 
 .rack-corner{
-  height: 26px;
-}
-
-.rack-colhdr{
-  font-size:11px;
-  font-weight:900;
-  text-align:center;
-  color: var(--muted);
+  height: 28px;
 }
 
 /* Each tier row */
 .rack-row{
   display:grid;
   grid-template-columns: 70px repeat(10, 1fr);
-  gap:4px;
+  gap:6px;
   align-items:center;
+}
+
+.rack-colhdr{
+  font-size:12px;
+  font-weight:950;
+  text-align:center;
+  color: var(--muted);
 }
 
 .rack-tierlbl{
@@ -824,9 +797,9 @@ button:not(.btn):hover{
   color: rgba(229,231,235,.92);
 }
 
-/* Slots */
+/* Slots (más grandes para que quepa el código) */
 .rack-slot{
-  border-radius: 10px;
+  border-radius: 12px;
   border: 1px solid var(--border);
   background: rgba(255,255,255,.03);
 
@@ -834,16 +807,18 @@ button:not(.btn):hover{
   align-items:center;
   justify-content:center;
 
-  /* un poquito más alto para que el código respire */
-  min-height: 34px;
-  padding: 4px 6px;
+  /* ✅ más alto para 2 líneas */
+  min-height: 56px;
+  padding: 6px 8px;
 
-  font-size:10px;
-  font-weight:900;
+  font-size:12px;
+  font-weight:950;
 
   cursor:pointer;
   transition: all .12s ease;
   user-select:none;
+
+  /* ✅ nunca se sale del rectángulo */
   overflow:hidden;
 }
 
@@ -881,72 +856,140 @@ button:not(.btn):hover{
   cursor:default;
 }
 
-/* Code inside slot (desktop: 1 línea) */
+/* ✅ Code inside slot: SIEMPRE visible (2 líneas, sin ellipsis) */
 .rack-code{
-  white-space:nowrap;
+  width:100%;
+  padding: 0 6px;
+
+  white-space: normal;
+  word-break: break-word;
+
   overflow:hidden;
-  text-overflow:ellipsis;
-  padding:0 4px;
-  text-align:center;
+  text-overflow: clip;
+
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;  /* 2 líneas y listo */
+  line-clamp: 2;
+
+  line-height: 1.05;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 950;
 }
 
 /* =========================================================
-   Rack — Mostrar códigos completos SIEMPRE en móvil
+   Mobile/Tablet: scroll horizontal + columna sticky
+   (un SOLO bloque, sin duplicados)
    ========================================================= */
+@media (max-width: 980px){
 
-@media (max-width: 720px){
+  .stack-card{ padding: 12px; }
 
-  /* hacemos el rack scrollable horizontal si no cabe */
+  /* rack scroll horizontal */
   .rack{
-    overflow-x: auto;
-    padding-bottom: 6px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 10px;
   }
 
-  /* columnas y filas un poco más compactas */
+  /* ancho real para que no se aplasten las F01..F10 */
   .rack-header,
   .rack-row{
-    grid-template-columns: 56px repeat(10, 92px); /* label + 10 columnas */
-    gap: 6px;
+    min-width: 980px;
+    grid-template-columns: 56px repeat(10, 92px);
+    gap: 8px;
   }
 
-  .rack-colhdr{
-    font-size: 12px;
-    font-weight: 950;
-  }
-
+  /* sticky tiers */
   .rack-tierlbl{
-    font-size: 12px;
-    font-weight: 950;
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: rgba(15,26,46,.92);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px 8px;
   }
 
-  /* slot más alto para permitir el texto completo */
+  .rack-corner{
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: rgba(15,26,46,.92);
+    border-radius: 10px;
+  }
+
+  /* slots aún más altos en móvil */
   .rack-slot{
-    height: 54px;           /* ↑ antes dependía de aspect-ratio */
-    aspect-ratio: auto;     /* para que respete la altura */
-    padding: 6px;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* MOSTRAR TODO EL CÓDIGO */
-  .rack-code{
-    white-space: normal;     /* permite salto de línea */
-    overflow: visible;       /* ya no cortamos */
-    text-overflow: unset;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;   /* 2 líneas: se ve completo en la mayoría */
-    line-clamp: 2;           /* <- para quitar warning */
+    min-height: 60px;
+    padding: 8px;
+    border-radius: 12px;
     font-size: 12px;
-    font-weight: 950;
-    text-align: center;
-    line-height: 1.05;
   }
 
-  /* si querés todavía más grande en móvil (opcional) */
-  .stack-card{
-    padding: 12px;
+  .rack-code{
+    font-size: 13px;
   }
 }
+/* =========================================================
+   RACK — FIX DEFINITIVO
+   - El contenedor NUNCA se corta (PC/Móvil/Tablet)
+   - Si no cabe: el rack hace scroll horizontal
+   - Las celdas crecen (más anchas) en vez de truncar
+   ========================================================= */
+
+:root{
+  --rack-label-col: 70px;   /* columna N4..N1 */
+  --rack-col-min: 140px;    /* ✅ ancho mínimo por slot (sube si quieres aún más grande) */
+}
+
+/* El rack puede scrollear horizontal SIEMPRE si no cabe */
+.rack{
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 10px;
+}
+
+/* Forzamos columnas con min-width real para evitar "aplastado" */
+.rack-header,
+.rack-row{
+  grid-template-columns: var(--rack-label-col) repeat(10, minmax(var(--rack-col-min), 1fr));
+  min-width: calc(var(--rack-label-col) + (10 * var(--rack-col-min)));
+}
+
+/* Slots un poco más altos (para que se lea cómodo) */
+.rack-slot{
+  min-height: 60px;
+}
+
+/* ✅ Código SIEMPRE completo:
+   - 1 línea
+   - sin ellipsis
+   - si no cabe: el slot es más ancho por el min-width (y habrá scroll) */
+.rack-code{
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+
+  display:block;
+  width:100%;
+  text-align:center;
+
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.1;
+}
+
+/* Móvil/tablet: label más angosto, pero slots igual de anchos */
+@media (max-width: 980px){
+  :root{
+    --rack-label-col: 56px;
+    --rack-col-min: 140px; /* puedes subir a 150 si quieres */
+  }
+}
+
 
 
