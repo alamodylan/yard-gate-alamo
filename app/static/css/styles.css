@@ -995,5 +995,64 @@ button:not(.btn):hover{
   .rack-header{
     margin-bottom: 8px;
   }
+
+/* =========================================================
+   Rack — Mostrar códigos completos SIEMPRE en móvil
+   ========================================================= */
+
+@media (max-width: 720px){
+
+  /* hacemos el rack scrollable horizontal si no cabe */
+  .rack{
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+
+  /* columnas y filas un poco más compactas */
+  .rack-header,
+  .rack-row{
+    grid-template-columns: 56px repeat(10, 92px); /* label + 10 columnas */
+    gap: 6px;
+  }
+
+  .rack-colhdr{
+    font-size: 12px;
+    font-weight: 950;
+  }
+
+  .rack-tierlbl{
+    font-size: 12px;
+    font-weight: 950;
+  }
+
+  /* slot más alto para permitir el texto completo */
+  .rack-slot{
+    height: 54px;           /* ↑ antes dependía de aspect-ratio */
+    aspect-ratio: auto;     /* para que respete la altura */
+    padding: 6px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* MOSTRAR TODO EL CÓDIGO */
+  .rack-code{
+    white-space: normal;     /* permite salto de línea */
+    overflow: visible;       /* ya no cortamos */
+    text-overflow: unset;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;   /* 2 líneas: se ve completo en la mayoría */
+    line-clamp: 2;           /* <- para quitar warning */
+    font-size: 12px;
+    font-weight: 950;
+    text-align: center;
+    line-height: 1.05;
+  }
+
+  /* si querés todavía más grande en móvil (opcional) */
+  .stack-card{
+    padding: 12px;
+  }
+}
 }
 
