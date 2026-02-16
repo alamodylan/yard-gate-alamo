@@ -29,7 +29,6 @@
       <div class="ticket-k">Contenedor</div>
       <div class="ticket-v">{{ c.code }}</div>
 
-      <!-- ✅ tamaño + año más legibles (sin verse “aplastados”) -->
       <div class="ticket-m">
         <b>{{ c.size }}</b>
         {% if c.year %} · Año {{ c.year }}{% endif %}
@@ -59,7 +58,6 @@
       <div class="ticket-v">{{ mv.truck_plate or "—" }}</div>
     </div>
 
-    <!-- ✅ CÉDULA (lo pediste y es clave) -->
     <div class="ticket-kv">
       <div class="ticket-k">Cédula</div>
       <div class="ticket-v">{{ mv.driver_id_doc or "—" }}</div>
@@ -89,15 +87,20 @@
       </div>
     </div>
 
-    <!-- ✅ un poquito más de aire abajo, sin agrandar “mucho” -->
     <div style="height:8px;"></div>
   </div>
 
-  <!-- ✅ Payload (solo para ver / debug en pantalla, NO se imprime por navegador) -->
+  <!-- ✅ Payload visible (debug) -->
   <div class="payload-box">
     <div class="ticket-k" style="margin-bottom:8px;">Payload enviado a impresión (Epson / Agent)</div>
     <pre class="payload-pre">{{ payload }}</pre>
   </div>
+
+  <!-- ✅ JSON seguro para JS (VS Code NO lo marca como error) -->
+  <script type="application/json" id="ticketPayloadJson">{{ payload|tojson }}</script>
+  <script type="application/json" id="ticketRequestedByJson">
+    {{ (current_user.username if current_user else "usuario")|tojson }}
+  </script>
 
   <!-- Botones -->
   <div class="ticket-actions">
@@ -116,6 +119,12 @@
 </div>
 
 <script>
+function readJsonScript(id){
+  const el = document.getElementById(id);
+  if(!el) return null;
+  try { return JSON.parse(el.textContent || "null"); } catch { return null; }
+}
+
 async function printDirect(btn){
   const movementId = btn.dataset.movementId;
   if(!movementId){
@@ -124,19 +133,43 @@ async function printDirect(btn){
   }
   if(!confirm("¿Enviar ticket a la impresora Epson?")) return;
 
+  const ticketText = readJsonScript("ticketPayloadJson");
+  const requestedBy = readJsonScript("ticketRequestedByJson") || "usuario";
+
+  if(!ticketText){
+    alert("No se pudo construir el payload del ticket.");
+    return;
+  }
+
+  btn.disabled = true;
+
   try {
-    const r = await fetch(`/print/${movementId}`, {
+    const r = await fetch("/api/print/jobs", {
       method: "POST",
-      headers: { "Accept": "application/json" }
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({
+        payload_text: ticketText,
+        ticket_id: movementId,
+        requested_by: requestedBy,
+        request_origin: "android"
+      })
     });
-    const data = await r.json();
+
+    const data = await r.json().catch(() => ({}));
     if(!r.ok){
-      alert(data.error || "Error al imprimir");
+      alert(data.error || "Error al enviar a impresión");
       return;
     }
-    alert("Ticket enviado a la impresora Epson ✅");
+
+    alert("Ticket enviado a cola de impresión ✅");
+
   } catch (e){
-    alert("No se pudo conectar con el servicio de impresión");
+    alert("No se pudo conectar con el servidor de impresión");
+  } finally {
+    btn.disabled = false;
   }
 }
 </script>
@@ -177,8 +210,6 @@ async function printDirect(btn){
 
 .ticket-k{ color:var(--muted); font-weight:900; font-size:12px; }
 .ticket-v{ font-weight:950; font-size:18px; margin-top:2px; }
-
-/* ✅ Subtexto (tamaño/año) un poquito más visible */
 .ticket-m{ color:rgba(229,231,235,.82); font-weight:900; font-size:13px; margin-top:4px; }
 
 .ticket-notes{ margin-top:14px; }
@@ -260,35 +291,30 @@ async function printDirect(btn){
   .ticket-sub, .ticket-k { color:#333 !important; }
   .ticket-notes-box, .sign-box { background:#fff !important; border:1px solid #bbb !important; }
 
-  /* ✅ Para que no se “corte” texto por padding/anchos */
   .ticket-v{ font-size:16px !important; }
   .ticket-title{ font-size:16px !important; }
 
-  /* ✅ Fecha / Hora (arriba a la derecha) */
   .ticket-dt{
-    font-size: 15px !important;      /* más grande */
-    font-weight: 950 !important;     /* más negrita */
-    color:#000 !important;           /* negro real */
-    letter-spacing: .2px !important; /* ayuda en térmica */
+    font-size: 15px !important;
+    font-weight: 950 !important;
+    color:#000 !important;
+    letter-spacing: .2px !important;
   }
 
-  /* ✅ Tamaño + Año (debajo del contenedor) */
   .ticket-m{
-    font-size: 13px !important;      /* más visible */
-    font-weight: 950 !important;     /* más negrita */
-    color:#000 !important;           /* negro real */
-    margin-top: 2px !important;      /* compacto */
-    line-height: 1.2 !important;     /* más legible sin crecer */
+    font-size: 13px !important;
+    font-weight: 950 !important;
+    color:#000 !important;
+    margin-top: 2px !important;
+    line-height: 1.2 !important;
   }
 
-  /* ✅ Labels de esas secciones (opcional pero ayuda) */
   .ticket-k{
     font-size: 12px !important;
     font-weight: 900 !important;
     color:#000 !important;
   }
 
-  /* ✅ Para que la Epson no lo “lave” */
   *{
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;

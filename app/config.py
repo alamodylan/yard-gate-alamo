@@ -20,3 +20,4 @@ class Config:
     R2_SECRET_KEY = os.getenv("R2_SECRET_KEY")
     R2_BUCKET = os.getenv("R2_BUCKET")
     R2_PUBLIC_BASE_URL = os.getenv("R2_PUBLIC_BASE_URL")  # opcional
+    PRINT_AGENT_KEY = os.getenv("PRINT_AGENT_KEY", "")
