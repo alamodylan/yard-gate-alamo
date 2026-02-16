@@ -1,14 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Ticket - Yard Gate Álamo{% endblock %}
+{% block title %}Ticket - Yard Gate Alamo{% endblock %}
 
 {% block content %}
 <div class="card card-pad ticket-card" style="max-width:820px;">
   <!-- Header -->
   <div class="ticket-head">
     <div class="ticket-brand">
-      <img class="ticket-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Álamo Terminales Marítimas">
+      <img class="ticket-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Alamo Terminales Marítimas">
       <div>
-        <div class="ticket-title">Yard Gate Álamo</div>
+        <div class="ticket-title">Yard Gate Alamo</div>
         <div class="ticket-sub">Ticket de Movimiento {% if is_reprint %}(Reimpresión){% endif %}</div>
       </div>
     </div>
@@ -89,6 +89,9 @@
 
     <div style="height:8px;"></div>
   </div>
+
+  <!-- ✅ Cola extra para que NO se corte Nombre/Cédula (solo imprime) -->
+  <div class="print-spacer"></div>
 
   <!-- ✅ Payload visible (debug) -->
   <div class="payload-box">
@@ -243,6 +246,8 @@ async function printDirect(btn){
   border-bottom:1px solid rgba(229,231,235,.45);
 }
 
+.print-spacer{ display:none; } /* solo se activa al imprimir */
+
 .payload-box{
   margin-top:14px;
   border-top:1px solid var(--border);
@@ -276,16 +281,43 @@ async function printDirect(btn){
 
   .payload-box { display:none !important; }
 
+  @page{
+    size: 80mm auto;
+    margin: 0;
+  }
+
   body {
     background:#fff !important;
     color:#000 !important;
     width:80mm;
-    margin:0 auto !important;
+    margin:0 !important;
   }
 
   .card{
     box-shadow:none !important;
     border:0 !important;
+  }
+
+  /* ✅ Header térmico: logo arriba y centrado */
+  .ticket-head{
+    display:block !important;
+    text-align:center !important;
+    padding-bottom:10px !important;
+  }
+  .ticket-brand{
+    display:block !important;
+  }
+  .ticket-logo{
+    display:block !important;
+    margin:0 auto 6px auto !important;
+    height:auto !important;
+    width:34mm !important;      /* ajusta: 30–45mm */
+    border-radius:0 !important;
+  }
+  .ticket-right{
+    margin-top:6px !important;
+    text-align:center !important;
+    justify-items:center !important;
   }
 
   .ticket-sub, .ticket-k { color:#333 !important; }
@@ -315,6 +347,12 @@ async function printDirect(btn){
     color:#000 !important;
   }
 
+  /* ✅ Cola extra al final para evitar cortes */
+  .print-spacer{
+    display:block !important;
+    height:18mm !important;  /* sube a 25mm si aún corta */
+  }
+
   *{
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -322,6 +360,7 @@ async function printDirect(btn){
 }
 </style>
 {% endblock %}
+
 
 
 
