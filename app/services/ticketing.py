@@ -69,17 +69,13 @@ def build_ticket_payload(app_name: str, movement, container) -> str:
     lines.append("Cedula: _____________________")
     lines.append("-" * 32)
 
-    # Espacio extra para que no corte
-    lines.append("")
-    lines.append("")
-    lines.append("")
-    lines.append("")
-    lines.append("")
-    lines.append("")
-    lines.append("")
-    lines.append("")
+    # Construimos el payload
+    payload = "\n".join(lines)
 
-    return "\n".join(lines)
+    # Avance limpio de papel (solo saltos reales)
+    payload = payload.rstrip() + ("\n" * 8)
+
+    return payload
 
 
 
