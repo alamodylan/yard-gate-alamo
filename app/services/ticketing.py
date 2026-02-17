@@ -73,7 +73,7 @@ def build_ticket_payload(app_name: str, movement, container) -> str:
     payload = "\n".join(lines)
 
     # Avance limpio de papel (solo saltos reales)
-    payload = payload.rstrip() + ("\n" * 8)
+    payload = payload.rstrip() + ("\n" * 16)
 
     return payload
 
