@@ -32,13 +32,14 @@ def build_ticket_payload(app_name: str, movement, container) -> str:
     if getattr(movement, "bay_code", None):
         loc = f"{movement.bay_code} F{int(movement.depth_row or 0):02d} N{int(movement.tier or 0)}"
 
-    # “Logo” en texto (la mayoría de agentes térmicos no imprimen imágenes)
-    company_line = "ALAMO TERMINALES MARITIMAS"
-
     lines: list[str] = []
-    lines.append(company_line)
-    lines.append(app_name)
-    lines.append("-" * 28)
+
+    # ===== ENCABEZADO PROFESIONAL =====
+    lines.append("=" * 32)
+    lines.append("  ALAMO TERMINALES MARITIMAS")
+    lines.append("        YARD GATE ALAMO")
+    lines.append("=" * 32)
+
     lines.append(f"Fecha/Hora (CR): {when_str}")
     lines.append(f"Mov: {movement.movement_type}")
     lines.append(f"Cont: {container.code}")
@@ -46,24 +47,40 @@ def build_ticket_payload(app_name: str, movement, container) -> str:
 
     if loc:
         lines.append(f"Ubi: {loc}")
+
     if getattr(movement, "driver_name", None):
         lines.append(f"Chofer: {movement.driver_name}")
+
+    if getattr(movement, "driver_id_doc", None):
+        lines.append(f"Cedula: {movement.driver_id_doc}")
+
     if getattr(movement, "truck_plate", None):
         lines.append(f"Placa: {movement.truck_plate}")
 
     if getattr(movement, "notes", None):
-        lines.append("-" * 28)
+        lines.append("-" * 32)
         lines.append(str(movement.notes)[:300])
 
     # Bloque de firma
-    lines.append("-" * 28)
+    lines.append("-" * 32)
     lines.append("Firma transportista:")
     lines.append("____________________________")
     lines.append("Nombre: _____________________")
     lines.append("Cedula: _____________________")
-    lines.append("-" * 28)
+    lines.append("-" * 32)
+
+    # Espacio extra para que no corte
+    lines.append("")
+    lines.append("")
+    lines.append("")
+    lines.append("")
+    lines.append("")
+    lines.append("")
+    lines.append("")
+    lines.append("")
 
     return "\n".join(lines)
+
 
 
 def register_ticket_print(movement_id: int, printed_by_user_id: int, payload: str) -> TicketPrint:
