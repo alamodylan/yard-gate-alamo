@@ -74,6 +74,7 @@ def build_ticket_payload(app_name: str, movement, container) -> str:
 
     # Avance limpio de papel (solo saltos reales)
     payload = payload.rstrip() + ("\n" * 16)
+    lines.append("-" * 32)
 
     return payload
 
