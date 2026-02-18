@@ -68,6 +68,12 @@ def build_ticket_payload(app_name: str, movement, container) -> str:
     lines.append("Nombre: _____________________")
     lines.append("Cedula: _____________________")
     lines.append("-" * 32)
+    lines.append("-" * 32)
+    lines.append("-" * 32)
+    lines.append("-" * 32)
+    lines.append("-" * 32)
+    lines.append("-" * 32)
+    lines.append("-" * 32)
 
     # Construimos el payload
     payload = "\n".join(lines)
