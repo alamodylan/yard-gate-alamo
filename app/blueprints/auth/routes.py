@@ -40,7 +40,7 @@ def login_post():
             session["active_site_id"] = sites[0].id
             return redirect(url_for("yard.map_view"))
 
-    return redirect(url_for("yard.sites_view"))  # ✅ nueva vista
+    return redirect(url_for("yard.sites_dashboard"))  # ✅ nueva vista
 
 @auth_bp.get("/logout")
 @login_required

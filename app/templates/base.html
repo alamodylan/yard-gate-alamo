@@ -44,6 +44,12 @@
         <div class="nav-sep" aria-hidden="true"></div>
 
         {% if current_user.is_authenticated %}
+
+          {# ✅ NUEVO: cambiar predio sin cerrar sesión #}
+          <a class="navlink" href="{{ url_for('yard.sites_dashboard') }}" title="Cambiar predio activo">
+            Cambiar predio
+          </a>
+
           <div class="userchip" title="{{ current_user.email if current_user.email is defined else '' }}">
             <span class="userchip-dot" aria-hidden="true"></span>
             <span class="userchip-name">
