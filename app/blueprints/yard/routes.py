@@ -5,10 +5,11 @@ import os
 import requests
 import io
 import pytz
+
 CR_TZ = pytz.timezone("America/Costa_Rica")
 UTC_TZ = pytz.utc
 
-from flask import render_template, request, redirect, url_for, flash, jsonify, send_file
+from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, session, abort
 from flask_login import login_required, current_user
 
 from app.blueprints.yard import yard_bp
@@ -17,10 +18,11 @@ from app.models.yard import YardBlock, YardBay
 from app.models.container import Container, ContainerPosition
 from app.models.movement import Movement, MovementPhoto
 from app.models.ticket import TicketPrint
+from app.models.site import Site, UserSite
 from app.services.audit import audit_log
 from app.services.yard_logic import find_first_free_slot
 from app.services.storage import get_storage, build_photo_key
-from app.services.ticketing import build_ticket_payload, register_ticket_print
+from app.services.ticketing import build_ticket_payload
 
 CONTAINER_RE = re.compile(r"^[A-Z]{4}-\d{6}-\d$")
 SIZES = ["20ST", "40ST", "40HC", "45ST"]
@@ -29,32 +31,129 @@ APP_NAME = "Yard Gate Álamo"
 REPORT_TYPES = {"GATE_IN", "GATE_OUT", "MOVE"}
 
 
+# =========================
+# Multi-predio helpers (site)
+# =========================
+
+def _allowed_sites_for_user(user):
+    if getattr(user, "role", None) == "admin":
+        return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
+
+    return (
+        db.session.query(Site)
+        .join(UserSite, UserSite.site_id == Site.id)
+        .filter(UserSite.user_id == user.id, Site.is_active == True)  # noqa: E712
+        .order_by(Site.name.asc())
+        .all()
+    )
+
+
+def _get_active_site_id():
+    return session.get("active_site_id")
+
+
+def _set_active_site_id(site_id: int):
+    session["active_site_id"] = int(site_id)
+
+
+def _ensure_active_site():
+    allowed = _allowed_sites_for_user(current_user)
+    if not allowed:
+        abort(403)
+
+    active_id = _get_active_site_id()
+    allowed_ids = {s.id for s in allowed}
+
+    if not active_id or active_id not in allowed_ids:
+        _set_active_site_id(allowed[0].id)
+        active_id = allowed[0].id
+
+    return active_id
+
+
+def _register_ticket_print(site_id: int, movement_id: int, printed_by_user_id: int, payload: str) -> TicketPrint:
+    row = TicketPrint(
+        site_id=site_id,
+        movement_id=movement_id,
+        printed_by_user_id=printed_by_user_id,
+        ticket_payload=payload,
+        printed_at=datetime.utcnow(),
+    )
+    db.session.add(row)
+    return row
+
+
+# =========================
+# Dashboard Sites
+# =========================
+
+@yard_bp.get("/sites")
+@login_required
+def sites_dashboard():
+    allowed = _allowed_sites_for_user(current_user)
+    active_id = _get_active_site_id()
+    return render_template("yard/sites.html", sites=allowed, active_site_id=active_id)
+
+
+@yard_bp.post("/sites/select")
+@login_required
+def sites_select():
+    site_id = request.form.get("site_id")
+    if not site_id or not str(site_id).isdigit():
+        flash("Predio inválido.", "danger")
+        return redirect(url_for("yard.sites_dashboard"))
+
+    site_id = int(site_id)
+    allowed_ids = {s.id for s in _allowed_sites_for_user(current_user)}
+    if site_id not in allowed_ids:
+        flash("No tienes acceso a ese predio.", "danger")
+        return redirect(url_for("yard.sites_dashboard"))
+
+    _set_active_site_id(site_id)
+    return redirect(url_for("yard.map_view"))
+
+
 @yard_bp.get("/")
 @login_required
 def home():
-    return redirect(url_for("yard.map_view"))
+    allowed = _allowed_sites_for_user(current_user)
+    if len(allowed) == 1:
+        _set_active_site_id(allowed[0].id)
+        return redirect(url_for("yard.map_view"))
+    return redirect(url_for("yard.sites_dashboard"))
 
 
 @yard_bp.get("/map")
 @login_required
 def map_view():
-    blocks = YardBlock.query.order_by(YardBlock.code.asc()).all()
+    site_id = _ensure_active_site()
+
+    blocks = (
+        YardBlock.query
+        .filter_by(site_id=site_id)
+        .order_by(YardBlock.code.asc())
+        .all()
+    )
+
     selected_block = (request.args.get("block") or "A").upper()
     if selected_block not in {"A", "B", "C", "D"}:
         selected_block = "A"
+
     return render_template("yard/map.html", blocks=blocks, selected_block=selected_block)
 
 
 @yard_bp.get("/bay/<string:bay_code>")
 @login_required
 def bay_detail_view(bay_code: str):
+    site_id = _ensure_active_site()
+
     bay_code = bay_code.upper()
-    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first_or_404()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True, site_id=site_id).first_or_404()
 
     rows = (
         db.session.query(Container, ContainerPosition)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
-        .filter(ContainerPosition.bay_id == bay.id)
+        .filter(ContainerPosition.bay_id == bay.id, Container.site_id == site_id)
         .order_by(ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
         .all()
     )
@@ -85,11 +184,13 @@ def api_containers_in_yard():
     Para bandeja (mapa):
     Retorna contenedores en patio con su posición actual.
     """
+    site_id = _ensure_active_site()
+
     rows = (
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .join(YardBay, YardBay.id == ContainerPosition.bay_id)
-        .filter(Container.is_in_yard == True)  # noqa: E712
+        .filter(Container.is_in_yard == True, Container.site_id == site_id)  # noqa: E712
         .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
         .all()
     )
@@ -117,13 +218,15 @@ def api_containers_in_yard():
 @yard_bp.get("/api/yard/bays")
 @login_required
 def api_bays_by_block():
+    site_id = _ensure_active_site()
+
     block_code = (request.args.get("block") or "").upper()
-    block = YardBlock.query.filter_by(code=block_code).first()
+    block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
     if not block:
         return jsonify({"bays": []})
 
     bays = (
-        YardBay.query.filter_by(block_id=block.id, is_active=True)
+        YardBay.query.filter_by(block_id=block.id, is_active=True, site_id=site_id)
         .order_by(YardBay.bay_number.asc())
         .all()
     )
@@ -137,19 +240,23 @@ def api_yard_map():
     Devuelve las estibas del bloque con conteo (used/capacity).
     Ideal: incluye x,y,w,h y límites para permitir layout visual real en frontend.
     """
+    site_id = _ensure_active_site()
+
     block_code = (request.args.get("block") or "A").upper()
-    block = YardBlock.query.filter_by(code=block_code).first()
+    block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
     if not block:
         return jsonify({"error": "Bloque inválido"}), 400
 
     bays = (
-        YardBay.query.filter_by(block_id=block.id, is_active=True)
+        YardBay.query.filter_by(block_id=block.id, is_active=True, site_id=site_id)
         .order_by(YardBay.bay_number.asc())
         .all()
     )
 
     counts = dict(
         db.session.query(ContainerPosition.bay_id, db.func.count(ContainerPosition.container_id))
+        .join(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(YardBay.site_id == site_id)
         .group_by(ContainerPosition.bay_id)
         .all()
     )
@@ -183,19 +290,23 @@ def api_block_availability(block_code: str):
     """
     Disponibilidad por estiba (verde/rojo) basada en capacidad total.
     """
+    site_id = _ensure_active_site()
+
     block_code = (block_code or "").upper()
-    block = YardBlock.query.filter_by(code=block_code).first()
+    block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
     if not block:
         return jsonify({"error": "Bloque inválido"}), 400
 
     bays = (
-        YardBay.query.filter_by(block_id=block.id, is_active=True)
+        YardBay.query.filter_by(block_id=block.id, is_active=True, site_id=site_id)
         .order_by(YardBay.bay_number.asc())
         .all()
     )
 
     counts = dict(
         db.session.query(ContainerPosition.bay_id, db.func.count(ContainerPosition.container_id))
+        .join(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(YardBay.site_id == site_id)
         .group_by(ContainerPosition.bay_id)
         .all()
     )
@@ -228,8 +339,10 @@ def api_bay_last_available(bay_code: str):
     - más adentro primero (depth_row más alto)
     - tier automático (1..max)
     """
+    site_id = _ensure_active_site()
+
     bay_code = (bay_code or "").upper()
-    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True, site_id=site_id).first()
     if not bay:
         return jsonify({"error": "Estiba inválida"}), 400
 
@@ -248,8 +361,10 @@ def api_bay_rows_availability(bay_code: str):
     Disponibilidad por FILAS para una estiba.
     Ideal: incluye suggested_tier por fila para evitar request extra.
     """
+    site_id = _ensure_active_site()
+
     bay_code = (bay_code or "").upper()
-    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True, site_id=site_id).first()
     if not bay:
         return jsonify({"error": "Estiba inválida"}), 400
 
@@ -257,7 +372,8 @@ def api_bay_rows_availability(bay_code: str):
 
     counts_by_row = dict(
         db.session.query(ContainerPosition.depth_row, db.func.count(ContainerPosition.container_id))
-        .filter(ContainerPosition.bay_id == bay.id)
+        .join(Container, Container.id == ContainerPosition.container_id)
+        .filter(ContainerPosition.bay_id == bay.id, Container.site_id == site_id)
         .group_by(ContainerPosition.depth_row)
         .all()
     )
@@ -271,7 +387,8 @@ def api_bay_rows_availability(bay_code: str):
         if not is_full:
             occ_tiers = {
                 int(t[0]) for t in db.session.query(ContainerPosition.tier)
-                .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_num)
+                .join(Container, Container.id == ContainerPosition.container_id)
+                .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_num, Container.site_id == site_id)
                 .all()
             }
             for t in range(1, max_levels + 1):
@@ -299,8 +416,10 @@ def api_bay_row_suggest_tier(bay_code: str, row_number: int):
     Sugerir tier exacto dentro de una fila específica (1..max_tiers).
     Mantenerlo aunque rows-availability tenga suggested_tier, para “fuente de verdad”.
     """
+    site_id = _ensure_active_site()
+
     bay_code = (bay_code or "").upper()
-    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True, site_id=site_id).first()
     if not bay:
         return jsonify({"error": "Estiba inválida"}), 400
 
@@ -309,7 +428,8 @@ def api_bay_row_suggest_tier(bay_code: str, row_number: int):
 
     occupied = (
         db.session.query(ContainerPosition.tier)
-        .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_number)
+        .join(Container, Container.id == ContainerPosition.container_id)
+        .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_number, Container.site_id == site_id)
         .all()
     )
     occupied_tiers = {int(t[0]) for t in occupied}
@@ -330,6 +450,8 @@ def api_place_container():
       - Viejo: { "container_id": 123, "to_bay_code": "A07" } -> AUTO (find_first_free_slot)
       - Nuevo: { "container_id": 123, "to_bay_code": "A07", "to_depth_row": 10, "to_tier": 2 } -> EXACTO
     """
+    site_id = _ensure_active_site()
+
     data = request.get_json(silent=True) or {}
     container_id = data.get("container_id")
     to_bay_code = (data.get("to_bay_code") or "").upper()
@@ -338,10 +460,10 @@ def api_place_container():
         return jsonify({"error": "Datos incompletos"}), 400
 
     c = Container.query.get(container_id)
-    if not c or not c.is_in_yard:
-        return jsonify({"error": "Contenedor no existe o no está en patio"}), 400
+    if not c or not c.is_in_yard or c.site_id != site_id:
+        return jsonify({"error": "Contenedor no existe o no está en patio (predio actual)"}), 400
 
-    to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True).first()
+    to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True, site_id=site_id).first()
     if not to_bay:
         return jsonify({"error": "Estiba destino inválida"}), 400
 
@@ -396,6 +518,7 @@ def api_place_container():
     )
 
     mv = Movement(
+        site_id=site_id,
         container_id=c.id,
         movement_type="MOVE",
         occurred_at=datetime.utcnow(),
@@ -416,6 +539,7 @@ def api_place_container():
             "from": old,
             "to": {"bay_code": to_bay.code, "depth_row": depth_row, "tier": tier},
             "rule": "AUTO_LAST_AVAILABLE" if (to_depth_row is None or to_tier is None) else "MANUAL_EXACT",
+            "site_id": site_id,
         },
     )
 
@@ -433,6 +557,8 @@ def api_move_container():
       o manual:
       { "container_id": 123, "to_bay_code": "B07", "mode": "manual", "depth_row": 1, "tier": 2 }
     """
+    site_id = _ensure_active_site()
+
     data = request.get_json(silent=True) or {}
     container_id = data.get("container_id")
     to_bay_code = (data.get("to_bay_code") or "").upper()
@@ -442,10 +568,10 @@ def api_move_container():
         return jsonify({"error": "Datos incompletos"}), 400
 
     c = Container.query.get(container_id)
-    if not c or not c.is_in_yard:
-        return jsonify({"error": "Contenedor no existe o no está en patio"}), 400
+    if not c or not c.is_in_yard or c.site_id != site_id:
+        return jsonify({"error": "Contenedor no existe o no está en patio (predio actual)"}), 400
 
-    to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True).first()
+    to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True, site_id=site_id).first()
     if not to_bay:
         return jsonify({"error": "Estiba destino inválida"}), 400
 
@@ -493,6 +619,7 @@ def api_move_container():
     )
 
     mv = Movement(
+        site_id=site_id,
         container_id=c.id,
         movement_type="MOVE",
         occurred_at=datetime.utcnow(),
@@ -509,7 +636,7 @@ def api_move_container():
         "CONTAINER_MOVED",
         "container",
         c.id,
-        {"from": old, "to": {"bay_code": to_bay.code, "depth_row": depth_row, "tier": tier}},
+        {"from": old, "to": {"bay_code": to_bay.code, "depth_row": depth_row, "tier": tier}, "site_id": site_id},
     )
 
     db.session.commit()
@@ -519,8 +646,10 @@ def api_move_container():
 @yard_bp.get("/api/yard/bays/<string:bay_code>/row/<int:row_number>/containers")
 @login_required
 def api_bay_row_containers(bay_code: str, row_number: int):
+    site_id = _ensure_active_site()
+
     bay_code = (bay_code or "").upper()
-    bay = YardBay.query.filter_by(code=bay_code, is_active=True).first()
+    bay = YardBay.query.filter_by(code=bay_code, is_active=True, site_id=site_id).first()
     if not bay:
         return jsonify({"ok": False, "error": "BAY_NOT_FOUND"}), 404
 
@@ -532,7 +661,8 @@ def api_bay_row_containers(bay_code: str, row_number: int):
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .filter(
             ContainerPosition.bay_id == bay.id,
-            ContainerPosition.depth_row == row_number
+            ContainerPosition.depth_row == row_number,
+            Container.site_id == site_id
         )
         .order_by(ContainerPosition.tier.asc())
         .all()
@@ -557,13 +687,16 @@ def api_bay_row_containers(bay_code: str, row_number: int):
 @yard_bp.get("/gate-in")
 @login_required
 def gate_in_view():
-    blocks = YardBlock.query.order_by(YardBlock.code.asc()).all()
+    site_id = _ensure_active_site()
+    blocks = YardBlock.query.filter_by(site_id=site_id).order_by(YardBlock.code.asc()).all()
     return render_template("yard/gate_in.html", blocks=blocks, sizes=SIZES)
 
 
 @yard_bp.post("/gate-in")
 @login_required
 def gate_in_post():
+    site_id = _ensure_active_site()
+
     code = (request.form.get("container_code") or "").strip().upper()
     size = (request.form.get("size") or "").strip()
     year_raw = (request.form.get("year") or "").strip()
@@ -610,8 +743,8 @@ def gate_in_post():
         flash("Estiba inválida (1..15).", "danger")
         return redirect(url_for("yard.gate_in_view"))
 
-    block = YardBlock.query.filter_by(code=block_code).first()
-    bay = YardBay.query.filter_by(block_id=block.id, bay_number=bay_number, is_active=True).first() if block else None
+    block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
+    bay = YardBay.query.filter_by(block_id=block.id, bay_number=bay_number, is_active=True, site_id=site_id).first() if block else None
     if not bay:
         flash("Estiba no encontrada.", "danger")
         return redirect(url_for("yard.gate_in_view"))
@@ -621,11 +754,14 @@ def gate_in_post():
 
     existing = Container.query.filter_by(code=code).first()
     if existing and existing.is_in_yard:
+        if getattr(existing, "site_id", None) != site_id:
+            flash("Este contenedor está en patio, pero en otro predio.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
         flash("Este contenedor ya está en patio.", "danger")
         return redirect(url_for("yard.gate_in_view"))
 
     if not existing:
-        c = Container(code=code, size=size, year=year, status_notes=status_notes, is_in_yard=True)
+        c = Container(code=code, size=size, year=year, status_notes=status_notes, is_in_yard=True, site_id=site_id)
         db.session.add(c)
         db.session.flush()
     else:
@@ -634,6 +770,7 @@ def gate_in_post():
         c.year = year
         c.status_notes = status_notes
         c.is_in_yard = True
+        c.site_id = site_id
         db.session.add(c)
         db.session.flush()
 
@@ -676,6 +813,7 @@ def gate_in_post():
     )
 
     mv = Movement(
+        site_id=site_id,
         container_id=c.id,
         movement_type="GATE_IN",
         occurred_at=datetime.utcnow(),
@@ -727,7 +865,7 @@ def gate_in_post():
         "GATE_IN_CREATED",
         "container",
         c.id,
-        {"container_code": c.code, "bay": bay.code, "depth_row": depth_row, "tier": tier},
+        {"container_code": c.code, "bay": bay.code, "depth_row": depth_row, "tier": tier, "site_id": site_id},
     )
 
     db.session.commit()
@@ -738,11 +876,13 @@ def gate_in_post():
 @yard_bp.get("/gate-out")
 @login_required
 def gate_out_view():
+    site_id = _ensure_active_site()
+
     containers = (
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .join(YardBay, YardBay.id == ContainerPosition.bay_id)
-        .filter(Container.is_in_yard == True)  # noqa: E712
+        .filter(Container.is_in_yard == True, Container.site_id == site_id)  # noqa: E712
         .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
         .all()
     )
@@ -752,6 +892,8 @@ def gate_out_view():
 @yard_bp.post("/gate-out")
 @login_required
 def gate_out_post():
+    site_id = _ensure_active_site()
+
     container_id = request.form.get("container_id")
     driver_name = (request.form.get("driver_name") or "").strip()
     driver_id_doc = (request.form.get("driver_id_doc") or "").strip()
@@ -763,8 +905,8 @@ def gate_out_post():
         return redirect(url_for("yard.gate_out_view"))
 
     c = Container.query.get(int(container_id))
-    if not c or not c.is_in_yard:
-        flash("Contenedor no válido o ya salió.", "danger")
+    if not c or not c.is_in_yard or c.site_id != site_id:
+        flash("Contenedor no válido o ya salió (predio actual).", "danger")
         return redirect(url_for("yard.gate_out_view"))
 
     pos = ContainerPosition.query.filter_by(container_id=c.id).first()
@@ -778,6 +920,7 @@ def gate_out_post():
         tier = pos.tier
 
     mv = Movement(
+        site_id=site_id,
         container_id=c.id,
         movement_type="GATE_OUT",
         occurred_at=datetime.utcnow(),
@@ -811,7 +954,7 @@ def gate_out_post():
         "GATE_OUT_CREATED",
         "container",
         c.id,
-        {"container_code": c.code, "from_bay": bay_code, "depth_row": depth_row, "tier": tier},
+        {"container_code": c.code, "from_bay": bay_code, "depth_row": depth_row, "tier": tier, "site_id": site_id},
     )
 
     db.session.commit()
@@ -836,6 +979,7 @@ def _cr_range_to_utc_naive(date_from: str, date_to: str):
 
     return d1_utc.replace(tzinfo=None), d2_utc.replace(tzinfo=None)
 
+
 def _parse_report_filters(args):
     movement_type = (args.get("movement_type") or "").strip().upper()
     if movement_type and movement_type not in REPORT_TYPES:
@@ -858,10 +1002,11 @@ def _parse_report_filters(args):
     return movement_type, d1, d2, None
 
 
-def _query_report_rows(movement_type, d1, d2):
+def _query_report_rows(site_id, movement_type, d1, d2):
     q = (
         db.session.query(Movement, Container)
         .join(Container, Container.id == Movement.container_id)
+        .filter(Movement.site_id == site_id)
         .filter(Movement.occurred_at >= d1, Movement.occurred_at <= d2)
     )
 
@@ -874,26 +1019,27 @@ def _query_report_rows(movement_type, d1, d2):
 @yard_bp.get("/reports")
 @login_required
 def reports_view():
-    # Vista “limpia” sin resultados (pero con campos disponibles)
     return render_template("yard/reports.html", rows=None, movement_type="", date_from="", date_to="")
 
 
 @yard_bp.get("/reports/run")
 @login_required
 def reports_run():
+    site_id = _ensure_active_site()
+
     movement_type, d1, d2, err = _parse_report_filters(request.args)
     if err:
         flash(err, "danger")
         return redirect(url_for("yard.reports_view"))
 
-    rows = _query_report_rows(movement_type, d1, d2)
+    rows = _query_report_rows(site_id, movement_type, d1, d2)
 
     audit_log(
         current_user.id,
         "REPORT_RUN",
         "report",
         None,
-        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL"},
+        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL", "site_id": site_id},
     )
     db.session.commit()
 
@@ -909,14 +1055,15 @@ def reports_run():
 @yard_bp.get("/reports/export")
 @login_required
 def reports_export():
+    site_id = _ensure_active_site()
+
     movement_type, d1, d2, err = _parse_report_filters(request.args)
     if err:
         flash(err, "danger")
         return redirect(url_for("yard.reports_view"))
 
-    rows = _query_report_rows(movement_type, d1, d2)
+    rows = _query_report_rows(site_id, movement_type, d1, d2)
 
-    # Import local para no romper la app si falta la dependencia
     try:
         from openpyxl import Workbook
         from openpyxl.utils import get_column_letter
@@ -950,7 +1097,6 @@ def reports_export():
             mv.truck_plate or "",
         ])
 
-    # Auto ancho de columnas (simple y efectivo)
     for col_idx in range(1, len(headers) + 1):
         max_len = 0
         for cell in ws[get_column_letter(col_idx)]:
@@ -968,7 +1114,7 @@ def reports_export():
         "REPORT_EXPORTED",
         "report",
         None,
-        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL", "rows": len(rows)},
+        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL", "rows": len(rows), "site_id": site_id},
     )
     db.session.commit()
 
@@ -990,7 +1136,12 @@ def reports_export():
 @yard_bp.post("/print/<int:movement_id>")
 @login_required
 def print_ticket(movement_id: int):
+    site_id = _ensure_active_site()
+
     mv = Movement.query.get_or_404(movement_id)
+    if mv.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
     c = Container.query.get_or_404(mv.container_id)
 
     payload = build_ticket_payload("Yard Gate Álamo", mv, c)
@@ -1008,8 +1159,8 @@ def print_ticket(movement_id: int):
     if r.status_code != 200:
         return jsonify({"error": "Print agent error", "detail": r.text}), 502
 
-    register_ticket_print(mv.id, current_user.id, payload)
-    audit_log(current_user.id, "TICKET_PRINTED_AGENT", "movement", mv.id, {"container": c.code})
+    _register_ticket_print(site_id, mv.id, current_user.id, payload)
+    audit_log(current_user.id, "TICKET_PRINTED_AGENT", "movement", mv.id, {"container": c.code, "site_id": site_id})
     db.session.commit()
 
     return jsonify({"ok": True})
@@ -1018,12 +1169,17 @@ def print_ticket(movement_id: int):
 @yard_bp.get("/ticket/<int:movement_id>")
 @login_required
 def ticket_view(movement_id: int):
+    site_id = _ensure_active_site()
+
     mv = Movement.query.get_or_404(movement_id)
+    if mv.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
     c = Container.query.get_or_404(mv.container_id)
 
     payload = build_ticket_payload(APP_NAME, mv, c)
-    register_ticket_print(mv.id, current_user.id, payload)
-    audit_log(current_user.id, "TICKET_PRINTED", "movement", mv.id, {"container": c.code})
+    _register_ticket_print(site_id, mv.id, current_user.id, payload)
+    audit_log(current_user.id, "TICKET_PRINTED", "movement", mv.id, {"container": c.code, "site_id": site_id})
     db.session.commit()
 
     return render_template("yard/ticket.html", mv=mv, c=c, payload=payload)
@@ -1032,7 +1188,12 @@ def ticket_view(movement_id: int):
 @yard_bp.get("/ticket/reprint/<int:print_id>")
 @login_required
 def ticket_reprint(print_id: int):
+    site_id = _ensure_active_site()
+
     tp = TicketPrint.query.get_or_404(print_id)
+    if tp.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
     mv = Movement.query.get_or_404(tp.movement_id)
     c = Container.query.get_or_404(mv.container_id)
 
@@ -1041,7 +1202,7 @@ def ticket_reprint(print_id: int):
         "TICKET_REPRINTED",
         "ticket_print",
         tp.id,
-        {"movement_id": mv.id, "container": c.code},
+        {"movement_id": mv.id, "container": c.code, "site_id": site_id},
     )
     db.session.commit()
 

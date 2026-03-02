@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Seleccionar predio{% endblock %}
+
+{% block content %}
+<div class="card card-pad" style="max-width:760px; margin:0 auto;">
+  <h2 style="margin:0 0 10px 0;">Selecciona el predio</h2>
+  <div class="hint" style="margin-bottom:14px;">
+    Elige dónde vas a trabajar hoy (sin drama, solo un clic 😄).
+  </div>
+
+  <form method="post" action="{{ url_for('yard.sites_select_post') }}">
+    <div style="display:grid; gap:10px;">
+      {% for s in sites %}
+        <label class="container-item" style="cursor:pointer;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+            <div>
+              <div style="font-weight:950;">{{ s.name }}</div>
+              <div class="hint" style="margin-top:6px;">{{ s.code }}</div>
+            </div>
+            <input type="radio" name="site_id" value="{{ s.id }}" required />
+          </div>
+        </label>
+      {% endfor %}
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; margin-top:14px;">
+      <button class="btn btn-primary" type="submit">Entrar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

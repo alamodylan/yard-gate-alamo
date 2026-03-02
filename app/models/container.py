@@ -11,6 +11,13 @@ class Container(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    # 🔹 NUEVO: Multi-predio
+    site_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.sites.id"),
+        nullable=False
+    )
+
     # Formato: AAAA-000000-0 (13 chars incluyendo guiones)
     code = db.Column(db.String(13), unique=True, nullable=False)
 
@@ -23,7 +30,12 @@ class Container(db.Model):
     is_in_yard = db.Column(db.Boolean, nullable=False, default=True)
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow
+    )
 
     # Relación 1:1 con posición actual (si está en patio)
     position = db.relationship(
@@ -40,6 +52,9 @@ class Container(db.Model):
         backref="container",
         lazy=True
     )
+
+    # Relación opcional al Site (no rompe nada)
+    site = db.relationship("Site", backref=db.backref("containers", lazy=True))
 
 
 class ContainerPosition(db.Model):

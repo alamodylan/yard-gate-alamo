@@ -11,6 +11,13 @@ class Movement(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
+    # 🔹 NUEVO: Multi-predio
+    site_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.sites.id"),
+        nullable=False
+    )
+
     container_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.containers.id"),
@@ -47,6 +54,9 @@ class Movement(db.Model):
         cascade="all, delete-orphan",
         lazy=True
     )
+
+    # Relación opcional al Site (no rompe nada)
+    site = db.relationship("Site", backref=db.backref("movements", lazy=True))
 
 
 class MovementPhoto(db.Model):

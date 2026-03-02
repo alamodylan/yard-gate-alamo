@@ -1,4 +1,4 @@
-from flask import Flask, current_app
+from flask import Flask, current_app, session
 from dotenv import load_dotenv
 
 from app.config import Config
@@ -53,6 +53,33 @@ def create_app():
             return endpoint in current_app.view_functions
         return dict(has_endpoint=has_endpoint)
 
+    # ✅ Predio activo (site) para templates + helper
+    @app.context_processor
+    def inject_active_site():
+        """
+        Inyecta:
+          - active_site_id: int|None
+          - active_site: Site|None
+          - get_active_site_id(): callable
+        """
+        from app.models.site import Site  # import aquí para evitar ciclos
+
+        def get_active_site_id():
+            v = session.get("active_site_id")
+            try:
+                return int(v) if v is not None else None
+            except Exception:
+                return None
+
+        sid = get_active_site_id()
+        site = Site.query.get(sid) if sid else None
+
+        return dict(
+            active_site_id=sid,
+            active_site=site,
+            get_active_site_id=get_active_site_id
+        )
+
     # Blueprints
     from app.blueprints.auth import auth_bp
     from app.blueprints.yard import yard_bp
@@ -72,4 +99,3 @@ def create_app():
         return {"ok": True}
 
     return app
-
