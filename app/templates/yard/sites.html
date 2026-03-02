@@ -8,7 +8,7 @@
     Elige dónde vas a trabajar hoy (sin drama, solo un clic 😄).
   </div>
 
-  <form method="post" action="{{ url_for('yard.sites_select_post') }}">
+  <form method="post" action="{{ url_for('yard.sites_select') }}">
     <div style="display:grid; gap:10px;">
       {% for s in sites %}
         <label class="container-item" style="cursor:pointer;">
