@@ -1,6 +1,6 @@
 # app/blueprints/print_api/routes.py
 from flask import Blueprint, request, jsonify, current_app
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.extensions import db
 from app.models.print_job import PrintJob
 
@@ -43,6 +43,31 @@ def claim_next_job():
 
     device_id = request.args.get("device_id", "GATE-PC")
     now = datetime.now(timezone.utc)
+
+    # ============================
+    # ✅ Cambio mínimo (robustez):
+    # Re-enqueue de CLAIMED viejos (agente caído / consola cerrada / etc.)
+    # ============================
+    stale_minutes = int(current_app.config.get("PRINT_JOB_STALE_MINUTES", 5))
+    stale_before = now - timedelta(minutes=stale_minutes)
+
+    # Si claimed_at es NULL, no lo toca.
+    (
+        db.session.query(PrintJob)
+        .filter(PrintJob.status == "CLAIMED")
+        .filter(PrintJob.claimed_at != None)  # noqa: E711
+        .filter(PrintJob.claimed_at < stale_before)
+        .update(
+            {
+                PrintJob.status: "PENDING",
+                PrintJob.claimed_by: None,
+                PrintJob.claimed_at: None,
+            },
+            synchronize_session=False,
+        )
+    )
+    db.session.commit()
+    # ============================
 
     # Importante: PostgreSQL soporta FOR UPDATE SKIP LOCKED
     job = (

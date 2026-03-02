@@ -7,33 +7,40 @@ SCHEMA = "yard_gate_alamo"
 
 class Movement(db.Model):
     __tablename__ = "movements"
-    __table_args__ = {"schema": SCHEMA}
+    __table_args__ = (
+        db.Index("ix_movements_site_occurred_at", "site_id", "occurred_at"),
+        db.Index("ix_movements_site_container", "site_id", "container_id"),
+        db.Index("ix_movements_container_occurred_at", "container_id", "occurred_at"),
+        {"schema": SCHEMA},
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # 🔹 NUEVO: Multi-predio
+    # 🔹 Multi-predio
     site_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.sites.id"),
-        nullable=False
+        nullable=False,
+        index=True,
     )
 
     container_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.containers.id"),
-        nullable=False
+        nullable=False,
+        index=True,
     )
 
     movement_type = db.Column(db.String(20), nullable=False)  # GATE_IN | GATE_OUT | MOVE
 
-    occurred_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
 
     # Ubicación registrada en ese evento (histórico)
     bay_code = db.Column(db.String(3), nullable=True)  # A01
     depth_row = db.Column(db.Integer, nullable=True)
     tier = db.Column(db.Integer, nullable=True)
 
-    # Chofer
+    # Chofer (solo si aplica)
     driver_name = db.Column(db.String(150), nullable=True)
     driver_id_doc = db.Column(db.String(50), nullable=True)
     truck_plate = db.Column(db.String(20), nullable=True)
@@ -43,34 +50,51 @@ class Movement(db.Model):
     created_by_user_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.users.id"),
-        nullable=False
+        nullable=False,
+        index=True,
     )
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     photos = db.relationship(
         "MovementPhoto",
-        backref="movement",
+        back_populates="movement",
         cascade="all, delete-orphan",
-        lazy=True
+        lazy=True,
     )
 
-    # Relación opcional al Site (no rompe nada)
-    site = db.relationship("Site", backref=db.backref("movements", lazy=True))
+    # Relaciones
+    site = db.relationship(
+        "Site",
+        backref=db.backref("movements", lazy=True),
+        lazy=True,
+    )
+
+    container = db.relationship(
+        "Container",
+        back_populates="movements",
+        lazy=True,
+    )
 
 
 class MovementPhoto(db.Model):
     __tablename__ = "movement_photos"
-    __table_args__ = {"schema": SCHEMA}
+    __table_args__ = (
+        db.Index("ix_movement_photos_movement", "movement_id"),
+        {"schema": SCHEMA},
+    )
 
     id = db.Column(db.Integer, primary_key=True)
 
     movement_id = db.Column(
         db.Integer,
-        db.ForeignKey(f"{SCHEMA}.movements.id"),
-        nullable=False
+        db.ForeignKey(f"{SCHEMA}.movements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
 
     photo_type = db.Column(db.String(30), nullable=False)  # CONTAINER, DAMAGE, DRIVER_ID, OTHER
     url = db.Column(db.Text, nullable=False)  # URL pública (R2) o path local
     uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    movement = db.relationship("Movement", back_populates="photos", lazy=True)

@@ -752,27 +752,40 @@ def gate_in_post():
     # Lock de estiba durante asignación
     db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()
 
-    existing = Container.query.filter_by(code=code).first()
-    if existing and existing.is_in_yard:
-        if getattr(existing, "site_id", None) != site_id:
-            flash("Este contenedor está en patio, pero en otro predio.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
+    # ==========================================================
+    # ✅ CAMBIO QUIRÚRGICO multi-predio:
+    # Antes: Container.query.filter_by(code=code).first() (peligroso)
+    # Ahora: buscar por (site_id, code) + bloquear si está en patio en otro predio
+    # ==========================================================
+    existing_here = Container.query.filter_by(site_id=site_id, code=code).first()
+
+    other_in_yard = (
+        Container.query
+        .filter(Container.code == code, Container.is_in_yard == True, Container.site_id != site_id)  # noqa: E712
+        .first()
+    )
+    if other_in_yard:
+        flash("Este contenedor está en patio, pero en otro predio.", "danger")
+        return redirect(url_for("yard.gate_in_view"))
+
+    if existing_here and existing_here.is_in_yard:
         flash("Este contenedor ya está en patio.", "danger")
         return redirect(url_for("yard.gate_in_view"))
 
-    if not existing:
+    if not existing_here:
         c = Container(code=code, size=size, year=year, status_notes=status_notes, is_in_yard=True, site_id=site_id)
         db.session.add(c)
         db.session.flush()
     else:
-        c = existing
+        c = existing_here
         c.size = size
         c.year = year
         c.status_notes = status_notes
         c.is_in_yard = True
-        c.site_id = site_id
+        # OJO: No tocamos site_id aquí porque ya es del predio actual
         db.session.add(c)
         db.session.flush()
+    # ===================== FIN CAMBIO =========================
 
     if placement_mode == "manual":
         try:
