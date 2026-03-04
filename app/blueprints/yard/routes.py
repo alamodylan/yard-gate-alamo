@@ -3,6 +3,7 @@ import re
 import os
 import io
 from datetime import datetime
+from io import BytesIO
 
 import pytz
 import requests
@@ -1688,6 +1689,71 @@ def chassis_import_post():
         session.pop("chassis_import_errors", None)
 
     return redirect(url_for("yard.chassis_list"))
+
+@yard_bp.get("/chassis/export")
+@login_required
+def chassis_export():
+    site_id = _ensure_active_site()
+
+    try:
+        from openpyxl import Workbook
+    except Exception:
+        flash("Falta openpyxl en requirements.txt", "danger")
+        return redirect(url_for("yard.chassis_list"))
+
+    # Trae lo que ya existe en este predio
+    rows = (
+        Chassis.query
+        .filter_by(site_id=site_id)
+        .order_by(Chassis.chassis_number.asc())
+        .all()
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Chassis"
+
+    # Encabezados con explicación en español (como pediste)
+    headers = [
+        "chassis_number (número de chasis 5 dígitos)",
+        "plate (placa) [opcional]",
+        "length_ft (largo en pies: 20/40/45) [opcional]",
+        "axles (ejes: 2/3) [opcional]",
+        "type_code (tipo: 20FT_2AX/20FT_3AX/40FT_2AX/40FT_3AX) [opcional]",
+    ]
+    ws.append(headers)
+
+    # Congelar encabezado
+    ws.freeze_panes = "A2"
+
+    # Cargar data existente como "plantilla con lo que hay"
+    for ch in rows:
+        ws.append([
+            ch.chassis_number,
+            ch.plate or "",
+            ch.length_ft or "",
+            ch.axles or "",
+            ch.type_code or "",
+        ])
+
+    # Ajuste simple de anchos
+    ws.column_dimensions["A"].width = 38
+    ws.column_dimensions["B"].width = 26
+    ws.column_dimensions["C"].width = 30
+    ws.column_dimensions["D"].width = 22
+    ws.column_dimensions["E"].width = 45
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    filename = "chassis_import_template.xlsx"
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name=filename,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 @yard_bp.get("/chassis/<int:chassis_id>")
