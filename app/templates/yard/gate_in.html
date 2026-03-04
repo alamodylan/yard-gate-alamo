@@ -3,25 +3,313 @@
 {% block content %}
 <h2>Gate In</h2>
 
-<form method="post" enctype="multipart/form-data" class="card" style="max-width: 900px;">
-  <h3>Datos del contenedor</h3>
+<form id="gateInForm" method="post" enctype="multipart/form-data" class="card" style="max-width: 980px;">
+  <!-- =========================
+       1) Identificación (rápida)
+       ========================= -->
+  <h3>Identificación</h3>
 
-  <label>Número de contenedor (AAAA-000000-0)</label>
-  <input id="container_code" name="container_code" placeholder="MSKU-123456-7" required>
+  <div class="grid" style="display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;">
+    <div>
+      <label>Número de contenedor (AAAA-000000-0)</label>
+      <input id="container_code" name="container_code" placeholder="MSKU-123456-7" required>
+    </div>
 
-  <label>Tamaño</label>
-  <select name="size" required>
-    {% for s in sizes %}
-      <option value="{{ s }}">{{ s }}</option>
-    {% endfor %}
-  </select>
+    <div>
+      <label>Año fabricación</label>
+      <input name="year" inputmode="numeric" placeholder="Ej: 2020">
+      <div class="hint" style="margin-top:6px;">(Opcional)</div>
+    </div>
+  </div>
 
-  <label>Año</label>
-  <input name="year" inputmode="numeric" placeholder="Ej: 2017">
+  <label style="margin-top:12px;">Tamaño / Tipo</label>
+  <div class="card" style="padding:12px; border-radius:16px;">
+    <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;">
+      {# ✅ IMPORTANTE: estos valores deben coincidir con SIZES en backend #}
+      {% for t in (sizes or ["20ST","40ST","40HC","45ST"]) %}
+        <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+          <input type="radio" name="size" value="{{ t }}" {% if loop.first %}checked{% endif %}>
+          <span style="font-weight:800;">{{ t }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
 
-  <label>Estado / Observaciones (golpes, cortes, etc.)</label>
-  <textarea name="status_notes" rows="3" placeholder="Describe daños o condición..."></textarea>
+  {# ✅ Estos campos NO existen en tu backend actual (gate_in_post), por eso NO deben ser required #}
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div>
+      <label>Naviera (opcional)</label>
+      <select id="shipping_line" name="shipping_line">
+        <option value="" selected>—</option>
+        <option value="COSCO">COSCO</option>
+        <option value="ONE">ONE</option>
+        <option value="OOCL">OOCL</option>
+        <option value="MAERSK">MAERSK</option>
+        <option value="ATM">ATM</option>
+        <option value="VASI">Otro</option>
+      </select>
 
+      <div id="shipOtherBox" style="display:none; margin-top:10px;">
+        <label>Indica cuál</label>
+        <input id="shipping_line_other" name="shipping_line_other" placeholder="Ej: Hapag, CMA, etc.">
+      </div>
+    </div>
+
+    <div>
+      <label>Max Gross (KG) (opcional)</label>
+      <select id="max_gross_select" name="max_gross_select">
+        <option value="" selected>—</option>
+        <option value="32500">32500 KG</option>
+        <option value="30000">30000 KG</option>
+        <option value="28000">28000 KG</option>
+        <option value="26000">26000 KG</option>
+        <option value="OTHER">Otro…</option>
+      </select>
+
+      <div id="maxGrossOtherBox" style="display:none; margin-top:10px;">
+        <label>Max Gross (KG) - otro</label>
+        <input id="max_gross_kg" name="max_gross_kg" inputmode="numeric" placeholder="Ej: 34000" min="1">
+      </div>
+
+      <input type="hidden" id="max_gross_kg_hidden" name="max_gross_kg_hidden" value="">
+    </div>
+  </div>
+
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div>
+      <label>Tare (KG) (opcional)</label>
+      <input name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
+    </div>
+    <div>
+      <label>Comentarios generales (opcional)</label>
+      <input name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
+    </div>
+  </div>
+
+  <!-- =========================
+       2) Condición estructural
+       ========================= -->
+  <details open style="margin-top:14px;">
+    <summary style="cursor:pointer; font-weight:900;">Condición estructural</summary>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+      <div>
+        <label>Barras</label>
+        <select name="bars">
+          <option value="OK" selected>OK</option>
+          <option value="DAÑO_LEVE">DAÑO LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+          <option value="OTRO">OTRO</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Seguros</label>
+        <select name="locks">
+          <option value="OK" selected>OK</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+    </div>
+
+    <label style="margin-top:12px;">Piso (selección múltiple)</label>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      {% set floor_opts = ["OK","HUNDIDO","LEVANTADO","REVENTADO","DESLAMINADO","HUECO"] %}
+      <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px;">
+        {% for f in floor_opts %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="checkbox" name="floor_flags" value="{{ f }}" {% if f=="OK" %}checked{% endif %}>
+            <span style="font-weight:800;">{{ f }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="hint" style="margin-top:8px;">Tip: si marcas algo distinto de OK, quita OK.</div>
+    </div>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Astillas</label>
+        <select name="splinters">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Aceite</label>
+        <select name="oil">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Barrido</label>
+        <select name="swept">
+          <option value="SI" selected>SI</option>
+          <option value="NO">NO</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>Argollas</label>
+      <select name="rings">
+        <option value="SI" selected>SI</option>
+        <option value="NO">NO</option>
+      </select>
+    </div>
+  </details>
+
+  <!-- =========================
+       3) Condición general
+       ========================= -->
+  <details open style="margin-top:14px;">
+    <summary style="cursor:pointer; font-weight:900;">Condición general</summary>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+      <div>
+        <label>Mal olor</label>
+        <select name="bad_smell">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Suciedad (transferibles)</label>
+        <select name="dirt">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Manchas (transferibles)</label>
+        <select name="stains">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Golpes</label>
+        <select name="hits">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>% Óxido</label>
+      <select name="rust_pct">
+        <option value="0" selected>0</option>
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="25">25</option>
+        <option value="40">40</option>
+        <option value="50+">50+</option>
+      </select>
+    </div>
+  </details>
+
+  <!-- =========================
+       4) Marque si presenta / requiere
+       ========================= -->
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer; font-weight:900;">Marque si presenta o requiere</summary>
+
+    <div class="card" style="padding:12px; border-radius:16px; margin-top:10px;">
+      {% set req_opts = [
+        "HUECO/CORTE TECHO","HUECO/CORTE LATERAL","PARCHE PARED","PARCHE PISO","PARCHE TECHO",
+        "ABOLLADURA GRANDE","PEGAMENTO PAREDES","FILTRACIONES (EMPAQUE / TOP RIEL / PISO)",
+        "POLVO PISO/PAREDES","OBALADO/DEFORME","SUCIEDAD EXCESIVA","HUECOS DE CLAVOS",
+        "REMOCIÓN DE CLAVOS","TORNILLERÍA EXPUESTA","CALCAS IMO","INSECTOS/PLAGA","TELARAÑAS",
+        "DERRAME","LAVAR PARA CARGA DELICADA","CONTENEDOR CARGADO","RETORNO A CALDERA","RETORNO A LIMÓN",
+        "APTO PARA CARTÓN","NO USAR","NINGUNA"
+      ] %}
+
+      <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
+        {% for o in req_opts %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="checkbox" name="requires_flags" value="{{ o }}">
+            <span style="font-weight:800;">{{ o }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="hint" style="margin-top:10px;">
+        Tip rápido: si marcas “NINGUNA”, desmarca las demás (lo hace automático al guardar).
+      </div>
+    </div>
+  </details>
+
+  <!-- =========================
+       5) Clasificación final + taller
+       ========================= -->
+  <h3 style="margin-top:18px;">Clasificación final</h3>
+
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <div>
+      <label>Clasificación (opcional)</label>
+      <select name="final_grade">
+        <option value="" selected>—</option>
+        <option value="A+">A+</option>
+        <option value="A-">A-</option>
+        <option value="B+">B+</option>
+        <option value="B-">B-</option>
+        <option value="C">C</option>
+        <option value="A2">A2</option>
+        <option value="B2">B2</option>
+        <option value="CHATARRA">CHATARRA</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Requiere servicio de taller (opcional)</label>
+      <select id="needs_workshop" name="needs_workshop">
+        <option value="0" selected>No</option>
+        <option value="1">Sí</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="workshopBox" style="display:none; margin-top:12px;">
+    <label>Servicios de taller (selección múltiple)</label>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      {% set wk_opts = [
+        "LAVADO","LAVADO ESPECIAL","SELLAR TOP RIEL","SELLAR PISO","SELLAR EMPAQUE","QUITAR CLAVOS",
+        "SOLDAR","ENDEREZAR PANEL","CORREGIR SEGURO","PINTURA PARCIAL","PINTURA TOTAL"
+      ] %}
+      <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
+        {% for w in wk_opts %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="checkbox" name="workshop_services" value="{{ w }}">
+            <span style="font-weight:800;">{{ w }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       6) Chofer + ubicación (lo existente)
+       ========================= -->
   <h3 style="margin-top:18px;">Chofer que entrega</h3>
   <label>Nombre completo</label>
   <input name="driver_name" placeholder="Nombre y apellidos">
@@ -46,7 +334,7 @@
 
   <label>Modo de colocación</label>
   <select id="placementMode" name="placement_mode">
-    <option value="auto">Automática (primer espacio libre desde el fondo)</option>
+    <option value="auto" selected>Automática (primer espacio libre desde el fondo)</option>
     <option value="manual">Manual (seleccionar fila y nivel)</option>
   </select>
 
@@ -66,15 +354,48 @@
     </select>
   </div>
 
-  <h3 style="margin-top:18px;">Fotos</h3>
-  <label>Fotos del contenedor (puedes seleccionar varias)</label>
-  <input type="file" name="photos" accept="image/*" multiple>
+  <!-- =========================
+       7) Notas del contenedor (compat)
+       ========================= -->
+  <h3 style="margin-top:18px;">Notas rápidas</h3>
+  <label>Estado / Observaciones (compatibilidad con lo actual)</label>
+  <textarea name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
 
-  <button type="submit">Guardar Gate In y generar ticket</button>
+  <!-- =========================
+       8) Fotos (android friendly)
+       ========================= -->
+  <h3 style="margin-top:18px;">Fotos</h3>
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <div>
+      <label>Fotos del contenedor (Gate In)</label>
+      <input type="file" name="photos" accept="image/*" multiple capture="environment">
+      <div class="hint" style="margin-top:6px;">En Android abre cámara o galería según el navegador.</div>
+    </div>
+    <div>
+      <label>Fotos de clasificación (daños / evidencias) (opcional)</label>
+      <input type="file" name="classification_photos" accept="image/*" multiple capture="environment">
+      <div class="hint" style="margin-top:6px;">Tu backend actual no las procesa aún (no rompe nada).</div>
+    </div>
+  </div>
+
+  <!-- =========================
+       9) Resumen copiable (summary_text)
+       ========================= -->
+  <h3 style="margin-top:18px;">Resumen (copiable)</h3>
+  <div class="card" style="padding:12px; border-radius:16px;">
+    <div class="hint">Esto se genera en el frontend. Tu backend actual no lo guarda todavía (no rompe).</div>
+    <textarea id="summaryPreview" rows="3" readonly style="margin-top:8px; width:100%;"></textarea>
+    <input type="hidden" id="summary_text" name="summary_text" value="">
+  </div>
+
+  <button type="submit" style="margin-top:14px;">Guardar Gate In y generar ticket</button>
 </form>
 
 <script src="{{ url_for('static', filename='js/container_mask.js') }}"></script>
 <script>
+  // -----------------------------
+  // Bloque/estiba (lo existente)
+  // -----------------------------
   const blockSelect = document.getElementById("blockSelect");
   const baySelect = document.getElementById("baySelect");
   const placementMode = document.getElementById("placementMode");
@@ -91,17 +412,135 @@
     baySelect.innerHTML = "";
     (data.bays || []).forEach(b => {
       const opt = document.createElement("option");
-      opt.value = b.bay_number;       // <-- usamos bay_number para tu POST
+      opt.value = b.bay_number;
       opt.textContent = `${b.bay_number} (${b.code})`;
       baySelect.appendChild(opt);
     });
   }
+  blockSelect.addEventListener("change", () => loadBaysForBlock(blockSelect.value));
+  loadBaysForBlock(blockSelect.value);
 
-  blockSelect.addEventListener("change", () => {
-    loadBaysForBlock(blockSelect.value);
+  // -----------------------------
+  // Naviera OTRO
+  // -----------------------------
+  const shipSel = document.getElementById("shipping_line");
+  const shipOtherBox = document.getElementById("shipOtherBox");
+  shipSel.addEventListener("change", () => {
+    const v = shipSel.value || "";
+    shipOtherBox.style.display = (v === "VASI") ? "block" : "none";
+    buildSummary();
   });
 
-  // init
-  loadBaysForBlock(blockSelect.value);
+  // -----------------------------
+  // Max Gross (select + other)
+  // -----------------------------
+  const mgSel = document.getElementById("max_gross_select");
+  const mgOtherBox = document.getElementById("maxGrossOtherBox");
+  const mgHidden = document.getElementById("max_gross_kg_hidden");
+  const mgOtherInput = document.getElementById("max_gross_kg");
+
+  function syncMaxGross(){
+    if (mgSel.value === "OTHER"){
+      mgOtherBox.style.display = "block";
+      mgHidden.value = "";
+    } else {
+      mgOtherBox.style.display = "none";
+      mgHidden.value = mgSel.value || "";
+    }
+    buildSummary();
+  }
+  mgSel.addEventListener("change", syncMaxGross);
+  mgOtherInput.addEventListener("input", buildSummary);
+  syncMaxGross();
+
+  // -----------------------------
+  // Taller
+  // -----------------------------
+  const needsWorkshop = document.getElementById("needs_workshop");
+  const workshopBox = document.getElementById("workshopBox");
+  needsWorkshop.addEventListener("change", () => {
+    workshopBox.style.display = (needsWorkshop.value === "1") ? "block" : "none";
+    buildSummary();
+  });
+
+  // -----------------------------
+  // Resumen copiable (summary_text)
+  // -----------------------------
+  const form = document.getElementById("gateInForm");
+  const summaryPreview = document.getElementById("summaryPreview");
+  const summaryHidden = document.getElementById("summary_text");
+
+  function getChecked(name){
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(x => x.value);
+  }
+  function getValue(name){
+    const el = document.querySelector(`[name="${name}"]`);
+    return el ? (el.value || "").trim() : "";
+  }
+
+  function buildSummary(){
+    let floor = getChecked("floor_flags");
+    if (floor.includes("OK") && floor.length > 1){
+      floor = floor.filter(x => x !== "OK");
+    }
+
+    let req = getChecked("requires_flags");
+    if (req.includes("NINGUNA") && req.length > 1){
+      req = ["NINGUNA"];
+      document.querySelectorAll(`input[name="requires_flags"]`).forEach(ch => {
+        if (ch.value !== "NINGUNA") ch.checked = false;
+      });
+    }
+
+    let wk = getChecked("workshop_services");
+
+    const year = getValue("year");
+    const rust = getValue("rust_pct");
+
+    const smell = getValue("bad_smell");
+    const stains = getValue("stains");
+    const hits = getValue("hits");
+    const spl = getValue("splinters");
+
+    const parts = [];
+
+    if (rust) parts.push(`${rust}%OXIDO`);
+    if (smell && smell !== "NO") parts.push(`MAL OLOR ${smell}`);
+    if (stains && stains !== "NO") parts.push(`MANCHAS ${stains}`);
+    if (hits && hits !== "NO") parts.push(`GOLPES ${hits}`);
+    if (spl && spl !== "NO") parts.push(`ASTILLAS ${spl}`);
+
+    req.filter(x => x !== "NINGUNA").forEach(x => parts.push(x));
+    if (req.includes("NINGUNA")) parts.push("NINGUNA");
+
+    if (floor.length){
+      floor.forEach(x => {
+        if (x !== "OK") parts.push(`PISO ${x}`);
+      });
+      if (floor.length === 1 && floor[0] === "OK") parts.push("PISO OK");
+    }
+
+    if (year) parts.push(`AÑO ${year}`);
+
+    if (getValue("needs_workshop") === "1"){
+      if (wk.length) wk.forEach(x => parts.push(`TALLER ${x}`));
+      else parts.push("TALLER (SIN DETALLE)");
+    }
+
+    const summary = parts.join(", ");
+    summaryPreview.value = summary;
+    summaryHidden.value = summary;
+  }
+
+  document.querySelectorAll("select, input, textarea").forEach(el => {
+    el.addEventListener("change", buildSummary);
+    el.addEventListener("input", buildSummary);
+  });
+
+  form.addEventListener("submit", () => {
+    buildSummary();
+  });
+
+  buildSummary();
 </script>
 {% endblock %}

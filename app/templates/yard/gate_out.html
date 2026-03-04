@@ -1,9 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Gate Out - Yard Gate Álamo{% endblock %}
+
 {% block content %}
-<h2>Gate Out</h2>
+{# -----------------------------------------------------------------------
+  Gate Out: 2 flujos en un solo template
+  - MAERSK: Gate Out clásico (chofer + fotos + ticket)
+  - Predios (COYOL/CALDERA/LIMON): Gate Out / EIR (ligar/crear EIR y sacar inventario)
+  Requiere que routes.py pase:
+    - active_site_key (str): "MAERSK" / "COYOL" / "CALDERA" / "LIMON"
+    - rows: lista (Container, ContainerPosition, YardBay)
+    - eir_candidates (opcional): lista de EIRs recientes/pendientes para facilitar selección (si lo implementamos)
+----------------------------------------------------------------------- #}
+
+{% set site_key = (active_site_key or '')|upper %}
+{% set is_maersk = (site_key == 'MAERSK') %}
+
+<div class="page-head">
+  <div>
+    <h2 style="margin:0;">
+      {% if is_maersk %}
+        Gate Out
+      {% else %}
+        Gate Out / EIR
+      {% endif %}
+    </h2>
+    <p class="muted" style="margin-top:6px;">
+      Predio activo: <strong>{{ site_key if site_key else '—' }}</strong>
+      {% if is_maersk %}
+        · Salida directa por Gate Out.
+      {% else %}
+        · La salida se realiza guardando/ligando el EIR.
+      {% endif %}
+    </p>
+  </div>
+</div>
 
 <form method="post" enctype="multipart/form-data" class="card" style="max-width: 1000px;">
+
   <label>Contenedor en patio</label>
   <select name="container_id" required>
     {% for c, p, b in rows %}
@@ -13,22 +46,104 @@
     {% endfor %}
   </select>
 
-  <h3 style="margin-top:16px;">Chofer que retira</h3>
-  <label>Nombre completo</label>
-  <input name="driver_name">
+  {% if is_maersk %}
+    {# =========================
+       MAERSK: Gate Out clásico
+       ========================= #}
 
-  <label>Documento de identidad</label>
-  <input name="driver_id_doc">
+    <h3 style="margin-top:16px;">Chofer que retira</h3>
 
-  <label>Placa del cabezal</label>
-  <input name="truck_plate">
+    <label>Nombre completo</label>
+    <input name="driver_name">
 
-  <label>Notas</label>
-  <textarea name="notes" rows="3"></textarea>
+    <label>Documento de identidad</label>
+    <input name="driver_id_doc">
 
-  <label>Fotos (cédula / evidencia)</label>
-  <input type="file" name="photos" accept="image/*" multiple>
+    <label>Placa del cabezal</label>
+    <input name="truck_plate">
 
-  <button type="submit">Registrar Gate Out y generar ticket</button>
+    <label>Notas</label>
+    <textarea name="notes" rows="3"></textarea>
+
+    <label>Fotos (cédula / evidencia)</label>
+    <input type="file" name="photos" accept="image/*" multiple>
+
+    <button type="submit">Registrar Gate Out y generar ticket</button>
+
+  {% else %}
+    {# =========================
+       Predios: Gate Out / EIR
+       ========================= #}
+
+    <div class="card" style="margin-top:16px; padding:14px; background:#f8fafc;">
+      <h3 style="margin:0 0 10px 0;">EIR (ligar o crear)</h3>
+
+      <p class="muted" style="margin:0 0 12px 0;">
+        Aquí el Gate Out se confirma al <strong>guardar el EIR</strong>.
+        Esto debe sacar de inventario el <strong>contenedor</strong> y el <strong>chasis</strong> ligados.
+      </p>
+
+      <label>Modo</label>
+      <select name="eir_mode" required>
+        <option value="link">Ligar EIR existente</option>
+        <option value="create">Crear EIR nuevo</option>
+      </select>
+
+      <div style="margin-top:12px;">
+        <h4 style="margin:0 0 8px 0;">Si vas a LIGAR</h4>
+
+        <label>ID de EIR</label>
+        <input name="eir_id" placeholder="Ej: 1024">
+
+        {# Opcional si luego pasamos eir_candidates desde backend #}
+        {% if eir_candidates %}
+          <label style="margin-top:10px;">EIRs recientes/pendientes</label>
+          <select name="eir_id_pick">
+            <option value="">— Selecciona uno —</option>
+            {% for e in eir_candidates %}
+              <option value="{{ e.id }}">
+                #{{ e.id }} · {{ e.terminal_name }} · {{ e.trip_date }} · {{ e.status }}
+              </option>
+            {% endfor %}
+          </select>
+          <p class="muted" style="margin-top:6px;">
+            Si seleccionas uno aquí, se usará ese ID aunque el campo de arriba esté vacío.
+          </p>
+        {% endif %}
+      </div>
+
+      <div style="margin-top:14px;">
+        <h4 style="margin:0 0 8px 0;">Si vas a CREAR</h4>
+
+        <label>Terminal</label>
+        <input name="terminal_name" placeholder="Ej: Coyol / Caldera / Limón">
+
+        <label>Fecha del viaje</label>
+        <input type="date" name="trip_date">
+
+        <label>Origen</label>
+        <input name="origin" placeholder="Ej: APM / Cliente / Predio">
+
+        <label>Destino</label>
+        <input name="destination" placeholder="Ej: Terminal X / Cliente X">
+
+        <label>Chasis (número)</label>
+        <input name="chassis_number" placeholder="Ej: CH-12345">
+
+        <label>Notas (opcional)</label>
+        <textarea name="notes" rows="3" placeholder="Notas del EIR..."></textarea>
+
+        <p class="muted" style="margin-top:8px;">
+          (Chofer, cédula, placa y fotos no van aquí a menos que tú lo pidas para predios.)
+        </p>
+      </div>
+
+      <button type="submit" style="margin-top:14px;">
+        Guardar EIR y aplicar Gate Out
+      </button>
+
+    </div>
+  {% endif %}
+
 </form>
 {% endblock %}

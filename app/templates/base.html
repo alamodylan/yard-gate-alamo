@@ -28,7 +28,13 @@
       <nav class="navlinks" aria-label="Navegación principal">
         <a class="navlink" href="{{ url_for('yard.map_view') }}">Mapa</a>
         <a class="navlink" href="{{ url_for('yard.gate_in_view') }}">Gate In</a>
-        <a class="navlink" href="{{ url_for('yard.gate_out_view') }}">Gate Out</a>
+        <a class="navlink" href="{{ url_for('yard.gate_out_view') }}">
+          {% if active_site_key in ['COYOL', 'CALDERA', 'LIMON'] %}
+            Gate Out / EIR
+          {% else %}
+            Gate Out
+          {% endif %}
+        </a>
 
         {# ✅ Inventario SIEMPRE visible #}
         <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>

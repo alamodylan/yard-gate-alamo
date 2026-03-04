@@ -7,7 +7,9 @@
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
         <h2 style="margin:0;">Inventario de Contenedores</h2>
-        <p class="card-sub" style="margin-top:6px;">Listado general con filtro y acceso a detalle con fotos y movimientos.</p>
+        <p class="card-sub" style="margin-top:6px;">
+          Incluye clasificación (naviera/max gross/clase) y fecha de salida (EIR) si aplica.
+        </p>
       </div>
 
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -49,17 +51,17 @@
   </div>
 
   <div class="card" style="overflow:auto;">
-    <table class="table" style="min-width:980px;">
+    <table class="table" style="min-width:1300px;">
       <thead>
-        <tr>
-          <th>Contenedor</th>
-          <th>Tamaño</th>
-          <th>Año</th>
-          <th>En patio</th>
-          <th>Posición</th>
-          <th>Notas</th>
-          <th style="width:110px;">Acción</th>
-        </tr>
+        <th>Contenedor</th>
+        <th>Tamaño</th>
+        <th>Naviera</th>
+        <th>Año</th>
+        <th>Max Gross</th>
+        <th>Fecha salida (EIR)</th>
+        <th>Posición</th>
+        <th>Notas</th>
+        <th style="width:160px;">Acción</th>
       </thead>
 
       <tbody>
@@ -70,8 +72,41 @@
                 {{ it.code }}
               </a>
             </td>
+
             <td>{{ it.size }}</td>
-            <td>{{ it.year or "" }}</td>
+
+            <td>
+              {% if it.shipping_line %}
+                <span class="badge">{{ it.shipping_line }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td>
+              {% if it.max_gross_kg %}
+                {{ it.max_gross_kg }} KG
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td>
+              {% if it.classification_label %}
+                <span class="badge muted">{{ it.classification_label }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
+            <td>
+              {% if it.eir_trip_date %}
+                <span class="badge">{{ it.eir_trip_date }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+
             <td>
               {% if it.is_in_yard %}
                 <span class="badge success">Sí</span>
@@ -79,6 +114,7 @@
                 <span class="badge muted">No</span>
               {% endif %}
             </td>
+
             <td>
               {% if it.position %}
                 <span class="badge">
@@ -90,18 +126,30 @@
                 —
               {% endif %}
             </td>
-            <td style="color:rgba(229,231,235,.85);">
-              {{ it.status_notes or "" }}
+
+            <td style="color:rgba(229,231,235,.85); max-width:420px;">
+              {{ it.copy_notes or it.status_notes or "" }}
             </td>
-            <td>
+
+            <td style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <a class="btn" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
+
+              {% if it.copy_notes %}
+                <button class="btn copy-btn" type="button" data-id="{{ it.id }}">
+                  Copiar
+                </button>
+
+                <span id="copyText-{{ it.id }}" style="display:none;">
+                  {{ it.copy_notes }}
+                </span>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}
 
         {% if not items %}
           <tr>
-            <td colspan="7" style="color:rgba(229,231,235,.80);">
+            <td colspan="10" style="color:rgba(229,231,235,.80);">
               No hay registros con ese filtro.
             </td>
           </tr>
@@ -109,6 +157,39 @@
       </tbody>
     </table>
   </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+
+      document.querySelectorAll(".copy-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+
+          const id = btn.getAttribute("data-id");
+          const el = document.getElementById("copyText-" + id);
+          const txt = (el?.innerText || "").trim();
+
+          if (!txt) {
+            alert("No hay notas para copiar.");
+            return;
+          }
+
+          try {
+            await navigator.clipboard.writeText(txt);
+            alert("Notas copiadas ✅");
+          } catch (e) {
+            const ta = document.createElement("textarea");
+            ta.value = txt;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            alert("Notas copiadas ✅");
+          }
+        });
+      });
+
+    });
+  </script>
 {% endblock %}
 
 

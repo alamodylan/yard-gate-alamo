@@ -1,15 +1,24 @@
 # app/blueprints/yard/routes.py
 import re
-from datetime import datetime
 import os
-import requests
 import io
+from datetime import datetime
+
 import pytz
+import requests
+from sqlalchemy import text  # ✅ para SQL directo (predios EIR/chasis)
 
-CR_TZ = pytz.timezone("America/Costa_Rica")
-UTC_TZ = pytz.utc
-
-from flask import render_template, request, redirect, url_for, flash, jsonify, send_file, session, abort
+from flask import (
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    jsonify,
+    send_file,
+    session,
+    abort,
+)
 from flask_login import login_required, current_user
 
 from app.blueprints.yard import yard_bp
@@ -23,6 +32,12 @@ from app.services.audit import audit_log
 from app.services.yard_logic import find_first_free_slot
 from app.services.storage import get_storage, build_photo_key
 from app.services.ticketing import build_ticket_payload
+from app.models.eir import EIR
+from app.models.chassis import ChassisInventory
+from app.models.chassis_master import Chassis
+
+CR_TZ = pytz.timezone("America/Costa_Rica")
+UTC_TZ = pytz.utc
 
 CONTAINER_RE = re.compile(r"^[A-Z]{4}-\d{6}-\d$")
 SIZES = ["20ST", "40ST", "40HC", "45ST"]
@@ -30,11 +45,13 @@ APP_NAME = "Yard Gate Álamo"
 
 REPORT_TYPES = {"GATE_IN", "GATE_OUT", "MOVE"}
 
+# ✅ Predios reales (ATM no es predio; MAERSK queda igual)
+PREDIO_CODES = {"COYOL", "CALDERA", "LIMON"}
+
 
 # =========================
 # Multi-predio helpers (site)
 # =========================
-
 def _allowed_sites_for_user(user):
     if getattr(user, "role", None) == "admin":
         return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
@@ -71,6 +88,38 @@ def _ensure_active_site():
     return active_id
 
 
+# ==========================================================
+# Predio activo (helper para templates dinámicos)
+# ==========================================================
+def _active_site():
+    site_id = session.get("active_site_id")
+    if not site_id:
+        return None
+    return Site.query.get(site_id)
+
+
+def _active_site_key():
+    site = _active_site()
+    if not site:
+        return ""
+    value = getattr(site, "code", None) or getattr(site, "name", None) or ""
+    return value.strip().upper()
+
+
+@yard_bp.app_context_processor
+def inject_active_site():
+    return {"active_site_key": _active_site_key()}
+
+
+def _is_predio_site(site_id: int) -> bool:
+    """
+    True si el predio activo es COYOL/CALDERA/LIMON.
+    MAERSK y cualquier otro se queda con el flujo actual.
+    """
+    s = Site.query.get(site_id)
+    return bool(s and (s.code or "").upper() in PREDIO_CODES)
+
+
 def _register_ticket_print(site_id: int, movement_id: int, printed_by_user_id: int, payload: str) -> TicketPrint:
     row = TicketPrint(
         site_id=site_id,
@@ -86,7 +135,6 @@ def _register_ticket_print(site_id: int, movement_id: int, printed_by_user_id: i
 # =========================
 # Dashboard Sites
 # =========================
-
 @yard_bp.get("/sites")
 @login_required
 def sites_dashboard():
@@ -176,7 +224,6 @@ def bay_detail_view(bay_code: str):
 # =========================
 # APIs mapa / bandeja
 # =========================
-
 @yard_bp.get("/api/yard/containers-in-yard")
 @login_required
 def api_containers_in_yard():
@@ -388,7 +435,11 @@ def api_bay_rows_availability(bay_code: str):
             occ_tiers = {
                 int(t[0]) for t in db.session.query(ContainerPosition.tier)
                 .join(Container, Container.id == ContainerPosition.container_id)
-                .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_num, Container.site_id == site_id)
+                .filter(
+                    ContainerPosition.bay_id == bay.id,
+                    ContainerPosition.depth_row == row_num,
+                    Container.site_id == site_id
+                )
                 .all()
             }
             for t in range(1, max_levels + 1):
@@ -429,7 +480,11 @@ def api_bay_row_suggest_tier(bay_code: str, row_number: int):
     occupied = (
         db.session.query(ContainerPosition.tier)
         .join(Container, Container.id == ContainerPosition.container_id)
-        .filter(ContainerPosition.bay_id == bay.id, ContainerPosition.depth_row == row_number, Container.site_id == site_id)
+        .filter(
+            ContainerPosition.bay_id == bay.id,
+            ContainerPosition.depth_row == row_number,
+            Container.site_id == site_id
+        )
         .all()
     )
     occupied_tiers = {int(t[0]) for t in occupied}
@@ -683,7 +738,6 @@ def api_bay_row_containers(bay_code: str, row_number: int):
 # =========================
 # Gate In / Gate Out
 # =========================
-
 @yard_bp.get("/gate-in")
 @login_required
 def gate_in_view():
@@ -744,7 +798,10 @@ def gate_in_post():
         return redirect(url_for("yard.gate_in_view"))
 
     block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
-    bay = YardBay.query.filter_by(block_id=block.id, bay_number=bay_number, is_active=True, site_id=site_id).first() if block else None
+    bay = (
+        YardBay.query.filter_by(block_id=block.id, bay_number=bay_number, is_active=True, site_id=site_id).first()
+        if block else None
+    )
     if not bay:
         flash("Estiba no encontrada.", "danger")
         return redirect(url_for("yard.gate_in_view"))
@@ -754,8 +811,7 @@ def gate_in_post():
 
     # ==========================================================
     # ✅ CAMBIO QUIRÚRGICO multi-predio:
-    # Antes: Container.query.filter_by(code=code).first() (peligroso)
-    # Ahora: buscar por (site_id, code) + bloquear si está en patio en otro predio
+    # Buscar por (site_id, code) + bloquear si está en patio en otro predio
     # ==========================================================
     existing_here = Container.query.filter_by(site_id=site_id, code=code).first()
 
@@ -782,7 +838,6 @@ def gate_in_post():
         c.year = year
         c.status_notes = status_notes
         c.is_in_yard = True
-        # OJO: No tocamos site_id aquí porque ya es del predio actual
         db.session.add(c)
         db.session.flush()
     # ===================== FIN CAMBIO =========================
@@ -864,7 +919,6 @@ def gate_in_post():
                 )
             )
         except Exception as e:
-            # 🔒 No tumbamos el Gate In por error de fotos
             db.session.add(
                 MovementPhoto(
                     movement_id=mv.id,
@@ -886,11 +940,73 @@ def gate_in_post():
     return redirect(url_for("yard.ticket_view", movement_id=mv.id))
 
 
+def _fetch_open_eirs_for_site(site_id: int, limit: int = 200):
+    """
+    Predios: traer EIRs abiertos/pendientes para poder 'ligar'.
+    ⚠️ Usa SQL directo para no depender de modelos aún.
+    Ajusta nombres de tabla/columnas si tu DB los tiene distintos.
+    """
+    sql = text("""
+        SELECT
+            e.id,
+            COALESCE(e.eir_number::text, e.id::text) AS display_number,
+            e.status,
+            e.container_code,
+            e.chassis_code,
+            e.created_at
+        FROM yard_gate_alamo.eirs e
+        WHERE e.site_id = :sid
+          AND COALESCE(e.status,'') IN ('PENDIENTE','ASIGNADO','ABIERTO')
+        ORDER BY e.created_at DESC NULLS LAST, e.id DESC
+        LIMIT :lim
+    """)
+    rows = db.session.execute(sql, {"sid": site_id, "lim": int(limit)}).mappings().all()
+    return rows
+
+
 @yard_bp.get("/gate-out")
 @login_required
 def gate_out_view():
     site_id = _ensure_active_site()
 
+    # 🔸 Si NO es MAERSK (o sea: COYOL / CALDERA / LIMON), Gate Out = EIR flow
+    active_site = Site.query.get(site_id)
+    if active_site and (active_site.code or "").upper() in {"COYOL", "CALDERA", "LIMON"}:
+        containers = (
+            db.session.query(Container, ContainerPosition, YardBay)
+            .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+            .join(YardBay, YardBay.id == ContainerPosition.bay_id)
+            .filter(Container.is_in_yard == True, Container.site_id == site_id)  # noqa: E712
+            .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
+            .all()
+        )
+
+        # Chasis disponibles en patio (inventario)
+        chassis_rows = (
+            db.session.query(ChassisInventory, Chassis)
+            .join(Chassis, Chassis.id == ChassisInventory.chassis_id)
+            .filter(ChassisInventory.site_id == site_id, ChassisInventory.is_in_yard == True)  # noqa: E712
+            .order_by(Chassis.chassis_number.asc())
+            .all()
+        )
+
+        # EIRs draft del predio (por si quieren “ligar” uno existente)
+        eirs_draft = (
+            EIR.query
+            .filter_by(site_id=site_id, status="DRAFT")
+            .order_by(EIR.id.desc())
+            .limit(200)
+            .all()
+        )
+
+        return render_template(
+            "yard/gate_out_predios.html",
+            containers=containers,
+            chassis_rows=chassis_rows,
+            eirs_draft=eirs_draft,
+        )
+
+    # 🔹 MAERSK / flujo viejo intacto
     containers = (
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -906,7 +1022,182 @@ def gate_out_view():
 @login_required
 def gate_out_post():
     site_id = _ensure_active_site()
+    active_site = Site.query.get(site_id)
+    is_predio = bool(active_site and (active_site.code or "").upper() in {"COYOL", "CALDERA", "LIMON"})
 
+    # ==========================================================
+    # ✅ PREDIOS: Gate Out = crear/ligar EIR + sacar contenedor + sacar chasis
+    # ==========================================================
+    if is_predio:
+        mode = (request.form.get("mode") or "create").lower()  # create | link
+        eir_id_raw = request.form.get("eir_id")
+        container_id_raw = request.form.get("container_id")
+        chassis_id_raw = request.form.get("chassis_id")
+
+        # Datos básicos EIR
+        terminal_name = (request.form.get("terminal_name") or (active_site.name if active_site else "")).strip()
+        trip_date_raw = (request.form.get("trip_date") or "").strip()
+        origin = (request.form.get("origin") or "").strip()
+        destination = (request.form.get("destination") or "").strip()
+
+        driver_name = (request.form.get("driver_name") or "").strip()
+        driver_id_doc = (request.form.get("driver_id_doc") or "").strip()
+        truck_plate = (request.form.get("truck_plate") or "").strip()
+        notes = (request.form.get("notes") or "").strip()
+
+        has_container = bool(container_id_raw and str(container_id_raw).isdigit())
+        has_chassis = bool(chassis_id_raw and str(chassis_id_raw).isdigit())
+
+        if not terminal_name or not trip_date_raw or not origin or not destination:
+            flash("Completa Terminal, Fecha, Origen y Destino.", "danger")
+            return redirect(url_for("yard.gate_out_view"))
+
+        try:
+            trip_date = datetime.strptime(trip_date_raw, "%Y-%m-%d").date()
+        except Exception:
+            flash("Fecha inválida. Usa el selector (YYYY-MM-DD).", "danger")
+            return redirect(url_for("yard.gate_out_view"))
+
+        # Validar container si viene
+        c = None
+        bay_code = depth_row = tier = None
+        if has_container:
+            c = Container.query.get(int(container_id_raw))
+            if not c or not c.is_in_yard or c.site_id != site_id:
+                flash("Contenedor no válido o no está en patio (predio actual).", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+
+            pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+            if pos:
+                bay = YardBay.query.get(pos.bay_id)
+                bay_code = bay.code if bay else None
+                depth_row = pos.depth_row
+                tier = pos.tier
+
+        # Validar chassis si viene
+        ch = None
+        inv = None
+        if has_chassis:
+            ch = Chassis.query.get(int(chassis_id_raw))
+            if not ch or ch.site_id != site_id:
+                flash("Chasis inválido para este predio.", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+
+            inv = (
+                ChassisInventory.query
+                .filter_by(site_id=site_id, chassis_id=ch.id, is_in_yard=True)
+                .first()
+            )
+            if not inv:
+                flash("Ese chasis no está disponible en inventario (predio actual).", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+
+        # En predios, SIEMPRE debe haber contenedor (Movements.container_id es NOT NULL)
+        if not c:
+            flash("En Gate Out de predios, debes seleccionar el contenedor.", "danger")
+            return redirect(url_for("yard.gate_out_view"))
+
+        mv = Movement(
+            site_id=site_id,
+            container_id=c.id,
+            movement_type="GATE_OUT",
+            occurred_at=datetime.utcnow(),
+            bay_code=bay_code,
+            depth_row=depth_row,
+            tier=tier,
+            driver_name=driver_name or None,
+            driver_id_doc=driver_id_doc or None,
+            truck_plate=truck_plate or None,
+            notes=notes or None,
+            created_by_user_id=current_user.id,
+            created_at=datetime.utcnow(),
+        )
+        db.session.add(mv)
+        db.session.flush()
+
+        # Crear o ligar EIR
+        if mode == "link":
+            if not eir_id_raw or not str(eir_id_raw).isdigit():
+                db.session.rollback()
+                flash("Selecciona un EIR válido para ligar.", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+
+            eir = EIR.query.get(int(eir_id_raw))
+            if not eir or eir.site_id != site_id:
+                db.session.rollback()
+                flash("EIR no válido para este predio.", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+
+            if eir.status != "DRAFT":
+                db.session.rollback()
+                flash("Solo se puede ligar un EIR en estado DRAFT.", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+        else:
+            eir = EIR(
+                site_id=site_id,
+                created_by_user_id=current_user.id,
+                terminal_name=terminal_name,
+                trip_date=trip_date,
+                origin=origin,
+                destination=destination,
+                carrier="ATM",
+                has_chassis=True if ch else False,
+                chassis_id=ch.id if ch else None,
+                has_container=True,
+                container_id=c.id,
+                is_reefer=False,
+                has_genset=False,
+                status="DRAFT",
+            )
+            db.session.add(eir)
+            db.session.flush()
+
+        # Asegurar links mínimos
+        eir.has_container = True
+        eir.container_id = c.id
+
+        if ch:
+            eir.has_chassis = True
+            eir.chassis_id = ch.id
+        else:
+            eir.has_chassis = False
+            eir.chassis_id = None
+
+        eir.gate_out_movement_id = mv.id
+        eir.status = "FINAL"
+        eir.updated_at = db.func.now()
+
+        # Sacar contenedor del patio
+        ContainerPosition.query.filter_by(container_id=c.id).delete()
+        c.is_in_yard = False
+
+        # Sacar chasis del inventario + marcar master fuera (si aplica)
+        if inv:
+            inv.is_in_yard = False
+        if ch:
+            ch.is_in_yard = False
+
+        audit_log(
+            current_user.id,
+            "GATE_OUT_PREDIO_EIR_FINALIZED",
+            "eir",
+            eir.id,
+            {
+                "site_id": site_id,
+                "eir_id": eir.id,
+                "movement_id": mv.id,
+                "container": c.code,
+                "chassis_id": ch.id if ch else None,
+            },
+        )
+
+        db.session.commit()
+        flash(f"Gate Out (Predio) listo. EIR #{eir.id} FINAL. Contenedor {c.code} salió.", "success")
+        return redirect(url_for("yard.ticket_view", movement_id=mv.id))
+
+    # ==========================================================
+    # 🔹 MAERSK: tu flujo viejo intacto
+    # ==========================================================
     container_id = request.form.get("container_id")
     driver_name = (request.form.get("driver_name") or "").strip()
     driver_id_doc = (request.form.get("driver_id_doc") or "").strip()
@@ -978,7 +1269,6 @@ def gate_out_post():
 # =========================
 # Reportes (respetar filtros + export Excel)
 # =========================
-
 def _cr_range_to_utc_naive(date_from: str, date_to: str):
     """
     date_from/date_to vienen como YYYY-MM-DD (día CR).
@@ -1052,7 +1342,12 @@ def reports_run():
         "REPORT_RUN",
         "report",
         None,
-        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL", "site_id": site_id},
+        {
+            "from": request.args.get("date_from"),
+            "to": request.args.get("date_to"),
+            "movement_type": movement_type or "ALL",
+            "site_id": site_id,
+        },
     )
     db.session.commit()
 
@@ -1127,7 +1422,13 @@ def reports_export():
         "REPORT_EXPORTED",
         "report",
         None,
-        {"from": request.args.get("date_from"), "to": request.args.get("date_to"), "movement_type": movement_type or "ALL", "rows": len(rows), "site_id": site_id},
+        {
+            "from": request.args.get("date_from"),
+            "to": request.args.get("date_to"),
+            "movement_type": movement_type or "ALL",
+            "rows": len(rows),
+            "site_id": site_id,
+        },
     )
     db.session.commit()
 
@@ -1145,7 +1446,6 @@ def reports_export():
 # =========================
 # Tickets / impresión
 # =========================
-
 @yard_bp.post("/print/<int:movement_id>")
 @login_required
 def print_ticket(movement_id: int):
