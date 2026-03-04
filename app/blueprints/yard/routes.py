@@ -1624,6 +1624,12 @@ def chassis_import_post():
     updated = 0
     errors = []
 
+    # -------------------------
+    # 1) Leer Excel a memoria
+    # -------------------------
+    staged = []  # lista de dicts validados
+    numbers = []  # lista de chassis_number (para consulta IN)
+
     for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         chassis_number = (str(row[0]).strip() if row and row[0] is not None else "")
         plate = (str(row[1]).strip() if len(row) > 1 and row[1] is not None else None)
@@ -1635,7 +1641,7 @@ def chassis_import_post():
             errors.append(f"Fila {idx}: chassis_number inválido ({chassis_number})")
             continue
 
-        # Completar por prefijo si faltan datos
+        # fallback por prefijo SOLO si falta algo
         d_len, d_ax, d_type = classify_chassis_number(chassis_number)
 
         if (not length_ft) or (not axles):
@@ -1659,7 +1665,43 @@ def chassis_import_post():
             errors.append(f"Fila {idx}: fuera de rango length_ft={length_ft} axles={axles}")
             continue
 
-        existing = Chassis.query.filter_by(site_id=site_id, chassis_number=chassis_number).first()
+        staged.append({
+            "idx": idx,
+            "chassis_number": chassis_number,
+            "plate": plate,
+            "length_ft": length_ft,
+            "axles": axles,
+            "type_code": type_code,
+        })
+        numbers.append(chassis_number)
+
+    # Si todo está malo, salimos sin pegarle duro a la DB
+    if not staged:
+        flash(f"No se importó nada. Errores: {len(errors)}", "danger")
+        session["chassis_import_errors"] = errors[:200]
+        return redirect(url_for("yard.chassis_import_view"))
+
+    # -------------------------------------------
+    # 2) Traer existentes en UNA sola consulta IN
+    # -------------------------------------------
+    existing_rows = (
+        Chassis.query
+        .filter(Chassis.site_id == site_id, Chassis.chassis_number.in_(numbers))
+        .all()
+    )
+    existing_map = {c.chassis_number: c for c in existing_rows}
+
+    # -------------------------
+    # 3) Upsert en memoria
+    # -------------------------
+    for item in staged:
+        chassis_number = item["chassis_number"]
+        plate = item["plate"]
+        length_ft = item["length_ft"]
+        axles = item["axles"]
+        type_code = item["type_code"]
+
+        existing = existing_map.get(chassis_number)
         if existing:
             existing.plate = plate
             existing.length_ft = length_ft
@@ -1682,6 +1724,9 @@ def chassis_import_post():
             db.session.add(ch)
             imported += 1
 
+    # -------------------------
+    # 4) Un solo commit
+    # -------------------------
     db.session.commit()
 
     if errors:
