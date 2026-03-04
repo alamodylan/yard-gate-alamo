@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+{% block title %}Chasis {{ ch.chassis_number }} - Yard Gate Álamo{% endblock %}
+{% block content %}
+
+<style>
+  .ch-wrap{max-width:1150px}
+  .ch-grid{display:grid;grid-template-columns:420px 1fr;gap:16px;align-items:start}
+  @media (max-width: 980px){ .ch-grid{grid-template-columns:1fr} }
+
+  .ch-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
+  .ch-head h2{margin:0}
+  .muted{opacity:.75}
+  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
+  .kv{display:grid;grid-template-columns:150px 1fr;gap:8px;margin-top:10px}
+  .kv div{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
+  .kv .k{opacity:.8;font-weight:600}
+  .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+
+  /* MAP */
+  .map-card{padding:14px}
+  .map-area{position:relative;width:100%;aspect-ratio: 3/6; min-height:520px; border-radius:16px;
+            background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+            border:1px solid rgba(255,255,255,.10);
+            overflow:hidden}
+  .frame{position:absolute;left:50%;transform:translateX(-50%);
+         top:10px; bottom:10px; width:60%;
+         border-radius:14px;border:3px solid rgba(0,0,0,.45);
+         box-shadow: inset 0 0 0 2px rgba(255,255,255,.05);}
+
+  .axle{position:absolute;left:50%;transform:translateX(-50%);width:66%;height:10px;
+        background:rgba(0,0,0,.55); border-radius:999px}
+  .axle.ax1{top:68%}
+  .axle.ax2{top:80%}
+  .axle.ax3{top:92%}
+
+  .wheel{
+    position:absolute;
+    width:46px;height:86px;border-radius:12px;
+    background:rgba(0,0,0,.85);
+    border:2px solid rgba(255,255,255,.07);
+    cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 18px rgba(0,0,0,.35);
+    transition: transform .08s ease, box-shadow .08s ease, outline .08s ease;
+  }
+  .wheel:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.45)}
+  .wheel .tag{
+    font-size:11px;
+    padding:2px 6px;
+    border-radius:999px;
+    background:rgba(255,255,255,.10);
+    border:1px solid rgba(255,255,255,.14);
+    color:rgba(255,255,255,.95);
+    user-select:none;
+  }
+
+  /* State coloring */
+  .st-OK{outline: 3px solid rgba(0, 200, 120, .55)}
+  .st-GASTADA{outline: 3px solid rgba(255, 193, 7, .6)}
+  .st-PINCHADA{outline: 3px solid rgba(255, 87, 34, .65)}
+  .st-CAMBIAR{outline: 3px solid rgba(255, 0, 100, .65)}
+  .st-NO_APTA{outline: 3px solid rgba(180, 0, 0, .7)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+  .lg{display:flex;gap:8px;align-items:center;font-size:13px;opacity:.9}
+  .dot{width:14px;height:14px;border-radius:4px;background:#999;outline:2px solid rgba(255,255,255,.12)}
+  .dot.ok{background:rgba(0, 200, 120, .55)}
+  .dot.g{background:rgba(255, 193, 7, .6)}
+  .dot.p{background:rgba(255, 87, 34, .65)}
+  .dot.c{background:rgba(255, 0, 100, .65)}
+  .dot.n{background:rgba(180, 0, 0, .7)}
+
+  /* Right side table */
+  .pos-table{width:100%;border-collapse:collapse}
+  .pos-table th,.pos-table td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
+  .pos-table th{opacity:.85;font-weight:700}
+  .badge{
+    display:inline-flex;align-items:center;gap:6px;
+    padding:4px 10px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);
+    font-size:12px;font-weight:700;
+  }
+  .badge[data-st="OK"]{border-color:rgba(0,200,120,.55)}
+  .badge[data-st="GASTADA"]{border-color:rgba(255,193,7,.6)}
+  .badge[data-st="PINCHADA"]{border-color:rgba(255,87,34,.65)}
+  .badge[data-st="CAMBIAR"]{border-color:rgba(255,0,100,.65)}
+  .badge[data-st="NO_APTA"]{border-color:rgba(180,0,0,.7)}
+
+  /* Modal */
+  .modal-backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.55);
+    display:none;align-items:center;justify-content:center;z-index:9999;
+    padding:18px;
+  }
+  .modal{
+    width:min(560px, 100%);
+    border-radius:16px;
+    background:rgba(25,25,30,.98);
+    border:1px solid rgba(255,255,255,.14);
+    box-shadow:0 24px 60px rgba(0,0,0,.55);
+    overflow:hidden;
+  }
+  .modal-h{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.10)}
+  .modal-b{padding:14px 16px;display:grid;gap:10px}
+  .modal-f{padding:12px 16px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid rgba(255,255,255,.10)}
+  .xbtn{cursor:pointer;border:0;background:transparent;color:rgba(255,255,255,.85);font-size:18px}
+  .frow{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center}
+  .frow input,.frow select, .frow textarea{
+    width:100%;
+    padding:10px 10px;border-radius:10px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);
+    color:rgba(255,255,255,.95);
+    outline:none;
+  }
+  .frow textarea{min-height:70px;resize:vertical}
+  .help{font-size:12px;opacity:.75}
+</style>
+
+<div class="ch-wrap">
+
+  <div class="card card-pad">
+    <div class="ch-head">
+      <div>
+        <h2>Chasis <span class="muted">#</span>{{ ch.chassis_number }}</h2>
+        <div class="muted" style="margin-top:4px;">
+          Predio: <b>{{ ch.site.name if ch.site else "—" }}</b>
+          &nbsp;•&nbsp;
+          En patio: <b>{{ "Sí" if ch.is_in_yard else "No" }}</b>
+        </div>
+      </div>
+      <div class="pill">
+        <span>Tipo:</span>
+        <b>{{ length_ft }} ft</b>
+        <span class="muted">•</span>
+        <b>{{ axles }} ejes</b>
+      </div>
+    </div>
+
+    <div class="ch-grid">
+      <!-- LEFT: MAP -->
+      <div class="card map-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+          <div style="font-weight:800;">Mapa de llantas</div>
+          <button class="btn btn-sm" type="button" id="btnReload">Recargar</button>
+        </div>
+
+        <div class="map-area" style="margin-top:10px;">
+          <div class="frame"></div>
+
+          <div class="axle ax1"></div>
+          <div class="axle ax2"></div>
+          {% if axles == 3 %}
+            <div class="axle ax3"></div>
+          {% endif %}
+
+          <!-- Wheels are positioned in % so it scales -->
+          <!-- AX1 -->
+          <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
+          <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
+          <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
+          <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
+
+          <!-- AX2 -->
+          <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
+          <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
+          <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
+          <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
+
+          {% if axles == 3 %}
+          <!-- AX3 -->
+          <div class="wheel" data-pos="AX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
+          <div class="wheel" data-pos="AX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
+          <div class="wheel" data-pos="AX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
+          <div class="wheel" data-pos="AX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
+          {% endif %}
+        </div>
+
+        <div class="legend">
+          <div class="lg"><span class="dot ok"></span> OK</div>
+          <div class="lg"><span class="dot g"></span> GASTADA</div>
+          <div class="lg"><span class="dot p"></span> PINCHADA</div>
+          <div class="lg"><span class="dot c"></span> CAMBIAR</div>
+          <div class="lg"><span class="dot n"></span> NO_APTA</div>
+        </div>
+
+        <div class="help" style="margin-top:10px;">
+          Tip: tocá una llanta para editar marchamo, número, marca y estado.
+        </div>
+      </div>
+
+      <!-- RIGHT: DETAILS -->
+      <div class="card card-pad">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div style="font-weight:800;">Detalle por posición</div>
+          <a class="btn btn-ghost btn-sm" href="{{ url_for('yard.chassis_list') }}">Volver</a>
+        </div>
+
+        <div class="kv">
+          <div class="k">Placa</div><div>{{ ch.plate or "—" }}</div>
+          <div class="k">type_code</div><div>{{ ch.type_code or "—" }}</div>
+          <div class="k">Creado</div><div>{{ ch.created_at.strftime("%Y-%m-%d %H:%M") if ch.created_at else "—" }}</div>
+        </div>
+
+        <table class="pos-table" style="margin-top:14px;">
+          <thead>
+            <tr>
+              <th>Posición</th>
+              <th>Número llanta</th>
+              <th>Marca</th>
+              <th>Marchamo</th>
+              <th>Estado</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="posTbody">
+            <tr><td colspan="6">Cargando...</td></tr>
+          </tbody>
+        </table>
+
+        <div class="help" style="margin-top:10px;">
+          Los cambios se guardan por posición. Si no existe la llanta, se crea en catálogo automáticamente.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-h">
+      <div style="font-weight:900;">
+        Editar llanta <span class="muted">•</span> <span id="mPosLabel"></span>
+      </div>
+      <button class="xbtn" id="modalClose" title="Cerrar">✕</button>
+    </div>
+
+    <div class="modal-b">
+      <div class="frow">
+        <div style="font-weight:700;">Marchamo</div>
+        <input id="mMarchamo" type="text" placeholder="Ej: MCH-123456">
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:700;">Número llanta</div>
+        <input id="mTireNumber" type="text" placeholder="Ej: TL-000987">
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:700;">Marca</div>
+        <input id="mBrand" type="text" placeholder="Ej: Michelin">
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:700;">Estado</div>
+        <select id="mState">
+          <option value="OK">OK</option>
+          <option value="GASTADA">GASTADA</option>
+          <option value="PINCHADA">PINCHADA</option>
+          <option value="CAMBIAR">CAMBIAR</option>
+          <option value="NO_APTA">NO_APTA</option>
+        </select>
+      </div>
+
+      <div class="help">
+        Si querés “vaciar” una posición, dejá número y marchamo vacíos y poné estado OK. (No borra el catálogo, solo desvincula.)
+      </div>
+    </div>
+
+    <div class="modal-f">
+      <button class="btn btn-ghost" id="btnCancel" type="button">Cancelar</button>
+      <button class="btn" id="btnSave" type="button">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div id="chassisMeta"
+     data-chassis-id="{{ ch.id }}"
+     data-api-prefix="{{ url_for('yard.api_chassis_tires_get', chassis_id=ch.id) | replace('/tires','') }}">
+</div>
+
+<script>
+(function(){
+  const meta = document.getElementById("chassisMeta");
+  const CHASSIS_ID = meta.dataset.chassisId;
+
+  // api_prefix queda como: /yard/api/chassis/123
+  const API_PREFIX = meta.dataset.apiPrefix;
+
+  const API_GET = `${API_PREFIX}/tires`;
+  const API_SET = `${API_PREFIX}/tires`;
+
+  const backdrop = document.getElementById("modalBackdrop");
+  const modalClose = document.getElementById("modalClose");
+  const btnCancel = document.getElementById("btnCancel");
+  const btnSave = document.getElementById("btnSave");
+  const btnReload = document.getElementById("btnReload");
+
+  const mPosLabel = document.getElementById("mPosLabel");
+  const mMarchamo = document.getElementById("mMarchamo");
+  const mTireNumber = document.getElementById("mTireNumber");
+  const mBrand = document.getElementById("mBrand");
+  const mState = document.getElementById("mState");
+
+  const tbody = document.getElementById("posTbody");
+  const wheels = Array.from(document.querySelectorAll(".wheel"));
+
+  let stateCache = {}; // positions dict
+  let currentPos = null;
+
+  function esc(s){ return (s ?? "").toString(); }
+
+  function posPretty(pos){
+    // AX2_L_OUT -> A2 LO
+    const m = pos.match(/^AX(\d)_(L|R)_(IN|OUT)$/);
+    if (!m) return pos;
+    return `A${m[1]} ${m[2]==="L"?"L":"R"}${m[3]==="IN"?"I":"O"}`;
+  }
+
+  function applyWheelClass(pos, tireState){
+    const el = wheels.find(w => w.dataset.pos === pos);
+    if (!el) return;
+
+    el.classList.remove("st-OK","st-GASTADA","st-PINCHADA","st-CAMBIAR","st-NO_APTA");
+    const st = (tireState || "OK").toUpperCase();
+    el.classList.add(`st-${st}`);
+  }
+
+  function badge(st){
+    const s = (st || "OK").toUpperCase();
+    return `<span class="badge" data-st="${s}">${s}</span>`;
+  }
+
+  function renderTable(positions){
+    const keys = Object.keys(positions || {}).sort();
+    if (!keys.length){
+      tbody.innerHTML = `<tr><td colspan="6">No hay posiciones para este chasis.</td></tr>`;
+      return;
+    }
+
+    const rows = keys.map(pos => {
+      const p = positions[pos];
+      const tire_number = p ? (p.tire_number || "") : "";
+      const brand = p ? (p.brand || "") : "";
+      const marchamo = p ? (p.marchamo || "") : "";
+      const st = p ? (p.tire_state || "OK") : "OK";
+
+      return `
+        <tr>
+          <td style="font-weight:800;">${esc(posPretty(pos))}<div class="help">${esc(pos)}</div></td>
+          <td>${tire_number ? esc(tire_number) : "—"}</td>
+          <td>${brand ? esc(brand) : "—"}</td>
+          <td>${marchamo ? esc(marchamo) : "—"}</td>
+          <td>${badge(st)}</td>
+          <td style="text-align:right;">
+            <button class="btn btn-sm" type="button" data-edit="${esc(pos)}">Editar</button>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+    tbody.innerHTML = rows;
+
+    // bind edit buttons
+    Array.from(document.querySelectorAll("[data-edit]")).forEach(btn => {
+      btn.addEventListener("click", () => openModal(btn.dataset.edit));
+    });
+  }
+
+  async function loadPositions(){
+    tbody.innerHTML = `<tr><td colspan="6">Cargando...</td></tr>`;
+    try{
+      const r = await fetch(API_GET, {headers: {"Accept":"application/json"}});
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || "LOAD_FAILED");
+      stateCache = j.positions || {};
+      // apply wheel outlines
+      Object.keys(stateCache).forEach(pos => {
+        const st = stateCache[pos] ? stateCache[pos].tire_state : "OK";
+        applyWheelClass(pos, st);
+      });
+      renderTable(stateCache);
+    }catch(e){
+      tbody.innerHTML = `<tr><td colspan="6">Error cargando llantas: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function openModal(pos){
+    currentPos = pos;
+    const p = stateCache[pos] || null;
+
+    mPosLabel.textContent = posPretty(pos);
+    mMarchamo.value = p?.marchamo || "";
+    mTireNumber.value = p?.tire_number || "";
+    mBrand.value = p?.brand || "";
+    mState.value = (p?.tire_state || "OK").toUpperCase();
+
+    backdrop.style.display = "flex";
+    backdrop.setAttribute("aria-hidden","false");
+    setTimeout(()=> mMarchamo.focus(), 50);
+  }
+
+  function closeModal(){
+    currentPos = null;
+    backdrop.style.display = "none";
+    backdrop.setAttribute("aria-hidden","true");
+  }
+
+  async function saveModal(){
+    if (!currentPos) return;
+
+    btnSave.disabled = true;
+    btnSave.textContent = "Guardando...";
+
+    const payload = {
+      position_code: currentPos,
+      marchamo: mMarchamo.value.trim(),
+      tire_number: mTireNumber.value.trim(),
+      brand: mBrand.value.trim(),
+      tire_state: mState.value.trim()
+    };
+
+    try{
+      const r = await fetch(API_SET, {
+        method: "POST",
+        headers: {"Content-Type":"application/json", "Accept":"application/json"},
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) throw new Error(j.error || "SAVE_FAILED");
+
+      closeModal();
+      await loadPositions();
+    }catch(e){
+      alert("No se pudo guardar: " + e.message);
+    }finally{
+      btnSave.disabled = false;
+      btnSave.textContent = "Guardar";
+    }
+  }
+
+  // wheel click opens modal
+  wheels.forEach(w => w.addEventListener("click", ()=> openModal(w.dataset.pos)));
+
+  // close handlers
+  modalClose.addEventListener("click", closeModal);
+  btnCancel.addEventListener("click", closeModal);
+  backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
+  document.addEventListener("keydown", (e)=>{ if (e.key === "Escape" && backdrop.style.display === "flex") closeModal(); });
+
+  btnSave.addEventListener("click", saveModal);
+  btnReload.addEventListener("click", loadPositions);
+
+  // init
+  loadPositions();
+})();
+</script>
+
+{% endblock %}

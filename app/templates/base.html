@@ -39,6 +39,9 @@
         {# ✅ Inventario SIEMPRE visible #}
         <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
 
+        {# ✅ NUEVO: Chasis (lista principal con botones Dashboard/Import/Export) #}
+        <a class="navlink" href="{{ url_for('yard.chassis_list') }}">Chasis</a>
+
         <a class="navlink" href="{{ url_for('yard.reports_view') }}">Reportes</a>
 
         {# ✅ Admin menu (solo admin) #}

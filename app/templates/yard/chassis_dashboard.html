@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Dashboard Chasis - Yard Gate Álamo{% endblock %}
+
+{% block content %}
+<div class="card card-pad" style="max-width:1100px;">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+    <h2 style="margin:0;">Dashboard de Chasis</h2>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn btn-ghost" href="{{ url_for('yard.chassis_list') }}">Ver lista</a>
+      <a class="btn" href="{{ url_for('yard.chassis_import_view') }}">Importar Excel</a>
+      <a class="btn btn-secondary" href="{{ url_for('yard.chassis_export') }}">Descargar Excel</a>
+    </div>
+  </div>
+
+  <div style="margin-top:14px; display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+    <div class="card card-pad">
+      <div style="font-size:13px; opacity:.75;">Total chasis (predio activo)</div>
+      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ total }}</div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="font-size:13px; opacity:.75;">40 pies · 2 ejes</div>
+      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["40FT_2AX"] }}</div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="font-size:13px; opacity:.75;">40 pies · 3 ejes</div>
+      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["40FT_3AX"] }}</div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="font-size:13px; opacity:.75;">20 pies · 2 ejes</div>
+      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["20FT_2AX"] }}</div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="font-size:13px; opacity:.75;">20 pies · 3 ejes</div>
+      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["20FT_3AX"] }}</div>
+    </div>
+
+    <div class="card card-pad">
+      <div style="font-size:13px; opacity:.75;">Sin clasificar</div>
+      <div style="font-size:34px; font-weight:800; margin-top:4px;">
+        {{ unknown }}
+      </div>
+      <div style="margin-top:6px; font-size:12px; opacity:.75;">
+        type_code vacío o UNKNOWN
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:14px; font-size:13px; opacity:.8;">
+    Nota: este dashboard muestra únicamente los chasis del <b>predio activo</b>.
+  </div>
+</div>
+{% endblock %}

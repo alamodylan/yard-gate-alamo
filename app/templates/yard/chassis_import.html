@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Importar Chasis - Yard Gate Álamo{% endblock %}
+{% block content %}
+
+<div class="card card-pad" style="max-width:900px;">
+
+  <h2>Importar Chasis (Excel)</h2>
+
+  <div class="alert alert-info">
+
+    <div style="font-weight:700;">Plantilla esperada:</div>
+
+    <pre style="margin:8px 0 0 0;">
+chassis_number | plate | length_ft | axles | type_code
+    </pre>
+
+    <div style="margin-top:8px; line-height:1.5;">
+      <b>chassis_number</b> → número del chasis (5 dígitos). Ej: 40123<br>
+      <b>plate</b> → placa del chasis.<br>
+      <b>length_ft</b> → largo del chasis en pies (20 / 40 / 45).<br>
+      <b>axles</b> → cantidad de ejes (2 o 3).<br>
+      <b>type_code</b> → código interno del chasis.
+    </div>
+
+    <div style="margin-top:10px;">
+      Si <b>length_ft</b> y <b>axles</b> están vacíos, el sistema los deduce automáticamente según el prefijo del chasis.
+    </div>
+
+  </div>
+
+
+  <!-- BOTONES DE ACCIÓN -->
+  <div style="display:flex; gap:10px; margin-bottom:15px; flex-wrap:wrap;">
+
+    <a class="btn btn-secondary"
+       href="{{ url_for('yard.chassis_export') }}">
+       Descargar plantilla (con datos actuales)
+    </a>
+
+    <a class="btn btn-ghost"
+       href="{{ url_for('yard.chassis_list') }}">
+       Ver lista de chasis
+    </a>
+
+  </div>
+
+
+  <!-- FORMULARIO DE IMPORTACIÓN -->
+
+  <form method="post"
+        enctype="multipart/form-data"
+        style="display:grid; gap:10px;">
+
+    <input
+      type="file"
+      name="file"
+      accept=".xlsx,.xlsm"
+      required
+    >
+
+    <button class="btn" type="submit">
+      Importar Excel
+    </button>
+
+  </form>
+
+</div>
+
+{% endblock %}

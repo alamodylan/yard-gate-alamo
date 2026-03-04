@@ -35,6 +35,8 @@ from app.services.ticketing import build_ticket_payload
 from app.models.eir import EIR
 from app.models.chassis import ChassisInventory
 from app.models.chassis import Chassis
+from app.models.tire import Tire
+from app.models.chassis_tire import ChassisTire
 
 CR_TZ = pytz.timezone("America/Costa_Rica")
 UTC_TZ = pytz.utc
@@ -44,6 +46,9 @@ SIZES = ["20ST", "40ST", "40HC", "45ST"]
 APP_NAME = "Yard Gate Álamo"
 
 REPORT_TYPES = {"GATE_IN", "GATE_OUT", "MOVE"}
+
+CHASSIS_NUM_RE = re.compile(r"^\d{5}$")
+TIRE_STATES = {"OK", "GASTADA", "PINCHADA", "CAMBIAR", "NO_APTA"}
 
 # ✅ Predios reales (ATM no es predio; MAERSK queda igual)
 PREDIO_CODES = {"COYOL", "CALDERA", "LIMON"}
@@ -1522,6 +1527,478 @@ def ticket_reprint(print_id: int):
     return render_template("yard/ticket.html", mv=mv, c=c, payload=tp.ticket_payload, is_reprint=True)
 
 
+def classify_chassis_number(num: str):
+    prefix = num[:2]
+    if prefix == "40":
+        return 40, 2, "40FT_2AX"
+    if prefix == "43":
+        return 40, 3, "40FT_3AX"
+    if prefix == "20":
+        return 20, 2, "20FT_2AX"
+    if prefix == "23":
+        return 20, 3, "20FT_3AX"
+    return None, None, "UNKNOWN"
 
 
+def allowed_positions_for(axles: int):
+    if axles == 2:
+        return [
+            "AX1_L_IN", "AX1_L_OUT", "AX1_R_IN", "AX1_R_OUT",
+            "AX2_L_IN", "AX2_L_OUT", "AX2_R_IN", "AX2_R_OUT",
+        ]
+    if axles == 3:
+        return [
+            "AX1_L_IN", "AX1_L_OUT", "AX1_R_IN", "AX1_R_OUT",
+            "AX2_L_IN", "AX2_L_OUT", "AX2_R_IN", "AX2_R_OUT",
+            "AX3_L_IN", "AX3_L_OUT", "AX3_R_IN", "AX3_R_OUT",
+        ]
+    return []
+
+
+@yard_bp.get("/chassis")
+@login_required
+def chassis_list():
+    site_id = _ensure_active_site()
+    rows = Chassis.query.filter_by(site_id=site_id).order_by(Chassis.chassis_number.asc()).all()
+    return render_template("yard/chassis_list.html", rows=rows)
+
+
+@yard_bp.get("/chassis/import")
+@login_required
+def chassis_import_view():
+    return render_template("yard/chassis_import.html")
+
+
+@yard_bp.post("/chassis/import")
+@login_required
+def chassis_import_post():
+    site_id = _ensure_active_site()
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Sube un archivo Excel.", "danger")
+        return redirect(url_for("yard.chassis_import_view"))
+
+    try:
+        from openpyxl import load_workbook
+    except Exception:
+        flash("Falta openpyxl en requirements.txt", "danger")
+        return redirect(url_for("yard.chassis_import_view"))
+
+    wb = load_workbook(f, data_only=True)
+    ws = wb.active
+
+    imported = 0
+    updated = 0
+    errors = []
+
+    for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        chassis_number = (str(row[0]).strip() if row and row[0] is not None else "")
+        plate = (str(row[1]).strip() if len(row) > 1 and row[1] is not None else None)
+        length_ft = row[2] if len(row) > 2 else None
+        axles = row[3] if len(row) > 3 else None
+        type_code = (str(row[4]).strip() if len(row) > 4 and row[4] is not None else None)
+
+        if not CHASSIS_NUM_RE.match(chassis_number):
+            errors.append(f"Fila {idx}: chassis_number inválido ({chassis_number})")
+            continue
+
+        if not length_ft or not axles or not type_code:
+            d_len, d_ax, d_type = classify_chassis_number(chassis_number)
+            if d_len is None or d_ax is None:
+                errors.append(f"Fila {idx}: prefijo no reconocido ({chassis_number})")
+                continue
+            length_ft = int(length_ft) if length_ft else d_len
+            axles = int(axles) if axles else d_ax
+            type_code = type_code or d_type
+
+        try:
+            length_ft = int(length_ft)
+            axles = int(axles)
+        except Exception:
+            errors.append(f"Fila {idx}: length_ft/axles inválidos")
+            continue
+
+        if length_ft not in (20, 40, 45) or axles not in (2, 3):
+            errors.append(f"Fila {idx}: fuera de rango length_ft={length_ft} axles={axles}")
+            continue
+
+        existing = Chassis.query.filter_by(site_id=site_id, chassis_number=chassis_number).first()
+        if existing:
+            existing.plate = plate
+            existing.length_ft = length_ft
+            existing.axles = axles
+            existing.type_code = type_code
+            existing.has_plate = True if plate else False
+            db.session.add(existing)
+            updated += 1
+        else:
+            ch = Chassis(
+                site_id=site_id,
+                chassis_number=chassis_number,
+                plate=plate,
+                length_ft=length_ft,
+                axles=axles,
+                type_code=type_code,
+                has_plate=True if plate else False,
+                is_in_yard=True,
+            )
+            db.session.add(ch)
+            imported += 1
+
+    db.session.commit()
+
+    if errors:
+        flash(f"Importado: {imported} | Actualizado: {updated} | Errores: {len(errors)}", "warning")
+        session["chassis_import_errors"] = errors[:200]
+    else:
+        flash(f"Importado: {imported} | Actualizado: {updated}", "success")
+        session.pop("chassis_import_errors", None)
+
+    return redirect(url_for("yard.chassis_list"))
+
+
+@yard_bp.get("/chassis/<int:chassis_id>")
+@login_required
+def chassis_detail(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    axles = int(getattr(ch, "axles", 2) or 2)
+    length_ft = int(getattr(ch, "length_ft", 40) or 40)
+    return render_template("yard/chassis_detail.html", ch=ch, axles=axles, length_ft=length_ft)
+
+
+@yard_bp.get("/api/chassis/<int:chassis_id>/tires")
+@login_required
+def api_chassis_tires_get(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    axles = int(getattr(ch, "axles", 2) or 2)
+    allowed = set(allowed_positions_for(axles))
+
+    rows = ChassisTire.query.filter_by(chassis_id=ch.id).all()
+    positions = {p: None for p in allowed}
+
+    for r in rows:
+        if r.position_code not in allowed:
+            continue
+        positions[r.position_code] = {
+            "marchamo": r.marchamo,
+            "tire_state": r.tire_state,
+            "tire_number": r.tire.tire_number if r.tire else None,
+            "brand": r.tire.brand if r.tire else None,
+        }
+
+    return jsonify({"ok": True, "positions": positions})
+
+
+@yard_bp.post("/api/chassis/<int:chassis_id>/tires")
+@login_required
+def api_chassis_tires_set(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    axles = int(getattr(ch, "axles", 2) or 2)
+    allowed = set(allowed_positions_for(axles))
+
+    data = request.get_json(silent=True) or {}
+    pos = (data.get("position_code") or "").strip().upper()
+    if pos not in allowed:
+        return jsonify({"ok": False, "error": "INVALID_POSITION"}), 400
+
+    marchamo = (data.get("marchamo") or "").strip()
+    tire_number = (data.get("tire_number") or "").strip()
+    brand = (data.get("brand") or "").strip()
+    tire_state = (data.get("tire_state") or "OK").strip().upper()
+
+    if tire_state not in TIRE_STATES:
+        return jsonify({"ok": False, "error": "INVALID_TIRE_STATE"}), 400
+
+    tire = None
+    if tire_number:
+        tire = Tire.query.filter_by(tire_number=tire_number).first()
+        if not tire:
+            tire = Tire(tire_number=tire_number, brand=brand or None)
+            db.session.add(tire)
+            db.session.flush()
+        else:
+            if brand and (tire.brand != brand):
+                tire.brand = brand
+                db.session.add(tire)
+
+    row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
+    if not row:
+        row = ChassisTire(chassis_id=ch.id, position_code=pos)
+
+    row.marchamo = marchamo or None
+    row.tire_state = tire_state
+    row.tire_id = tire.id if tire else None
+    row.updated_at = datetime.utcnow()
+
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+def classify_chassis_number(num: str):
+    prefix = num[:2]
+    if prefix == "40":
+        return 40, 2, "40FT_2AX"
+    if prefix == "43":
+        return 40, 3, "40FT_3AX"
+    if prefix == "20":
+        return 20, 2, "20FT_2AX"
+    if prefix == "23":
+        return 20, 3, "20FT_3AX"
+    return None, None, "UNKNOWN"
+
+
+def allowed_positions_for(axles: int):
+    if axles == 2:
+        return [
+            "AX1_L_IN", "AX1_L_OUT", "AX1_R_IN", "AX1_R_OUT",
+            "AX2_L_IN", "AX2_L_OUT", "AX2_R_IN", "AX2_R_OUT",
+        ]
+    if axles == 3:
+        return [
+            "AX1_L_IN", "AX1_L_OUT", "AX1_R_IN", "AX1_R_OUT",
+            "AX2_L_IN", "AX2_L_OUT", "AX2_R_IN", "AX2_R_OUT",
+            "AX3_L_IN", "AX3_L_OUT", "AX3_R_IN", "AX3_R_OUT",
+        ]
+    return []
+
+
+@yard_bp.get("/chassis")
+@login_required
+def chassis_list():
+    site_id = _ensure_active_site()
+    rows = Chassis.query.filter_by(site_id=site_id).order_by(Chassis.chassis_number.asc()).all()
+    return render_template("yard/chassis_list.html", rows=rows)
+
+
+@yard_bp.get("/chassis/import")
+@login_required
+def chassis_import_view():
+    return render_template("yard/chassis_import.html")
+
+
+@yard_bp.post("/chassis/import")
+@login_required
+def chassis_import_post():
+    site_id = _ensure_active_site()
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Sube un archivo Excel.", "danger")
+        return redirect(url_for("yard.chassis_import_view"))
+
+    try:
+        from openpyxl import load_workbook
+    except Exception:
+        flash("Falta openpyxl en requirements.txt", "danger")
+        return redirect(url_for("yard.chassis_import_view"))
+
+    wb = load_workbook(f, data_only=True)
+    ws = wb.active
+
+    imported = 0
+    updated = 0
+    errors = []
+
+    for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        chassis_number = (str(row[0]).strip() if row and row[0] is not None else "")
+        plate = (str(row[1]).strip() if len(row) > 1 and row[1] is not None else None)
+        length_ft = row[2] if len(row) > 2 else None
+        axles = row[3] if len(row) > 3 else None
+        type_code = (str(row[4]).strip() if len(row) > 4 and row[4] is not None else None)
+
+        if not CHASSIS_NUM_RE.match(chassis_number):
+            errors.append(f"Fila {idx}: chassis_number inválido ({chassis_number})")
+            continue
+
+        if not length_ft or not axles or not type_code:
+            d_len, d_ax, d_type = classify_chassis_number(chassis_number)
+            if d_len is None or d_ax is None:
+                errors.append(f"Fila {idx}: prefijo no reconocido ({chassis_number})")
+                continue
+            length_ft = int(length_ft) if length_ft else d_len
+            axles = int(axles) if axles else d_ax
+            type_code = type_code or d_type
+
+        try:
+            length_ft = int(length_ft)
+            axles = int(axles)
+        except Exception:
+            errors.append(f"Fila {idx}: length_ft/axles inválidos")
+            continue
+
+        if length_ft not in (20, 40, 45) or axles not in (2, 3):
+            errors.append(f"Fila {idx}: fuera de rango length_ft={length_ft} axles={axles}")
+            continue
+
+        existing = Chassis.query.filter_by(site_id=site_id, chassis_number=chassis_number).first()
+        if existing:
+            existing.plate = plate
+            existing.length_ft = length_ft
+            existing.axles = axles
+            existing.type_code = type_code
+            existing.has_plate = True if plate else False
+            db.session.add(existing)
+            updated += 1
+        else:
+            ch = Chassis(
+                site_id=site_id,
+                chassis_number=chassis_number,
+                plate=plate,
+                length_ft=length_ft,
+                axles=axles,
+                type_code=type_code,
+                has_plate=True if plate else False,
+                is_in_yard=True,
+            )
+            db.session.add(ch)
+            imported += 1
+
+    db.session.commit()
+
+    if errors:
+        flash(f"Importado: {imported} | Actualizado: {updated} | Errores: {len(errors)}", "warning")
+        session["chassis_import_errors"] = errors[:200]
+    else:
+        flash(f"Importado: {imported} | Actualizado: {updated}", "success")
+        session.pop("chassis_import_errors", None)
+
+    return redirect(url_for("yard.chassis_list"))
+
+
+@yard_bp.get("/chassis/<int:chassis_id>")
+@login_required
+def chassis_detail(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    axles = int(getattr(ch, "axles", 2) or 2)
+    length_ft = int(getattr(ch, "length_ft", 40) or 40)
+    return render_template("yard/chassis_detail.html", ch=ch, axles=axles, length_ft=length_ft)
+
+@yard_bp.get("/chassis/dashboard")
+@login_required
+def chassis_dashboard():
+    site_id = _ensure_active_site()
+
+    # Conteos por type_code (según tu classify_chassis_number)
+    base = Chassis.query.filter_by(site_id=site_id)
+
+    counts = {
+        "40FT_2AX": base.filter(Chassis.type_code == "40FT_2AX").count(),
+        "40FT_3AX": base.filter(Chassis.type_code == "40FT_3AX").count(),
+        "20FT_2AX": base.filter(Chassis.type_code == "20FT_2AX").count(),
+        "20FT_3AX": base.filter(Chassis.type_code == "20FT_3AX").count(),
+    }
+
+    total = base.count()
+
+    # Por si hay chasis sin clasificar todavía
+    unknown = base.filter(
+        (Chassis.type_code.is_(None)) | (Chassis.type_code == "UNKNOWN")
+    ).count()
+
+    return render_template(
+        "yard/chassis_dashboard.html",
+        total=total,
+        unknown=unknown,
+        counts=counts,
+    )
+
+
+@yard_bp.get("/api/chassis/<int:chassis_id>/tires")
+@login_required
+def api_chassis_tires_get(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    axles = int(getattr(ch, "axles", 2) or 2)
+    allowed = set(allowed_positions_for(axles))
+
+    rows = ChassisTire.query.filter_by(chassis_id=ch.id).all()
+    positions = {p: None for p in allowed}
+
+    for r in rows:
+        if r.position_code not in allowed:
+            continue
+        positions[r.position_code] = {
+            "marchamo": r.marchamo,
+            "tire_state": r.tire_state,
+            "tire_number": r.tire.tire_number if r.tire else None,
+            "brand": r.tire.brand if r.tire else None,
+        }
+
+    return jsonify({"ok": True, "positions": positions})
+
+
+@yard_bp.post("/api/chassis/<int:chassis_id>/tires")
+@login_required
+def api_chassis_tires_set(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    axles = int(getattr(ch, "axles", 2) or 2)
+    allowed = set(allowed_positions_for(axles))
+
+    data = request.get_json(silent=True) or {}
+    pos = (data.get("position_code") or "").strip().upper()
+    if pos not in allowed:
+        return jsonify({"ok": False, "error": "INVALID_POSITION"}), 400
+
+    marchamo = (data.get("marchamo") or "").strip()
+    tire_number = (data.get("tire_number") or "").strip()
+    brand = (data.get("brand") or "").strip()
+    tire_state = (data.get("tire_state") or "OK").strip().upper()
+
+    if tire_state not in TIRE_STATES:
+        return jsonify({"ok": False, "error": "INVALID_TIRE_STATE"}), 400
+
+    tire = None
+    if tire_number:
+        tire = Tire.query.filter_by(tire_number=tire_number).first()
+        if not tire:
+            tire = Tire(tire_number=tire_number, brand=brand or None)
+            db.session.add(tire)
+            db.session.flush()
+        else:
+            if brand and (tire.brand != brand):
+                tire.brand = brand
+                db.session.add(tire)
+
+    row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
+    if not row:
+        row = ChassisTire(chassis_id=ch.id, position_code=pos)
+
+    row.marchamo = marchamo or None
+    row.tire_state = tire_state
+    row.tire_id = tire.id if tire else None
+    row.updated_at = datetime.utcnow()
+
+    db.session.add(row)
+    db.session.commit()
+    return jsonify({"ok": True})
 
