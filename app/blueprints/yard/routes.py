@@ -34,7 +34,7 @@ from app.services.storage import get_storage, build_photo_key
 from app.services.ticketing import build_ticket_payload
 from app.models.eir import EIR
 from app.models.chassis import ChassisInventory
-from app.models.chassis_master import Chassis
+from app.models.chassis import Chassis
 
 CR_TZ = pytz.timezone("America/Costa_Rica")
 UTC_TZ = pytz.utc
