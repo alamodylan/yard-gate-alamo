@@ -1636,14 +1636,17 @@ def chassis_import_post():
             continue
 
         # Completar por prefijo si faltan datos
-        if not length_ft or not axles or not type_code:
-            d_len, d_ax, d_type = classify_chassis_number(chassis_number)
+        d_len, d_ax, d_type = classify_chassis_number(chassis_number)
+
+        if (not length_ft) or (not axles):
             if d_len is None or d_ax is None:
                 errors.append(f"Fila {idx}: prefijo no reconocido ({chassis_number})")
                 continue
             length_ft = int(length_ft) if length_ft else d_len
             axles = int(axles) if axles else d_ax
-            type_code = type_code or d_type
+
+        if not type_code:
+            type_code = d_type
 
         try:
             length_ft = int(length_ft)
