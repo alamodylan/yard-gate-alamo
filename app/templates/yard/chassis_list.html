@@ -1,57 +1,65 @@
 {% extends "base.html" %}
-{% block title %}Dashboard Chasis - Yard Gate Álamo{% endblock %}
+{% block title %}Chasis - Yard Gate Álamo{% endblock %}
 
 {% block content %}
 <div class="card card-pad" style="max-width:1100px;">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-    <h2 style="margin:0;">Dashboard de Chasis</h2>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a class="btn btn-ghost" href="{{ url_for('yard.chassis_list') }}">Ver lista</a>
-      <a class="btn" href="{{ url_for('yard.chassis_import_view') }}">Importar Excel</a>
+  <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">Chasis</h2>
+      <div style="opacity:.75; margin-top:4px;">Listado por predio (inventario de chasis)</div>
+    </div>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <a class="btn btn-ghost" href="{{ url_for('yard.chassis_dashboard') }}">Dashboard</a>
       <a class="btn btn-secondary" href="{{ url_for('yard.chassis_export') }}">Descargar Excel</a>
+      <a class="btn" href="{{ url_for('yard.chassis_import_view') }}">Importar</a>
     </div>
   </div>
 
-  <div style="margin-top:14px; display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
-    <div class="card card-pad">
-      <div style="font-size:13px; opacity:.75;">Total chasis (predio activo)</div>
-      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ total }}</div>
-    </div>
+  <hr style="margin:14px 0; opacity:.2;">
 
-    <div class="card card-pad">
-      <div style="font-size:13px; opacity:.75;">40 pies · 2 ejes</div>
-      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["40FT_2AX"] }}</div>
+  {% if not rows %}
+    <div class="alert alert-info">No hay chasis cargados en este predio.</div>
+  {% else %}
+    <div style="overflow:auto;">
+      <table class="table" style="min-width:900px;">
+        <thead>
+          <tr>
+            <th>N° Chasis</th>
+            <th>Placa</th>
+            <th>Largo</th>
+            <th>Ejes</th>
+            <th>Tipo</th>
+            <th>En patio</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for ch in rows %}
+            <tr>
+              <td style="font-weight:800;">{{ ch.chassis_number }}</td>
+              <td>{{ ch.plate or "-" }}</td>
+              <td>{{ (ch.length_ft ~ " ft") if ch.length_ft else "-" }}</td>
+              <td>{{ ch.axles if ch.axles else "-" }}</td>
+              <td>{{ ch.type_code or "-" }}</td>
+              <td>
+                {% if ch.is_in_yard %}
+                  <span class="badge badge-soft">Sí</span>
+                {% else %}
+                  <span class="badge">No</span>
+                {% endif %}
+              </td>
+              <td style="text-align:right;">
+                <a class="btn btn-ghost" href="{{ url_for('yard.chassis_detail', chassis_id=ch.id) }}">
+                  Ver / Llantas
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-
-    <div class="card card-pad">
-      <div style="font-size:13px; opacity:.75;">40 pies · 3 ejes</div>
-      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["40FT_3AX"] }}</div>
-    </div>
-
-    <div class="card card-pad">
-      <div style="font-size:13px; opacity:.75;">20 pies · 2 ejes</div>
-      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["20FT_2AX"] }}</div>
-    </div>
-
-    <div class="card card-pad">
-      <div style="font-size:13px; opacity:.75;">20 pies · 3 ejes</div>
-      <div style="font-size:34px; font-weight:800; margin-top:4px;">{{ counts["20FT_3AX"] }}</div>
-    </div>
-
-    <div class="card card-pad">
-      <div style="font-size:13px; opacity:.75;">Sin clasificar</div>
-      <div style="font-size:34px; font-weight:800; margin-top:4px;">
-        {{ unknown }}
-      </div>
-      <div style="margin-top:6px; font-size:12px; opacity:.75;">
-        type_code vacío o UNKNOWN
-      </div>
-    </div>
-  </div>
-
-  <div style="margin-top:14px; font-size:13px; opacity:.8;">
-    Nota: este dashboard muestra únicamente los chasis del <b>predio activo</b>.
-  </div>
+  {% endif %}
 </div>
 {% endblock %}
