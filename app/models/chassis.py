@@ -39,6 +39,9 @@ class Chassis(db.Model):
     has_plate = db.Column(db.Boolean, nullable=False, default=False)
     is_in_yard = db.Column(db.Boolean, nullable=False, default=True)
 
+    status = db.Column(db.String(30), nullable=False, default="BUENO")
+    chassis_kind = db.Column(db.String(30), nullable=False, default="CHASIS")
+
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 

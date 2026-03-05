@@ -1532,6 +1532,12 @@ def ticket_reprint(print_id: int):
 # Chassis helpers
 # =========================
 
+CHASSIS_STATUSES = {"BUENO", "DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}
+CHASSIS_KINDS = {"CHASIS", "LOW_BOY", "TANQUETA", "PLANA", "CARRETA"}
+
+def _norm_enum(val):
+    return (val or "").strip().upper().replace(" ", "_")
+
 def classify_chassis_number(num: str):
     prefix = (num or "")[:2]
     if prefix == "40":
@@ -1625,9 +1631,15 @@ def chassis_import_post():
     errors = []
 
     # -------------------------
+    # 0) Cache de Sites (para resolver predio por nombre, sin pegarle a la DB por fila)
+    # -------------------------
+    sites = Site.query.all()
+    sites_by_name = {(s.name or "").strip().upper(): s for s in sites}
+
+    # -------------------------
     # 1) Leer Excel a memoria
     # -------------------------
-    staged = []  # lista de dicts validados
+    staged = []   # lista de dicts validados
     numbers = []  # lista de chassis_number (para consulta IN)
 
     for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
@@ -1636,6 +1648,11 @@ def chassis_import_post():
         length_ft = row[2] if len(row) > 2 else None
         axles = row[3] if len(row) > 3 else None
         type_code = (str(row[4]).strip() if len(row) > 4 and row[4] is not None else None)
+
+        # NUEVO: status / tipo / predio
+        status = _norm_enum(row[5]) if len(row) > 5 and row[5] is not None else ""
+        chassis_kind = _norm_enum(row[6]) if len(row) > 6 and row[6] is not None else ""
+        predio_name = (str(row[7]).strip() if len(row) > 7 and row[7] is not None else "")
 
         if not CHASSIS_NUM_RE.match(chassis_number):
             errors.append(f"Fila {idx}: chassis_number inválido ({chassis_number})")
@@ -1665,6 +1682,29 @@ def chassis_import_post():
             errors.append(f"Fila {idx}: fuera de rango length_ft={length_ft} axles={axles}")
             continue
 
+        # status default + validación
+        if not status:
+            status = "BUENO"
+        if status not in CHASSIS_STATUSES:
+            errors.append(f"Fila {idx}: status inválido ({status})")
+            continue
+
+        # chassis_kind default + validación
+        if not chassis_kind:
+            chassis_kind = "CHASIS"
+        if chassis_kind not in CHASSIS_KINDS:
+            errors.append(f"Fila {idx}: tipo inválido ({chassis_kind})")
+            continue
+
+        # predio (site_id) - si viene vacío, se usa el predio activo
+        target_site_id = site_id
+        if predio_name:
+            s = sites_by_name.get(predio_name.strip().upper())
+            if not s:
+                errors.append(f"Fila {idx}: predio no existe ({predio_name})")
+                continue
+            target_site_id = s.id
+
         staged.append({
             "idx": idx,
             "chassis_number": chassis_number,
@@ -1672,6 +1712,9 @@ def chassis_import_post():
             "length_ft": length_ft,
             "axles": axles,
             "type_code": type_code,
+            "status": status,
+            "chassis_kind": chassis_kind,
+            "site_id": target_site_id,
         })
         numbers.append(chassis_number)
 
@@ -1682,14 +1725,26 @@ def chassis_import_post():
         return redirect(url_for("yard.chassis_import_view"))
 
     # -------------------------------------------
-    # 2) Traer existentes en UNA sola consulta IN
+    # 2) Traer existentes en UNA sola consulta IN (del predio activo)
     # -------------------------------------------
-    existing_rows = (
-        Chassis.query
-        .filter(Chassis.site_id == site_id, Chassis.chassis_number.in_(numbers))
-        .all()
-    )
-    existing_map = {c.chassis_number: c for c in existing_rows}
+    # Nota: para "predio por fila", podría haber mismos chassis_number en otros predios.
+    # Aquí resolvemos upsert SOLO dentro del target_site_id de cada fila (ver paso 3).
+    # Para hacerlo eficiente sin explotar queries:
+    #   - agrupamos por site_id y consultamos IN por grupo.
+    staged_by_site = {}
+    for item in staged:
+        staged_by_site.setdefault(item["site_id"], []).append(item)
+
+    existing_map_by_site = {}  # {site_id: {chassis_number: Chassis}}
+
+    for sid, items in staged_by_site.items():
+        nums = [it["chassis_number"] for it in items]
+        existing_rows = (
+            Chassis.query
+            .filter(Chassis.site_id == sid, Chassis.chassis_number.in_(nums))
+            .all()
+        )
+        existing_map_by_site[sid] = {c.chassis_number: c for c in existing_rows}
 
     # -------------------------
     # 3) Upsert en memoria
@@ -1700,24 +1755,33 @@ def chassis_import_post():
         length_ft = item["length_ft"]
         axles = item["axles"]
         type_code = item["type_code"]
+        status = item["status"]
+        chassis_kind = item["chassis_kind"]
+        target_site_id = item["site_id"]
 
-        existing = existing_map.get(chassis_number)
+        existing = existing_map_by_site.get(target_site_id, {}).get(chassis_number)
         if existing:
             existing.plate = plate
             existing.length_ft = length_ft
             existing.axles = axles
             existing.type_code = type_code
+            existing.status = status
+            existing.chassis_kind = chassis_kind
             existing.has_plate = True if plate else False
+            # si lo importas, asumimos que está en patio (si querés permitir fuera de patio, lo hacemos con una columna extra)
+            existing.is_in_yard = True
             db.session.add(existing)
             updated += 1
         else:
             ch = Chassis(
-                site_id=site_id,
+                site_id=target_site_id,
                 chassis_number=chassis_number,
                 plate=plate,
                 length_ft=length_ft,
                 axles=axles,
                 type_code=type_code,
+                status=status,
+                chassis_kind=chassis_kind,
                 has_plate=True if plate else False,
                 is_in_yard=True,
             )
@@ -1737,6 +1801,7 @@ def chassis_import_post():
         session.pop("chassis_import_errors", None)
 
     return redirect(url_for("yard.chassis_list"))
+
 
 @yard_bp.get("/chassis/export")
 @login_required
@@ -1761,35 +1826,39 @@ def chassis_export():
     ws = wb.active
     ws.title = "Chassis"
 
-    # Encabezados con explicación en español (como pediste)
     headers = [
         "chassis_number (número de chasis 5 dígitos)",
         "plate (placa) [opcional]",
         "length_ft (largo en pies: 20/40/45) [opcional]",
         "axles (ejes: 2/3) [opcional]",
         "type_code (tipo: 20FT_2AX/20FT_3AX/40FT_2AX/40FT_3AX) [opcional]",
+        "status (BUENO/DAÑADO/FUERA_DE_SERVICIO/ATADO) [opcional]",
+        "chassis_kind (CHASIS/LOW_BOY/TANQUETA/PLANA/CARRETA) [opcional]",
+        "predio (nombre del predio / Site.name) [opcional]",
     ]
     ws.append(headers)
-
-    # Congelar encabezado
     ws.freeze_panes = "A2"
 
-    # Cargar data existente como "plantilla con lo que hay"
     for ch in rows:
         ws.append([
             ch.chassis_number,
             ch.plate or "",
-            ch.length_ft or "",
-            ch.axles or "",
+            getattr(ch, "length_ft", "") or "",
+            getattr(ch, "axles", "") or "",
             ch.type_code or "",
+            getattr(ch, "status", "") or "BUENO",
+            getattr(ch, "chassis_kind", "") or "CHASIS",
+            (ch.site.name if getattr(ch, "site", None) else ""),
         ])
 
-    # Ajuste simple de anchos
     ws.column_dimensions["A"].width = 38
     ws.column_dimensions["B"].width = 26
     ws.column_dimensions["C"].width = 30
     ws.column_dimensions["D"].width = 22
     ws.column_dimensions["E"].width = 45
+    ws.column_dimensions["F"].width = 30
+    ws.column_dimensions["G"].width = 30
+    ws.column_dimensions["H"].width = 26
 
     bio = BytesIO()
     wb.save(bio)
@@ -1815,7 +1884,19 @@ def chassis_detail(chassis_id: int):
 
     axles = int(getattr(ch, "axles", 2) or 2)
     length_ft = int(getattr(ch, "length_ft", 40) or 40)
-    return render_template("yard/chassis_detail.html", ch=ch, axles=axles, length_ft=length_ft)
+
+    # para el dropdown de predios + status + tipo en la vista detalle
+    sites = Site.query.order_by(Site.name.asc()).all()
+
+    return render_template(
+        "yard/chassis_detail.html",
+        ch=ch,
+        axles=axles,
+        length_ft=length_ft,
+        sites=sites,
+        statuses=sorted(CHASSIS_STATUSES),
+        kinds=sorted(CHASSIS_KINDS),
+    )
 
 
 # =========================

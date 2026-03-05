@@ -11,19 +11,26 @@
     <div style="font-weight:700;">Plantilla esperada:</div>
 
     <pre style="margin:8px 0 0 0;">
-chassis_number | plate | length_ft | axles | type_code
+chassis_number | plate | length_ft | axles | type_code | status | chassis_kind | predio
     </pre>
 
     <div style="margin-top:8px; line-height:1.5;">
       <b>chassis_number</b> → número del chasis (5 dígitos). Ej: 40123<br>
-      <b>plate</b> → placa del chasis.<br>
-      <b>length_ft</b> → largo del chasis en pies (20 / 40 / 45).<br>
-      <b>axles</b> → cantidad de ejes (2 o 3).<br>
-      <b>type_code</b> → código interno del chasis.
+      <b>plate</b> → placa del chasis (opcional).<br>
+      <b>length_ft</b> → largo del chasis en pies (20 / 40 / 45) (opcional).<br>
+      <b>axles</b> → cantidad de ejes (2 o 3) (opcional).<br>
+      <b>type_code</b> → código interno (20FT_2AX / 20FT_3AX / 40FT_2AX / 40FT_3AX) (opcional).<br>
+      <b>status</b> → estado del chasis: <b>BUENO</b> / <b>DAÑADO</b> / <b>FUERA_DE_SERVICIO</b> / <b>ATADO</b> (opcional, por defecto BUENO).<br>
+      <b>chassis_kind</b> → tipo de chasis: <b>CHASIS</b> / <b>LOW_BOY</b> / <b>TANQUETA</b> / <b>PLANA</b> / <b>CARRETA</b> (opcional, por defecto CHASIS).<br>
+      <b>predio</b> → nombre del predio (debe coincidir con el nombre del predio en el sistema). Si va vacío, se usa el predio activo.
     </div>
 
     <div style="margin-top:10px;">
       Si <b>length_ft</b> y <b>axles</b> están vacíos, el sistema los deduce automáticamente según el prefijo del chasis.
+    </div>
+
+    <div style="margin-top:10px;">
+      Nota: si el <b>predio</b> escrito no existe exactamente, esa fila se marca como error y no se importa.
     </div>
 
   </div>
@@ -46,7 +53,6 @@ chassis_number | plate | length_ft | axles | type_code
 
 
   <!-- FORMULARIO DE IMPORTACIÓN -->
-
   <form method="post"
         enctype="multipart/form-data"
         style="display:grid; gap:10px;">

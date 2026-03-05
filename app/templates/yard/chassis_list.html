@@ -2,7 +2,7 @@
 {% block title %}Chasis - Yard Gate Álamo{% endblock %}
 
 {% block content %}
-<div class="card card-pad" style="max-width:1100px;">
+<div class="card card-pad" style="max-width:1200px;">
 
   <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div>
@@ -23,7 +23,7 @@
     <div class="alert alert-info">No hay chasis cargados en este predio.</div>
   {% else %}
     <div style="overflow:auto;">
-      <table class="table" style="min-width:900px;">
+      <table class="table" style="min-width:1050px;">
         <thead>
           <tr>
             <th>N° Chasis</th>
@@ -31,18 +31,31 @@
             <th>Largo</th>
             <th>Ejes</th>
             <th>Tipo</th>
+            <th>Predio</th>
             <th>En patio</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for ch in rows %}
+            {% set predio_name = (ch.site.name if ch.site else "Fuera de predio") %}
+            {% set status = (ch.status|default("BUENO")) %}
+
             <tr>
               <td style="font-weight:800;">{{ ch.chassis_number }}</td>
               <td>{{ ch.plate or "-" }}</td>
               <td>{{ (ch.length_ft ~ " ft") if ch.length_ft else "-" }}</td>
               <td>{{ ch.axles if ch.axles else "-" }}</td>
               <td>{{ ch.type_code or "-" }}</td>
+
+              <td>
+                {% if status == "FUERA_DE_SERVICIO" %}
+                  <span style="font-weight:800;">FS</span> - ({{ predio_name }})
+                {% else %}
+                  {{ predio_name }}
+                {% endif %}
+              </td>
+
               <td>
                 {% if ch.is_in_yard %}
                   <span class="badge badge-soft">Sí</span>
@@ -50,6 +63,7 @@
                   <span class="badge">No</span>
                 {% endif %}
               </td>
+
               <td style="text-align:right;">
                 <a class="btn btn-ghost" href="{{ url_for('yard.chassis_detail', chassis_id=ch.id) }}">
                   Ver / Llantas
