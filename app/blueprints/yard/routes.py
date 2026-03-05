@@ -1580,7 +1580,12 @@ def chassis_list():
         .order_by(Chassis.chassis_number.asc())
         .all()
     )
-    return render_template("yard/chassis_list.html", rows=rows)
+    sites = Site.query.order_by(Site.name.asc()).all()
+    return render_template(
+        "yard/chassis_list.html",
+        rows=rows,
+        sites=sites
+    )
 
 
 @yard_bp.get("/chassis/dashboard")
