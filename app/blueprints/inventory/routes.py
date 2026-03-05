@@ -2,8 +2,8 @@
 import os
 from io import BytesIO
 
-from flask import render_template, request, send_file
-from flask_login import login_required
+from flask import render_template, request, send_file, session, abort
+from flask_login import login_required, current_user
 
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -16,6 +16,7 @@ from app.blueprints.inventory import inventory_bp
 from app.models.container import Container, ContainerPosition
 from app.models.yard import YardBay
 from app.models.movement import Movement, MovementPhoto
+from app.models.site import Site, UserSite
 
 
 def _normalize_public_url(raw: str) -> str | None:
@@ -40,11 +41,51 @@ def _normalize_public_url(raw: str) -> str | None:
     return raw
 
 
-def _inventory_query(in_yard: str | None, qtext: str):
+# =========================
+# Multi-predio helpers (site) - versión inventory (sin depender de yard)
+# =========================
+def _allowed_sites_for_user(user):
+    if getattr(user, "role", None) == "admin":
+        return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
+
+    return (
+        db.session.query(Site)
+        .join(UserSite, UserSite.site_id == Site.id)
+        .filter(UserSite.user_id == user.id, Site.is_active == True)  # noqa: E712
+        .order_by(Site.name.asc())
+        .all()
+    )
+
+
+def _get_active_site_id():
+    return session.get("active_site_id")
+
+
+def _set_active_site_id(site_id: int):
+    session["active_site_id"] = int(site_id)
+
+
+def _ensure_active_site():
+    allowed = _allowed_sites_for_user(current_user)
+    if not allowed:
+        abort(403)
+
+    active_id = _get_active_site_id()
+    allowed_ids = {s.id for s in allowed}
+
+    if not active_id or active_id not in allowed_ids:
+        _set_active_site_id(allowed[0].id)
+        active_id = allowed[0].id
+
+    return active_id
+
+
+def _inventory_query(site_id: int, in_yard: str | None, qtext: str):
     q = (
         db.session.query(Container, ContainerPosition, YardBay)
         .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
         .outerjoin(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(Container.site_id == site_id)
     )
 
     if in_yard == "1":
@@ -118,10 +159,12 @@ def _last_eir_trip_date_by_container_ids(container_ids: list[int]) -> dict[int, 
 @inventory_bp.get("/inventory")
 @login_required
 def inventory_index():
+    site_id = _ensure_active_site()
+
     in_yard = request.args.get("in_yard")  # "1" / "0" / "" / None
     qtext = (request.args.get("q") or "").strip().upper()
 
-    rows = _inventory_query(in_yard, qtext).all()
+    rows = _inventory_query(site_id, in_yard, qtext).all()
     container_ids = [c.id for c, _, _ in rows]
 
     cls_by_container = _last_classification_by_container_ids(container_ids)
@@ -166,10 +209,12 @@ def inventory_index():
 @inventory_bp.get("/inventory/export")
 @login_required
 def inventory_export():
+    site_id = _ensure_active_site()
+
     in_yard = request.args.get("in_yard")
     qtext = (request.args.get("q") or "").strip().upper()
 
-    rows = _inventory_query(in_yard, qtext).all()
+    rows = _inventory_query(site_id, in_yard, qtext).all()
     container_ids = [c.id for c, _, _ in rows]
 
     cls_by_container = _last_classification_by_container_ids(container_ids)
@@ -261,7 +306,13 @@ def inventory_export():
 @inventory_bp.get("/inventory/<int:container_id>")
 @login_required
 def inventory_detail(container_id: int):
+    site_id = _ensure_active_site()
+
     c = Container.query.get_or_404(container_id)
+
+    # Seguridad multi-predio: no permitir ver contenedor de otro predio (excepto admin)
+    if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
 
     pos = (
         db.session.query(ContainerPosition, YardBay)
@@ -281,7 +332,7 @@ def inventory_detail(container_id: int):
 
     movements = (
         Movement.query
-        .filter(Movement.container_id == c.id)
+        .filter(Movement.container_id == c.id, Movement.site_id == site_id)
         .order_by(Movement.occurred_at.desc())
         .all()
     )

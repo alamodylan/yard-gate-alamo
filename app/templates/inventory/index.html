@@ -8,7 +8,7 @@
       <div>
         <h2 style="margin:0;">Inventario de Contenedores</h2>
         <p class="card-sub" style="margin-top:6px;">
-          Incluye clasificación (naviera/max gross/clase) y fecha de salida (EIR) si aplica.
+          Predios (Coyol/Caldera/Limón): incluye clasificación (naviera/max gross/año) y fecha de salida (EIR) si aplica.
         </p>
       </div>
 
@@ -51,17 +51,20 @@
   </div>
 
   <div class="card" style="overflow:auto;">
-    <table class="table" style="min-width:1300px;">
+    <table class="table" style="min-width:1500px;">
       <thead>
-        <th>Contenedor</th>
-        <th>Tamaño</th>
-        <th>Naviera</th>
-        <th>Año</th>
-        <th>Max Gross</th>
-        <th>Fecha salida (EIR)</th>
-        <th>Posición</th>
-        <th>Notas</th>
-        <th style="width:160px;">Acción</th>
+        <tr>
+          <th>Contenedor</th>
+          <th>Tamaño</th>
+          <th>Naviera</th>
+          <th>Año</th>
+          <th>Max Gross</th>
+          <th>Fecha EIR</th>
+          <th>En patio</th>
+          <th>Posición</th>
+          <th>Notas</th>
+          <th style="width:180px;">Acción</th>
+        </tr>
       </thead>
 
       <tbody>
@@ -73,7 +76,7 @@
               </a>
             </td>
 
-            <td>{{ it.size }}</td>
+            <td>{{ it.size or "—" }}</td>
 
             <td>
               {% if it.shipping_line %}
@@ -84,16 +87,16 @@
             </td>
 
             <td>
-              {% if it.max_gross_kg %}
-                {{ it.max_gross_kg }} KG
+              {% if it.year %}
+                {{ it.year }}
               {% else %}
                 —
               {% endif %}
             </td>
 
             <td>
-              {% if it.classification_label %}
-                <span class="badge muted">{{ it.classification_label }}</span>
+              {% if it.max_gross_kg %}
+                {{ it.max_gross_kg }} KG
               {% else %}
                 —
               {% endif %}
@@ -127,20 +130,20 @@
               {% endif %}
             </td>
 
-            <td style="color:rgba(229,231,235,.85); max-width:420px;">
-              {{ it.copy_notes or it.status_notes or "" }}
+            <td style="color:rgba(229,231,235,.85); max-width:480px;">
+              {{ it.status_notes or "" }}
             </td>
 
             <td style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <a class="btn" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
 
-              {% if it.copy_notes %}
+              {% if it.status_notes %}
                 <button class="btn copy-btn" type="button" data-id="{{ it.id }}">
                   Copiar
                 </button>
 
                 <span id="copyText-{{ it.id }}" style="display:none;">
-                  {{ it.copy_notes }}
+                  {{ it.status_notes }}
                 </span>
               {% endif %}
             </td>
@@ -160,10 +163,8 @@
 
   <script>
     document.addEventListener("DOMContentLoaded", () => {
-
       document.querySelectorAll(".copy-btn").forEach(btn => {
         btn.addEventListener("click", async () => {
-
           const id = btn.getAttribute("data-id");
           const el = document.getElementById("copyText-" + id);
           const txt = (el?.innerText || "").trim();
@@ -187,7 +188,6 @@
           }
         });
       });
-
     });
   </script>
 {% endblock %}

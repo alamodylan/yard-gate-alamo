@@ -8,7 +8,7 @@
       <div>
         <h2 style="margin:0;">{{ c.code }}</h2>
         <div class="card-sub" style="margin-top:6px;">
-          {{ c.size }}{% if c.year %} · {{ c.year }}{% endif %}
+          {{ c.size or "—" }}{% if c.year %} · {{ c.year }}{% endif %}
           ·
           {% if c.is_in_yard %}
             <span class="badge success">En patio</span>
@@ -21,8 +21,12 @@
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <a class="btn" href="{{ url_for('inventory.inventory_index') }}">← Volver</a>
 
-        {% if copy_notes %}
-          <button class="btn" type="button" onclick="copyNotes()">
+        {# Copiar: usa copy_notes si existe; si no, usa c.status_notes #}
+        {% set _copy_text = (copy_notes if (copy_notes is defined and copy_notes) else (c.status_notes or "")) %}
+        {% if _copy_text %}
+          <button class="btn" type="button"
+                  id="copyNotesBtn"
+                  data-notes="{{ _copy_text|e }}">
             Copiar notas
           </button>
         {% endif %}
@@ -47,7 +51,9 @@
 
       <div class="card card-pad">
         <div class="card-title">Fecha salida (EIR)</div>
-        {% if eir_info and eir_info.trip_date %}
+
+        {# Solo se muestra si el backend la manda. Si no, no rompe. #}
+        {% if eir_info is defined and eir_info and eir_info.trip_date %}
           <div style="margin-top:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
             <span class="badge">{{ eir_info.trip_date }}</span>
             {% if eir_info.status %}
@@ -76,25 +82,25 @@
   </div>
 
   {# =========================
-     Clasificación (última)
+     Clasificación (si existe)
      ========================= #}
-  <div class="card card-pad" style="margin-bottom:14px;">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h3 style="margin:0;">Clasificación</h3>
-        <div class="hint" style="margin-top:6px;">Última clasificación registrada en Gate In.</div>
+  {% if last_class is defined and last_class %}
+    <div class="card card-pad" style="margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Clasificación</h3>
+          <div class="hint" style="margin-top:6px;">Última clasificación registrada.</div>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          {% if last_class.classified_at %}
+            <span class="badge muted">
+              {{ last_class.classified_at|dt_cr("%d/%m/%Y %H:%M") }}
+            </span>
+          {% endif %}
+        </div>
       </div>
 
-      {% if last_class and copy_notes %}
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <span class="badge muted">
-            {{ last_class.classified_at|dt_cr("%d/%m/%Y %H:%M") if last_class.classified_at else "" }}
-          </span>
-        </div>
-      {% endif %}
-    </div>
-
-    {% if last_class %}
       <div class="grid grid-3" style="margin-top:12px;">
         <div class="card card-pad">
           <div class="card-title">Datos</div>
@@ -110,7 +116,7 @@
           <div class="card-title">Resumen (copiable)</div>
           <div style="margin-top:8px;">
             <div style="color:rgba(229,231,235,.92); white-space:pre-wrap;" id="copyNotesText">
-              {{ copy_notes }}
+              {{ (copy_notes if (copy_notes is defined and copy_notes) else (last_class.summary_text or "")) }}
             </div>
           </div>
         </div>
@@ -143,21 +149,18 @@
           </div>
         </div>
       {% endif %}
-
-    {% else %}
-      <div class="hint" style="margin-top:10px;">Este contenedor aún no tiene clasificación.</div>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 
   {# =========================
-     Fotos (Clasificación + Movimientos)
+     Fotos (Movimientos) + (Clasificación si existe)
      ========================= #}
   <div class="card card-pad" style="margin-bottom:14px;">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
       <div>
         <h3 style="margin:0;">Fotos</h3>
         <div class="hint" style="margin-top:6px;">
-          Clasificación + movimientos (Gate In/Out). Solo URLs válidos.
+          Movimientos (Gate In/Out). Solo URLs válidos.
         </div>
       </div>
     </div>
@@ -165,26 +168,29 @@
     {% set any_photo = false %}
 
     <div class="photos-grid" style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:12px; margin-top:12px;">
-      {# Fotos de clasificación #}
-      {% for ph in (class_photos or []) %}
-        {% set any_photo = true %}
-        <a href="{{ ph.url }}" target="_blank" class="card"
-           style="text-decoration:none; overflow:hidden; border-radius:18px; display:block;">
-          <img src="{{ ph.url }}" alt="CLASIFICACION"
-               style="width:100%; height:160px; object-fit:cover; display:block;">
-          <div class="card-pad" style="padding:12px;">
-            <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
-              <div style="font-weight:900; font-size:13px;">CLASIFICACIÓN</div>
-              <span class="badge muted">{{ ph.photo_type or "PHOTO" }}</span>
-            </div>
-            {% if ph.uploaded_at %}
-              <div class="hint" style="margin-top:6px;">
-                {{ ph.uploaded_at|dt_cr("%d/%m/%Y %H:%M") }}
+
+      {# Fotos de clasificación (si backend las manda) #}
+      {% if class_photos is defined and class_photos %}
+        {% for ph in class_photos %}
+          {% set any_photo = true %}
+          <a href="{{ ph.url }}" target="_blank" class="card"
+             style="text-decoration:none; overflow:hidden; border-radius:18px; display:block;">
+            <img src="{{ ph.url }}" alt="CLASIFICACION"
+                 style="width:100%; height:160px; object-fit:cover; display:block;">
+            <div class="card-pad" style="padding:12px;">
+              <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+                <div style="font-weight:900; font-size:13px;">CLASIFICACIÓN</div>
+                <span class="badge muted">{{ ph.photo_type or "PHOTO" }}</span>
               </div>
-            {% endif %}
-          </div>
-        </a>
-      {% endfor %}
+              {% if ph.uploaded_at %}
+                <div class="hint" style="margin-top:6px;">
+                  {{ ph.uploaded_at|dt_cr("%d/%m/%Y %H:%M") }}
+                </div>
+              {% endif %}
+            </div>
+          </a>
+        {% endfor %}
+      {% endif %}
 
       {# Fotos por movimientos #}
       {% for mv in movements %}
@@ -274,24 +280,41 @@
     </table>
   </div>
 
-  {% if copy_notes %}
+  {# Copiar notas: usa copy_notes si existe; si no, usa status_notes #}
+  {% set _copy_text = (copy_notes if (copy_notes is defined and copy_notes) else (c.status_notes or "")) %}
+  {% set _copy_text = (copy_notes if (copy_notes is defined and copy_notes) else (c.status_notes or "")) %}
+  {% if _copy_text %}
     <script>
-      async function copyNotes(){
-        const txt = document.getElementById("copyNotesText")?.innerText || "";
+    document.addEventListener("DOMContentLoaded", () => {
+
+      const btn = document.getElementById("copyNotesBtn");
+      if(!btn) return;
+
+      btn.addEventListener("click", async () => {
+
+        const txt = (btn.dataset.notes || "").trim();
+
+        if(!txt){
+          alert("No hay notas para copiar.");
+          return;
+        }
+
         try{
-          await navigator.clipboard.writeText(txt.trim());
+          await navigator.clipboard.writeText(txt);
           alert("Notas copiadas ✅");
         }catch(e){
-          // fallback (por si Android/browser bloquea clipboard)
           const ta = document.createElement("textarea");
-          ta.value = txt.trim();
+          ta.value = txt;
           document.body.appendChild(ta);
           ta.select();
           document.execCommand("copy");
           document.body.removeChild(ta);
           alert("Notas copiadas ✅");
         }
-      }
+
+      });
+
+    });
     </script>
   {% endif %}
 {% endblock %}
