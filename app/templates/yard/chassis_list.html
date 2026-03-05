@@ -2,7 +2,7 @@
 {% block title %}Chasis - Yard Gate Álamo{% endblock %}
 
 {% block content %}
-<div class="card card-pad" style="max-width:1200px;">
+<div class="card card-pad" style="max-width:1100px;">
 
   <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div>
@@ -22,37 +22,125 @@
   {% if not rows %}
     <div class="alert alert-info">No hay chasis cargados en este predio.</div>
   {% else %}
+
+    <!-- =========================
+         FILTROS (frontend)
+         ========================= -->
+    <div class="card" style="padding:12px; margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns: 1.1fr .9fr .7fr .7fr 1fr 1fr .8fr; gap:10px; align-items:end;">
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">N° Chasis</div>
+          <input id="f_chassis" class="input" placeholder="Ej: 20101" style="width:100%;">
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Placa</div>
+          <input id="f_plate" class="input" placeholder="Ej: S012345" style="width:100%;">
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Largo</div>
+          <select id="f_length" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="20">20</option>
+            <option value="40">40</option>
+            <option value="45">45</option>
+          </select>
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Ejes</div>
+          <select id="f_axles" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Predio</div>
+          <input id="f_site" class="input" placeholder="Ej: Coyol / Caldera" style="width:100%;">
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Status</div>
+          <select id="f_status" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="BUENO">BUENO</option>
+            <option value="DAÑADO">DAÑADO</option>
+            <option value="FUERA_DE_SERVICIO">FUERA DE SERVICIO</option>
+            <option value="ATADO">ATADO</option>
+          </select>
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">En patio</div>
+          <select id="f_inyard" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="SI">Sí</option>
+            <option value="NO">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+        <div id="filter_count" style="font-size:12px; opacity:.8;"></div>
+        <button id="btn_clear_filters" class="btn btn-ghost" type="button">Limpiar filtros</button>
+      </div>
+    </div>
+
     <div style="overflow:auto;">
-      <table class="table" style="min-width:1050px;">
+      <table class="table" style="min-width:980px;">
         <thead>
           <tr>
             <th>N° Chasis</th>
             <th>Placa</th>
             <th>Largo</th>
             <th>Ejes</th>
-            <th>Tipo</th>
             <th>Predio</th>
+            <th>Status</th>
             <th>En patio</th>
             <th></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="chassis_tbody">
           {% for ch in rows %}
-            {% set predio_name = (ch.site.name if ch.site else "Fuera de predio") %}
-            {% set status = (ch.status|default("BUENO")) %}
+            {% set status_raw = (ch.status or "") %}
+            {% set status_label =
+                "FUERA DE SERVICIO" if status_raw == "FUERA_DE_SERVICIO"
+                else (status_raw if status_raw else "-")
+            %}
 
-            <tr>
+            <tr class="ch-row"
+                data-chassis="{{ (ch.chassis_number or '')|lower }}"
+                data-plate="{{ (ch.plate or '')|lower }}"
+                data-length="{{ ch.length_ft or '' }}"
+                data-axles="{{ ch.axles or '' }}"
+                data-site="{{ (ch.site.name if ch.site else '')|lower }}"
+                data-status="{{ status_raw }}"
+                data-inyard="{{ 'SI' if ch.is_in_yard else 'NO' }}"
+            >
               <td style="font-weight:800;">{{ ch.chassis_number }}</td>
               <td>{{ ch.plate or "-" }}</td>
-              <td>{{ (ch.length_ft ~ " ft") if ch.length_ft else "-" }}</td>
+
+              <!-- Largo SOLO número (sin ft) -->
+              <td>{{ ch.length_ft if ch.length_ft else "-" }}</td>
+
               <td>{{ ch.axles if ch.axles else "-" }}</td>
-              <td>{{ ch.type_code or "-" }}</td>
+
+              <td>{{ ch.site.name if ch.site else "Fuera de predio" }}</td>
 
               <td>
-                {% if status == "FUERA_DE_SERVICIO" %}
-                  <span style="font-weight:800;">FS</span> - ({{ predio_name }})
+                {% if status_raw == "BUENO" %}
+                  <span class="badge badge-soft">BUENO</span>
+                {% elif status_raw == "DAÑADO" %}
+                  <span class="badge">DAÑADO</span>
+                {% elif status_raw == "FUERA_DE_SERVICIO" %}
+                  <span class="badge">FUERA DE SERVICIO</span>
+                {% elif status_raw == "ATADO" %}
+                  <span class="badge">ATADO</span>
                 {% else %}
-                  {{ predio_name }}
+                  <span class="badge badge-soft">-</span>
                 {% endif %}
               </td>
 
@@ -74,6 +162,76 @@
         </tbody>
       </table>
     </div>
+
+    <script>
+      (function(){
+        const $ = (id) => document.getElementById(id);
+
+        const fChassis = $("f_chassis");
+        const fPlate   = $("f_plate");
+        const fLength  = $("f_length");
+        const fAxles   = $("f_axles");
+        const fSite    = $("f_site");
+        const fStatus  = $("f_status");
+        const fInYard  = $("f_inyard");
+
+        const rows = Array.from(document.querySelectorAll(".ch-row"));
+        const counter = $("filter_count");
+        const btnClear = $("btn_clear_filters");
+
+        function norm(s){ return (s || "").toString().trim().toLowerCase(); }
+
+        function applyFilters(){
+          const vChassis = norm(fChassis.value);
+          const vPlate   = norm(fPlate.value);
+          const vLength  = (fLength.value || "").trim();
+          const vAxles   = (fAxles.value || "").trim();
+          const vSite    = norm(fSite.value);
+          const vStatus  = (fStatus.value || "").trim();
+          const vInYard  = (fInYard.value || "").trim();
+
+          let shown = 0;
+
+          for (const tr of rows){
+            const d = tr.dataset;
+
+            let ok = true;
+
+            if (vChassis && !d.chassis.includes(vChassis)) ok = false;
+            if (ok && vPlate && !d.plate.includes(vPlate)) ok = false;
+            if (ok && vLength && d.length !== vLength) ok = false;
+            if (ok && vAxles && d.axles !== vAxles) ok = false;
+            if (ok && vSite && !d.site.includes(vSite)) ok = false;
+            if (ok && vStatus && d.status !== vStatus) ok = false;
+            if (ok && vInYard && d.inyard !== vInYard) ok = false;
+
+            tr.style.display = ok ? "" : "none";
+            if (ok) shown++;
+          }
+
+          counter.textContent = `Mostrando ${shown} de ${rows.length}`;
+        }
+
+        [fChassis, fPlate, fLength, fAxles, fSite, fStatus, fInYard].forEach(el => {
+          el.addEventListener("input", applyFilters);
+          el.addEventListener("change", applyFilters);
+        });
+
+        btnClear.addEventListener("click", () => {
+          fChassis.value = "";
+          fPlate.value = "";
+          fLength.value = "";
+          fAxles.value = "";
+          fSite.value = "";
+          fStatus.value = "";
+          fInYard.value = "";
+          applyFilters();
+        });
+
+        applyFilters();
+      })();
+    </script>
+
   {% endif %}
 </div>
 {% endblock %}
