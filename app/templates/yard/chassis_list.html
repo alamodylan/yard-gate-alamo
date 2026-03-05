@@ -151,10 +151,10 @@
               <td style="font-weight:800;">{{ ch.chassis_number }}</td>
               <td>{{ ch.plate or "-" }}</td>
 
+              <td>{{ ch.chassis_kind or "-" }}</td>
+
               <!-- Largo SOLO número (sin ft) -->
               <td>{{ ch.length_ft if ch.length_ft else "-" }}</td>
-
-              <td>{{ ch.chassis_kind or "-" }}</td>
 
               <td>{{ ch.axles if ch.axles else "-" }}</td>
 
