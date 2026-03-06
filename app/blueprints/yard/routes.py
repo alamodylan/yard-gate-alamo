@@ -760,7 +760,9 @@ def gate_in_post():
     code = (request.form.get("container_code") or "").strip().upper()
     size = (request.form.get("size") or "").strip()
     year_raw = (request.form.get("year") or "").strip()
-    status_notes = (request.form.get("status_notes") or "").strip()
+
+    # Notas "compat" (textarea)
+    status_notes_extra = (request.form.get("status_notes") or "").strip()
 
     driver_name = (request.form.get("driver_name") or "").strip()
     driver_id_doc = (request.form.get("driver_id_doc") or "").strip()
@@ -773,6 +775,55 @@ def gate_in_post():
     depth_row_raw = (request.form.get("depth_row") or "").strip()
     tier_raw = (request.form.get("tier") or "").strip()
 
+    # =========================
+    # ✅ NUEVO: Clasificación
+    # =========================
+    summary_text = (request.form.get("summary_text") or "").strip()  # viene del hidden
+    classification_notes = (request.form.get("classification_notes") or "").strip()  # "Comentarios generales"
+
+    # Naviera: select + otro
+    shipping_line = (request.form.get("shipping_line") or "").strip().upper()
+    shipping_line_other = (request.form.get("shipping_line_other") or "").strip().upper()
+    if shipping_line == "VASI":
+        shipping_line = shipping_line_other or ""
+
+    # Max gross: hidden (select) o input (otro)
+    max_gross_hidden = (request.form.get("max_gross_kg_hidden") or "").strip()
+    max_gross_other = (request.form.get("max_gross_kg") or "").strip()
+    max_gross_kg = None
+    if max_gross_hidden:
+        try:
+            max_gross_kg = int(max_gross_hidden)
+        except ValueError:
+            max_gross_kg = None
+    elif max_gross_other:
+        try:
+            max_gross_kg = int(max_gross_other)
+        except ValueError:
+            max_gross_kg = None
+
+    # Tare
+    tare_raw = (request.form.get("tare_kg") or "").strip()
+    tare_kg = None
+    if tare_raw:
+        try:
+            tare_kg = int(tare_raw)
+        except ValueError:
+            tare_kg = None
+
+    # Requiere taller
+    needs_workshop = (request.form.get("needs_workshop") or "0").strip() == "1"
+
+    # 🔥 Formato de notas del inventario:
+    # - Principal: summary_text (tu lista con comas)
+    # - Extra: status_notes (si pusiste algo adicional)
+    final_status_notes = summary_text or ""
+    if status_notes_extra:
+        final_status_notes = (final_status_notes + (", " if final_status_notes else "") + status_notes_extra).strip()
+
+    # =========================
+    # Validaciones existentes
+    # =========================
     if not CONTAINER_RE.match(code):
         flash("Formato de contenedor inválido. Debe ser AAAA-000000-0.", "danger")
         return redirect(url_for("yard.gate_in_view"))
@@ -816,8 +867,7 @@ def gate_in_post():
     db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()
 
     # ==========================================================
-    # ✅ CAMBIO QUIRÚRGICO multi-predio:
-    # Buscar por (site_id, code) + bloquear si está en patio en otro predio
+    # ✅ multi-predio: Buscar por (site_id, code) + bloquear si está en patio en otro predio
     # ==========================================================
     existing_here = Container.query.filter_by(site_id=site_id, code=code).first()
 
@@ -834,20 +884,70 @@ def gate_in_post():
         flash("Este contenedor ya está en patio.", "danger")
         return redirect(url_for("yard.gate_in_view"))
 
+    # =========================
+    # Upsert Container (igual, pero notas mejoradas)
+    # =========================
     if not existing_here:
-        c = Container(code=code, size=size, year=year, status_notes=status_notes, is_in_yard=True, site_id=site_id)
+        c = Container(
+            code=code,
+            size=size,
+            year=year,
+            status_notes=final_status_notes,  # ✅ ahora guarda el formato "5%OXIDO, MANCHAS LEVE..."
+            is_in_yard=True,
+            site_id=site_id
+        )
         db.session.add(c)
         db.session.flush()
     else:
         c = existing_here
         c.size = size
         c.year = year
-        c.status_notes = status_notes
+        c.status_notes = final_status_notes  # ✅ idem
         c.is_in_yard = True
         db.session.add(c)
         db.session.flush()
-    # ===================== FIN CAMBIO =========================
 
+    # =========================
+    # ✅ NUEVO: Guardar clasificación en BD (container_classifications)
+    # =========================
+    # Solo insertamos si hay algo que guardar: summary_text o naviera o max gross o tare o needs_workshop o notes
+    should_insert_class = any([
+        bool(summary_text),
+        bool(shipping_line),
+        max_gross_kg is not None,
+        tare_kg is not None,
+        year is not None,
+        bool(classification_notes),
+        needs_workshop is True,
+    ])
+
+    if should_insert_class:
+        sql_ins = text("""
+            INSERT INTO yard_gate_alamo.container_classifications
+            (site_id, container_id, classified_at, classified_by_user_id,
+             shipping_line, max_gross_kg, tare_kg, manufacture_year,
+             needs_workshop, summary_text, notes)
+            VALUES
+            (:site_id, :container_id, NOW(), :uid,
+             :shipping_line, :max_gross_kg, :tare_kg, :manufacture_year,
+             :needs_workshop, :summary_text, :notes)
+        """)
+        db.session.execute(sql_ins, {
+            "site_id": site_id,
+            "container_id": c.id,
+            "uid": current_user.id,
+            "shipping_line": (shipping_line or None),
+            "max_gross_kg": max_gross_kg,
+            "tare_kg": tare_kg,
+            "manufacture_year": year,  # usamos el año del formulario
+            "needs_workshop": bool(needs_workshop),
+            "summary_text": (summary_text or None),
+            "notes": (classification_notes or None),
+        })
+
+    # =========================
+    # Slot / posición (igual)
+    # =========================
     if placement_mode == "manual":
         try:
             depth_row = int(depth_row_raw)
@@ -897,13 +997,16 @@ def gate_in_post():
         driver_name=driver_name or None,
         driver_id_doc=driver_id_doc or None,
         truck_plate=truck_plate or None,
-        notes=status_notes or None,
+        notes=final_status_notes or None,  # ✅ mantiene consistencia con inventario
         created_by_user_id=current_user.id,
         created_at=datetime.utcnow(),
     )
     db.session.add(mv)
     db.session.flush()
 
+    # =========================
+    # Fotos (igual)
+    # =========================
     storage = get_storage()
     photos = request.files.getlist("photos") or []
 
@@ -945,29 +1048,96 @@ def gate_in_post():
     flash(f"Gate In registrado: {c.code} en {bay.code} F{depth_row:02d} N{tier}.", "success")
     return redirect(url_for("yard.ticket_view", movement_id=mv.id))
 
+def _build_container_summary(form) -> str:
+    """
+    Formato estándar:
+    5%OXIDO, MANCHAS LEVE, GOLPES LEVE, ASTILLAS LEVE, NO USAR, ..., AÑO 2018
+    """
 
-def _fetch_open_eirs_for_site(site_id: int, limit: int = 200):
-    """
-    Predios: traer EIRs abiertos/pendientes para poder 'ligar'.
-    ⚠️ Usa SQL directo para no depender de modelos aún.
-    Ajusta nombres de tabla/columnas si tu DB los tiene distintos.
-    """
-    sql = text("""
-        SELECT
-            e.id,
-            COALESCE(e.eir_number::text, e.id::text) AS display_number,
-            e.status,
-            e.container_code,
-            e.chassis_code,
-            e.created_at
-        FROM yard_gate_alamo.eirs e
-        WHERE e.site_id = :sid
-          AND COALESCE(e.status,'') IN ('PENDIENTE','ASIGNADO','ABIERTO')
-        ORDER BY e.created_at DESC NULLS LAST, e.id DESC
-        LIMIT :lim
-    """)
-    rows = db.session.execute(sql, {"sid": site_id, "lim": int(limit)}).mappings().all()
-    return rows
+    def v(name: str) -> str:
+        return (form.get(name) or "").strip()
+
+    def vl(name: str) -> list[str]:
+        try:
+            return [str(x).strip() for x in form.getlist(name) if str(x).strip()]
+        except Exception:
+            val = v(name)
+            return [val] if val else []
+
+    parts: list[str] = []
+
+    # % Óxido (si viene)
+    rust = v("rust_pct")
+    if rust:
+        parts.append(f"{rust}%OXIDO")
+
+    # Condición general (solo si no es NO)
+    stains = v("stains")
+    if stains and stains.upper() != "NO":
+        parts.append(f"MANCHAS {stains}")
+
+    hits = v("hits")
+    if hits and hits.upper() != "NO":
+        parts.append(f"GOLPES {hits}")
+
+    spl = v("splinters")
+    if spl and spl.upper() != "NO":
+        parts.append(f"ASTILLAS {spl}")
+
+    smell = v("bad_smell")
+    if smell and smell.upper() != "NO":
+        parts.append(f"MAL OLOR {smell}")
+
+    dirt = v("dirt")
+    if dirt and dirt.upper() != "NO":
+        parts.append(f"SUCIEDAD {dirt}")
+
+    # Marque si presenta / requiere
+    req = vl("requires_flags")
+    if "NINGUNA" in req:
+        req = ["NINGUNA"]
+    parts.extend(req)
+
+    # Piso (multiselect): si hay algo distinto de OK, quitar OK
+    floor = vl("floor_flags")
+    if "OK" in floor and len(floor) > 1:
+        floor = [x for x in floor if x != "OK"]
+
+    if floor:
+        if floor == ["OK"]:
+            parts.append("PISO OK")
+        else:
+            for f in floor:
+                parts.append(f"PISO {f}")
+
+    # Año al final
+    year = v("year")
+    if year:
+        parts.append(f"AÑO {year}")
+
+    # Taller (si aplica)
+    if v("needs_workshop") == "1":
+        wk = vl("workshop_services")
+        if wk:
+            for w in wk:
+                parts.append(f"TALLER {w}")
+        else:
+            parts.append("TALLER (SIN DETALLE)")
+
+    # Limpieza + dedupe (manteniendo orden)
+    seen = set()
+    out = []
+    for p in parts:
+        p = p.strip().strip(",")
+        if not p:
+            continue
+        key = p.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+
+    return ", ".join(out)
 
 
 @yard_bp.get("/gate-out")
@@ -1565,6 +1735,131 @@ def allowed_positions_for(axles: int):
         ]
     return []
 
+# =========================
+# Chassis classification helpers (sin modelos nuevos)
+# =========================
+
+MARCHAMO_CHECK = {"OK", "DISTINTO", "NO_TIENE", "ILEGIBLE"}
+
+# Traducciones pedidas
+LABELS_ES = {
+    "landing_gear": "Pata de apoyo",
+    "mudflap": "Faldones",
+}
+
+def _get_table_columns(schema: str, table: str) -> set[str]:
+    sql = text("""
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = :schema AND table_name = :table
+    """)
+    rows = db.session.execute(sql, {"schema": schema, "table": table}).fetchall()
+    return {r[0] for r in rows}
+
+def _insert_dynamic(schema: str, table: str, values: dict) -> int | None:
+    """
+    Inserta solo las columnas que existan en la tabla (evita romper por schema distinto).
+    Retorna id si la tabla tiene id y la DB lo devuelve, si no, None.
+    """
+    cols = _get_table_columns(schema, table)
+    payload = {k: v for k, v in values.items() if k in cols}
+
+    if not payload:
+        return None
+
+    col_list = ", ".join(payload.keys())
+    param_list = ", ".join([f":{k}" for k in payload.keys()])
+
+    # Si existe 'id' intentamos RETURNING id, si no, sin returning.
+    if "id" in cols:
+        sql = text(f"""
+            INSERT INTO {schema}.{table} ({col_list})
+            VALUES ({param_list})
+            RETURNING id
+        """)
+        new_id = db.session.execute(sql, payload).scalar()
+        return int(new_id) if new_id is not None else None
+
+    sql = text(f"""
+        INSERT INTO {schema}.{table} ({col_list})
+        VALUES ({param_list})
+    """)
+    db.session.execute(sql, payload)
+    return None
+
+def _fetch_last_final_eir_for_chassis(chassis_id: int):
+    """
+    Trae el último EIR FINAL (o estado equivalente) donde participó ese chasis.
+    No asumimos nombres perfectos: usamos columnas existentes.
+    """
+    cols = _get_table_columns("yard_gate_alamo", "eirs")
+    status_col = "status" if "status" in cols else None
+    updated_col = "updated_at" if "updated_at" in cols else ("created_at" if "created_at" in cols else None)
+
+    where_status = ""
+    if status_col:
+        # soporta tu flujo actual: FINAL / CERRADO / POR COBRAR etc. (si existen)
+        where_status = f"AND COALESCE(e.{status_col}, '') IN ('FINAL','CERRADO','POR COBRAR','PENDIENTE COBRO','ABIERTO','ASIGNADO')"
+
+    order_by = f"ORDER BY e.{updated_col} DESC NULLS LAST, e.id DESC" if updated_col else "ORDER BY e.id DESC"
+
+    sql = text(f"""
+        SELECT e.*
+        FROM yard_gate_alamo.eirs e
+        WHERE e.chassis_id = :cid
+        {where_status}
+        {order_by}
+        LIMIT 1
+    """)
+    row = db.session.execute(sql, {"cid": chassis_id}).mappings().first()
+    return row  # dict-like o None
+
+def _build_workshop_ticket_text(
+    chassis_number: str,
+    axles: int,
+    structure_lines: list[str],
+    tire_lines: list[str],
+    eir_prev_id: int | None
+) -> str:
+    out = []
+    out.append(f"CHASIS: {chassis_number}")
+    out.append(f"EJES: {axles}")
+    if eir_prev_id:
+        out.append(f"CONCILIAR CONTRA EIR ANTERIOR: #{eir_prev_id}")
+
+    if structure_lines:
+        out.append("")
+        out.append("DAÑOS / OBSERVACIONES (ESTRUCTURA):")
+        out.extend([f"- {x}" for x in structure_lines])
+
+    if tire_lines:
+        out.append("")
+        out.append("LLANTAS / MARCHAMOS:")
+        out.extend([f"- {x}" for x in tire_lines])
+
+    return "\n".join(out).strip()
+
+def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo: str | None,
+                       check: str, tire_state: str, user_id: int):
+    """
+    Guarda lectura/hallazgo por llanta en tire_readings si existe, sin requerir modelo.
+    """
+    cols = _get_table_columns("yard_gate_alamo", "tire_readings")
+    if not cols:
+        return  # si no existe, no rompe nada
+
+    # campos típicos; insertaremos solo lo que exista
+    _insert_dynamic("yard_gate_alamo", "tire_readings", {
+        "site_id": site_id,
+        "chassis_id": chassis_id,
+        "position_code": pos,
+        "ingreso_marchamo": ingreso_marchamo,
+        "marchamo_check": check,
+        "tire_state": tire_state,
+        "inspected_at": datetime.utcnow(),
+        "inspected_by_user_id": user_id,
+        "created_at": datetime.utcnow(),
+    })
 
 # =========================
 # Chassis pages
@@ -1986,3 +2281,194 @@ def api_chassis_tires_set(chassis_id: int):
     db.session.commit()
     return jsonify({"ok": True})
 
+@yard_bp.post("/api/chassis/<int:chassis_id>/classify")
+@login_required
+def api_chassis_classify(chassis_id: int):
+    site_id = _ensure_active_site()
+    ch = Chassis.query.get_or_404(chassis_id)
+
+    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    data = request.get_json(silent=True) or {}
+
+    # --------
+    # 1) Estructura (valores esperados: BUENO / DAÑADO / FUERA_DE_SERVICIO / ATADO)
+    # --------
+    structure_status = _norm_enum(data.get("structure_status"))
+    twistlocks_status = _norm_enum(data.get("twistlocks_status"))
+    landing_gear_status = _norm_enum(data.get("landing_gear_status"))   # "Pata de apoyo"
+    lights_status = _norm_enum(data.get("lights_status"))
+    mudflap_status = _norm_enum(data.get("mudflap_status"))             # "Faldones"
+    plate_text = (data.get("plate_text") or "").strip()
+    comments = (data.get("comments") or "").strip()
+
+    # Este es el “resumen de daños” que irá al ticket
+    damage_summary = (data.get("damage_summary") or "").strip()
+
+    # --------
+    # 2) Llantas (dibujo): lista de items
+    #    tires: [{position_code, ingreso_marchamo, marchamo_check, tire_state}]
+    # --------
+    tires = data.get("tires") or []
+    axles = int(getattr(ch, "axles", 2) or 2)
+    allowed = set(allowed_positions_for(axles))
+
+    tire_lines = []
+    any_tire_issue = False
+
+    for t in tires:
+        pos = (t.get("position_code") or "").strip().upper()
+        if pos not in allowed:
+            continue
+
+        ingreso_marchamo = (t.get("ingreso_marchamo") or "").strip()
+        marchamo_check = (t.get("marchamo_check") or "OK").strip().upper()
+        tire_state = (t.get("tire_state") or "OK").strip().upper()
+
+        if marchamo_check not in MARCHAMO_CHECK:
+            marchamo_check = "OK"
+        if tire_state not in TIRE_STATES:
+            tire_state = "OK"
+
+        # Guardar lectura en tire_readings (si la tabla existe)
+        _save_tire_reading(
+            site_id=site_id,
+            chassis_id=ch.id,
+            pos=pos,
+            ingreso_marchamo=(ingreso_marchamo or None),
+            check=marchamo_check,
+            tire_state=tire_state,
+            user_id=current_user.id
+        )
+
+        # Actualizar estado configurado de la llanta del chasis
+        row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
+        if row:
+            row.tire_state = tire_state
+            row.updated_at = datetime.utcnow()
+            db.session.add(row)
+
+        # Construcción de línea de ticket
+        if marchamo_check == "OK":
+            # no lo consideramos problema
+            pass
+        else:
+            any_tire_issue = True
+            if marchamo_check == "DISTINTO":
+                tire_lines.append(f"{pos}: MARCHAMO DE INGRESO DISTINTO - REVISAR (ingreso: {ingreso_marchamo or '—'})")
+            elif marchamo_check == "NO_TIENE":
+                tire_lines.append(f"{pos}: MARCHAMO DE INGRESO NO TIENE - REVISAR")
+            elif marchamo_check == "ILEGIBLE":
+                tire_lines.append(f"{pos}: MARCHAMO DE INGRESO ILEGIBLE - REVISAR")
+
+        # Estado de llanta NO_OK también genera ticket
+        if tire_state != "OK":
+            any_tire_issue = True
+            tire_lines.append(f"{pos}: ESTADO {tire_state}")
+
+    # --------
+    # 3) Determinar si requiere taller (mínimo 1 hallazgo)
+    # --------
+    # Hallazgo estructura: si damage_summary trae algo o si algún status está en DAÑADO/FUERA/ATADO
+    structure_lines = []
+    flagged = {"DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}
+
+    def add_if_flag(label: str, val: str):
+        if val in flagged:
+            structure_lines.append(f"{label}: {val}")
+
+    add_if_flag("Estructura", structure_status)
+    add_if_flag("Twistlocks", twistlocks_status)
+    add_if_flag(LABELS_ES["landing_gear"], landing_gear_status)
+    add_if_flag("Luces", lights_status)
+    add_if_flag(LABELS_ES["mudflap"], mudflap_status)
+
+    if damage_summary:
+        structure_lines.append(f"Resumen: {damage_summary}")
+
+    needs_workshop = bool(structure_lines) or bool(any_tire_issue)
+
+    # --------
+    # 4) Conciliación contra EIR anterior (referencia)
+    # --------
+    last_eir = _fetch_last_final_eir_for_chassis(ch.id)
+    eir_prev_id = int(last_eir["id"]) if last_eir and last_eir.get("id") else None
+
+    # --------
+    # 5) Guardar inspección (chassis_inspections) sin modelo
+    # --------
+    _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
+        "site_id": site_id,
+        "chassis_id": ch.id,
+        "inspected_at": datetime.utcnow(),
+        "inspected_by_user_id": current_user.id,
+        "structure_status": structure_status or None,
+        "twistlocks_status": twistlocks_status or None,
+        "landing_gear_status": landing_gear_status or None,
+        "lights_status": lights_status or None,
+        "mudflap_status": mudflap_status or None,
+        "plate_text": plate_text or None,
+        "comments": comments or None,
+        "needs_workshop": needs_workshop,
+        "damage_summary": (damage_summary or None),
+    })
+
+    # --------
+    # 6) Ingreso automático al predio (inventario chasis)
+    # --------
+    ch.is_in_yard = True
+    db.session.add(ch)
+
+    inv = ChassisInventory.query.filter_by(site_id=site_id, chassis_id=ch.id).first()
+    if not inv:
+        inv = ChassisInventory(site_id=site_id, chassis_id=ch.id, is_in_yard=True)
+    else:
+        inv.is_in_yard = True
+    db.session.add(inv)
+
+    # --------
+    # 7) Ticket único a taller (solo si hay mínimo 1 hallazgo)
+    # --------
+    ticket_id = None
+    if needs_workshop:
+        body = _build_workshop_ticket_text(
+            chassis_number=ch.chassis_number,
+            axles=axles,
+            structure_lines=structure_lines,
+            tire_lines=tire_lines,
+            eir_prev_id=eir_prev_id
+        )
+
+        # Insert dinámico para no depender del schema exacto
+        ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
+            "site_id": site_id,
+            "chassis_id": ch.id,
+            "created_at": datetime.utcnow(),
+            "created_by_user_id": current_user.id,
+            "status": "OPEN",
+            "title": f"Ingreso Chasis {ch.chassis_number} - Taller",
+            "body": body,
+            "notes": body,
+            "description": body,
+            "axles": axles,
+        })
+
+        audit_log(
+            current_user.id,
+            "WORKSHOP_TICKET_CREATED_FROM_CHASSIS_CLASSIFICATION",
+            "workshop_ticket",
+            ticket_id,
+            {"site_id": site_id, "chassis_id": ch.id, "eir_prev_id": eir_prev_id},
+        )
+
+    audit_log(
+        current_user.id,
+        "CHASSIS_CLASSIFIED",
+        "chassis",
+        ch.id,
+        {"site_id": site_id, "needs_workshop": needs_workshop, "eir_prev_id": eir_prev_id},
+    )
+
+    db.session.commit()
+    return jsonify({"ok": True, "needs_workshop": needs_workshop, "ticket_id": ticket_id, "eir_prev_id": eir_prev_id})
