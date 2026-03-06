@@ -1,49 +1,93 @@
 {% extends "base.html" %}
-{% block title %}Chasis {{ ch.chassis_number }} - Yard Gate Álamo{% endblock %}
+{% block title %}Gate In - Yard Gate Álamo{% endblock %}
 {% block content %}
 
 <style>
-  .ch-wrap{max-width:1150px}
-  .ch-grid{display:grid;grid-template-columns:420px 1fr;gap:16px;align-items:start}
-  @media (max-width: 980px){ .ch-grid{grid-template-columns:1fr} }
+  .section-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.03);
+    margin-top:14px;
+  }
 
-  .ch-head{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:10px}
-  .ch-head h2{margin:0}
-  .muted{opacity:.75}
-  .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)}
-  .kv{display:grid;grid-template-columns:150px 1fr;gap:8px;margin-top:10px}
-  .kv div{padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08)}
-  .kv .k{opacity:.8;font-weight:600}
-  .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  .mini-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    font-size:12px;
+    font-weight:800;
+  }
 
-  /* MAP */
-  .map-card{padding:14px}
-  .map-area{position:relative;width:100%;aspect-ratio: 3/6; min-height:520px; border-radius:16px;
-            background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-            border:1px solid rgba(255,255,255,.10);
-            overflow:hidden}
-  .frame{position:absolute;left:50%;transform:translateX(-50%);
-         top:10px; bottom:10px; width:60%;
-         border-radius:14px;border:3px solid rgba(0,0,0,.45);
-         box-shadow: inset 0 0 0 2px rgba(255,255,255,.05);}
+  .chassis-grid{
+    display:grid;
+    grid-template-columns: 380px 1fr;
+    gap:16px;
+    align-items:start;
+  }
 
-  .axle{position:absolute;left:50%;transform:translateX(-50%);width:66%;height:10px;
-        background:rgba(0,0,0,.55); border-radius:999px}
+  @media (max-width: 980px){
+    .chassis-grid{grid-template-columns:1fr;}
+  }
+
+  .map-area{
+    position:relative;
+    width:100%;
+    aspect-ratio:3/6;
+    min-height:520px;
+    border-radius:16px;
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    border:1px solid rgba(255,255,255,.10);
+    overflow:hidden;
+  }
+
+  .frame{
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    top:10px;
+    bottom:10px;
+    width:60%;
+    border-radius:14px;
+    border:3px solid rgba(0,0,0,.45);
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.05);
+  }
+
+  .axle{
+    position:absolute;
+    left:50%;
+    transform:translateX(-50%);
+    width:66%;
+    height:10px;
+    background:rgba(0,0,0,.55);
+    border-radius:999px
+  }
   .axle.ax1{top:68%}
   .axle.ax2{top:80%}
   .axle.ax3{top:92%}
 
   .wheel{
     position:absolute;
-    width:46px;height:86px;border-radius:12px;
+    width:46px;
+    height:86px;
+    border-radius:12px;
     background:rgba(0,0,0,.85);
     border:2px solid rgba(255,255,255,.07);
     cursor:pointer;
-    display:flex;align-items:center;justify-content:center;
+    display:flex;
+    align-items:center;
+    justify-content:center;
     box-shadow:0 8px 18px rgba(0,0,0,.35);
     transition: transform .08s ease, box-shadow .08s ease, outline .08s ease;
   }
-  .wheel:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.45)}
+  .wheel:hover{
+    transform:translateY(-2px);
+    box-shadow:0 10px 22px rgba(0,0,0,.45)
+  }
   .wheel .tag{
     font-size:11px;
     padding:2px 6px;
@@ -54,7 +98,6 @@
     user-select:none;
   }
 
-  /* State coloring */
   .st-OK{outline: 3px solid rgba(0, 200, 120, .55)}
   .st-GASTADA{outline: 3px solid rgba(255, 193, 7, .6)}
   .st-PINCHADA{outline: 3px solid rgba(255, 87, 34, .65)}
@@ -70,16 +113,25 @@
   .dot.c{background:rgba(255, 0, 100, .65)}
   .dot.n{background:rgba(180, 0, 0, .7)}
 
-  /* Right side table */
   .pos-table{width:100%;border-collapse:collapse}
-  .pos-table th,.pos-table td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}
+  .pos-table th,.pos-table td{
+    padding:10px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    text-align:left;
+    vertical-align:top
+  }
   .pos-table th{opacity:.85;font-weight:700}
+
   .badge{
-    display:inline-flex;align-items:center;gap:6px;
-    padding:4px 10px;border-radius:999px;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:4px 10px;
+    border-radius:999px;
     border:1px solid rgba(255,255,255,.14);
     background:rgba(255,255,255,.06);
-    font-size:12px;font-weight:700;
+    font-size:12px;
+    font-weight:700;
     white-space:nowrap;
   }
   .badge[data-st="OK"]{border-color:rgba(0,200,120,.55)}
@@ -89,11 +141,15 @@
   .badge[data-st="NO_APTA"]{border-color:rgba(180,0,0,.7)}
 
   .badge2{
-    display:inline-flex;align-items:center;gap:6px;
-    padding:4px 10px;border-radius:999px;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:4px 10px;
+    border-radius:999px;
     border:1px solid rgba(255,255,255,.14);
     background:rgba(255,255,255,.06);
-    font-size:12px;font-weight:800;
+    font-size:12px;
+    font-weight:800;
     white-space:nowrap;
   }
   .badge2.ok{border-color:rgba(0,200,120,.55)}
@@ -101,10 +157,14 @@
   .badge2.bad{border-color:rgba(255,87,34,.65)}
   .badge2.danger{border-color:rgba(180,0,0,.7)}
 
-  /* Modal */
   .modal-backdrop{
-    position:fixed;inset:0;background:rgba(0,0,0,.55);
-    display:none;align-items:center;justify-content:center;z-index:9999;
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,.55);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:9999;
     padding:18px;
   }
   .modal{
@@ -115,14 +175,38 @@
     box-shadow:0 24px 60px rgba(0,0,0,.55);
     overflow:hidden;
   }
-  .modal-h{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.10)}
+  .modal-h{
+    padding:14px 16px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    border-bottom:1px solid rgba(255,255,255,.10)
+  }
   .modal-b{padding:14px 16px;display:grid;gap:10px}
-  .modal-f{padding:12px 16px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid rgba(255,255,255,.10)}
-  .xbtn{cursor:pointer;border:0;background:transparent;color:rgba(255,255,255,.85);font-size:18px}
-  .frow{display:grid;grid-template-columns:170px 1fr;gap:10px;align-items:center}
-  .frow input,.frow select, .frow textarea{
+  .modal-f{
+    padding:12px 16px;
+    display:flex;
+    gap:10px;
+    justify-content:flex-end;
+    border-top:1px solid rgba(255,255,255,.10)
+  }
+  .xbtn{
+    cursor:pointer;
+    border:0;
+    background:transparent;
+    color:rgba(255,255,255,.85);
+    font-size:18px
+  }
+  .frow{
+    display:grid;
+    grid-template-columns:170px 1fr;
+    gap:10px;
+    align-items:center
+  }
+  .frow input,.frow select,.frow textarea{
     width:100%;
-    padding:10px 10px;border-radius:10px;
+    padding:10px 10px;
+    border-radius:10px;
     border:1px solid rgba(255,255,255,.14);
     background:rgba(255,255,255,.06);
     color:rgba(255,255,255,.95);
@@ -130,302 +214,578 @@
   }
   .frow textarea{min-height:70px;resize:vertical}
   .help{font-size:12px;opacity:.75}
-
-  .modebar{display:flex;gap:8px;flex-wrap:wrap}
-  .chip{
-    display:inline-flex;align-items:center;gap:8px;
-    padding:6px 10px;border-radius:999px;
-    border:1px solid rgba(255,255,255,.14);
-    background:rgba(255,255,255,.06);
-    cursor:pointer;
-    user-select:none;
-    font-weight:800;
-    font-size:12px;
-  }
-  .chip.active{border-color:rgba(0,200,120,.55)}
-  .cfg-only{display:block}
-  .cls-only{display:block}
-  .hidden{display:none !important}
-
+  .hidden{display:none !important;}
   .sep{height:1px;background:rgba(255,255,255,.10);margin:10px 0}
 </style>
 
-<div class="ch-wrap">
-  <div class="card card-pad">
-    <div class="ch-head">
-      <div>
-        <h2>Chasis <span class="muted">#</span>{{ ch.chassis_number }}</h2>
-        <div class="muted" style="margin-top:4px;">
-          Predio: <b>{{ ch.site.name if ch.site else "—" }}</b>
-          &nbsp;•&nbsp;
-          En patio: <b>{{ "Sí" if ch.is_in_yard else "No" }}</b>
-        </div>
-      </div>
+<h2>Gate In</h2>
 
-      <div class="pill">
-        <span>Tipo:</span>
-        <b>{{ length_ft }} ft</b>
-        <span class="muted">•</span>
-        <b>{{ axles }} ejes</b>
+<form id="gateInForm" method="post" enctype="multipart/form-data" class="card" style="max-width: 1180px;">
+  <h3>Identificación</h3>
+
+  <div class="grid" style="display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;">
+    <div>
+      <label>Número de contenedor (AAAA-000000-0)</label>
+      <input id="container_code" name="container_code" placeholder="MSKU-123456-7" required>
+    </div>
+
+    <div>
+      <label>Año fabricación</label>
+      <input name="year" inputmode="numeric" placeholder="Ej: 2020">
+      <div class="hint" style="margin-top:6px;">(Opcional)</div>
+    </div>
+  </div>
+
+  <label style="margin-top:12px;">Tamaño / Tipo</label>
+  <div class="card" style="padding:12px; border-radius:16px;">
+    <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;">
+      {% for t in (sizes or ["20ST","40ST","40HC","45ST"]) %}
+        <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+          <input type="radio" name="size" value="{{ t }}" {% if loop.first %}checked{% endif %}>
+          <span style="font-weight:800;">{{ t }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div>
+      <label>Naviera (opcional)</label>
+      <select id="shipping_line" name="shipping_line">
+        <option value="" selected>—</option>
+        <option value="COSCO">COSCO</option>
+        <option value="ONE">ONE</option>
+        <option value="OOCL">OOCL</option>
+        <option value="MAERSK">MAERSK</option>
+        <option value="ATM">ATM</option>
+        <option value="VASI">Otro</option>
+      </select>
+
+      <div id="shipOtherBox" style="display:none; margin-top:10px;">
+        <label>Indica cuál</label>
+        <input id="shipping_line_other" name="shipping_line_other" placeholder="Ej: Hapag, CMA, etc.">
       </div>
     </div>
 
-    <div class="ch-grid">
-      <!-- LEFT: MAP -->
-      <div class="card map-card">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-          <div style="font-weight:900;">Mapa de llantas</div>
+    <div>
+      <label>Max Gross (KG) (opcional)</label>
+      <select id="max_gross_select" name="max_gross_select">
+        <option value="" selected>—</option>
+        <option value="32500">32500 KG</option>
+        <option value="30000">30000 KG</option>
+        <option value="28000">28000 KG</option>
+        <option value="26000">26000 KG</option>
+        <option value="OTHER">Otro…</option>
+      </select>
 
-          <div class="modebar">
-            <div class="chip active" id="modeConfig">Modo: Configuración</div>
-            <div class="chip" id="modeClassify">Modo: Clasificación</div>
-            <button class="btn btn-sm" type="button" id="btnReload">Recargar</button>
-          </div>
-        </div>
-
-        <div class="help" style="margin-top:8px;">
-          <span id="modeHelpCfg">Config: tocá una llanta para editar marchamo/número/marca/estado (se guarda por posición).</span>
-          <span id="modeHelpCls" class="hidden">Clasificación: tocá una llanta para indicar marchamo de ingreso + validación + estado (se guarda al final con “Guardar Clasificación”).</span>
-        </div>
-
-        <div class="map-area" style="margin-top:10px;">
-          <div class="frame"></div>
-
-          <div class="axle ax1"></div>
-          <div class="axle ax2"></div>
-          {% if axles == 3 %}
-            <div class="axle ax3"></div>
-          {% endif %}
-
-          <!-- AX1 -->
-          <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
-          <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
-          <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
-          <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
-
-          <!-- AX2 -->
-          <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
-          <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
-          <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
-          <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
-
-          {% if axles == 3 %}
-          <!-- AX3 -->
-          <div class="wheel" data-pos="AX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
-          <div class="wheel" data-pos="AX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
-          <div class="wheel" data-pos="AX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
-          <div class="wheel" data-pos="AX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
-          {% endif %}
-        </div>
-
-        <div class="legend">
-          <div class="lg"><span class="dot ok"></span> OK</div>
-          <div class="lg"><span class="dot g"></span> GASTADA</div>
-          <div class="lg"><span class="dot p"></span> PINCHADA</div>
-          <div class="lg"><span class="dot c"></span> CAMBIAR</div>
-          <div class="lg"><span class="dot n"></span> NO_APTA</div>
-        </div>
-
-        <div class="help" style="margin-top:10px;">
-          Tip: en modo Clasificación, si marcás <b>DISTINTO / NO TIENE / ILEGIBLE</b> se va directo al ticket de taller. 😉
-        </div>
+      <div id="maxGrossOtherBox" style="display:none; margin-top:10px;">
+        <label>Max Gross (KG) - otro</label>
+        <input id="max_gross_kg" name="max_gross_kg" inputmode="numeric" placeholder="Ej: 34000" min="1">
       </div>
 
-      <!-- RIGHT: DETAILS -->
-      <div class="card card-pad">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-          <div style="font-weight:900;">Detalle por posición</div>
-          <a class="btn btn-ghost btn-sm" href="{{ url_for('yard.chassis_list') }}">Volver</a>
+      <input type="hidden" id="max_gross_kg_hidden" name="max_gross_kg_hidden" value="">
+    </div>
+  </div>
+
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div>
+      <label>Tare (KG) (opcional)</label>
+      <input name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
+    </div>
+    <div>
+      <label>Comentarios generales (opcional)</label>
+      <input name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
+    </div>
+  </div>
+
+  <details open style="margin-top:14px;">
+    <summary style="cursor:pointer; font-weight:900;">Condición estructural</summary>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+      <div>
+        <label>Barras</label>
+        <select name="bars">
+          <option value="OK" selected>OK</option>
+          <option value="DAÑO_LEVE">DAÑO LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+          <option value="OTRO">OTRO</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Seguros</label>
+        <select name="locks">
+          <option value="OK" selected>OK</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+    </div>
+
+    <label style="margin-top:12px;">Piso (selección múltiple)</label>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      {% set floor_opts = ["OK","HUNDIDO","LEVANTADO","REVENTADO","DESLAMINADO","HUECO"] %}
+      <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px;">
+        {% for f in floor_opts %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="checkbox" name="floor_flags" value="{{ f }}" {% if f=="OK" %}checked{% endif %}>
+            <span style="font-weight:800;">{{ f }}</span>
+          </label>
+        {% endfor %}
+      </div>
+      <div class="hint" style="margin-top:8px;">Tip: si marcas algo distinto de OK, quita OK.</div>
+    </div>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Astillas</label>
+        <select name="splinters">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Aceite</label>
+        <select name="oil">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Barrido</label>
+        <select name="swept">
+          <option value="SI" selected>SI</option>
+          <option value="NO">NO</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>Argollas</label>
+      <select name="rings">
+        <option value="SI" selected>SI</option>
+        <option value="NO">NO</option>
+      </select>
+    </div>
+  </details>
+
+  <details open style="margin-top:14px;">
+    <summary style="cursor:pointer; font-weight:900;">Condición general</summary>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+      <div>
+        <label>Mal olor</label>
+        <select name="bad_smell">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Suciedad (transferibles)</label>
+        <select name="dirt">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Manchas (transferibles)</label>
+        <select name="stains">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+      <div>
+        <label>Golpes</label>
+        <select name="hits">
+          <option value="NO" selected>NO</option>
+          <option value="LEVE">LEVE</option>
+          <option value="MEDIO">MEDIO</option>
+          <option value="GRAVE">GRAVE</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>% Óxido</label>
+      <select name="rust_pct">
+        <option value="0" selected>0</option>
+        <option value="5">5</option>
+        <option value="10">10</option>
+        <option value="15">15</option>
+        <option value="25">25</option>
+        <option value="40">40</option>
+        <option value="50+">50+</option>
+      </select>
+    </div>
+  </details>
+
+  <details style="margin-top:14px;">
+    <summary style="cursor:pointer; font-weight:900;">Marque si presenta o requiere</summary>
+
+    <div class="card" style="padding:12px; border-radius:16px; margin-top:10px;">
+      {% set req_opts = [
+        "HUECO/CORTE TECHO","HUECO/CORTE LATERAL","PARCHE PARED","PARCHE PISO","PARCHE TECHO",
+        "ABOLLADURA GRANDE","PEGAMENTO PAREDES","FILTRACIONES (EMPAQUE / TOP RIEL / PISO)",
+        "POLVO PISO/PAREDES","OBALADO/DEFORME","SUCIEDAD EXCESIVA","HUECOS DE CLAVOS",
+        "REMOCIÓN DE CLAVOS","TORNILLERÍA EXPUESTA","CALCAS IMO","INSECTOS/PLAGA","TELARAÑAS",
+        "DERRAME","LAVAR PARA CARGA DELICADA","CONTENEDOR CARGADO","RETORNO A CALDERA","RETORNO A LIMÓN",
+        "APTO PARA CARTÓN","NO USAR","NINGUNA"
+      ] %}
+
+      <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
+        {% for o in req_opts %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="checkbox" name="requires_flags" value="{{ o }}">
+            <span style="font-weight:800;">{{ o }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="hint" style="margin-top:10px;">
+        Tip rápido: si marcas “NINGUNA”, desmarca las demás (lo hace automático al guardar).
+      </div>
+    </div>
+  </details>
+
+  <h3 style="margin-top:18px;">Clasificación final</h3>
+
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <div>
+      <label>Clasificación (opcional)</label>
+      <select name="final_grade">
+        <option value="" selected>—</option>
+        <option value="A+">A+</option>
+        <option value="A-">A-</option>
+        <option value="B+">B+</option>
+        <option value="B-">B-</option>
+        <option value="C">C</option>
+        <option value="A2">A2</option>
+        <option value="B2">B2</option>
+        <option value="CHATARRA">CHATARRA</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Requiere servicio de taller (opcional)</label>
+      <select id="needs_workshop" name="needs_workshop">
+        <option value="0" selected>No</option>
+        <option value="1">Sí</option>
+      </select>
+    </div>
+  </div>
+
+  <div id="workshopBox" style="display:none; margin-top:12px;">
+    <label>Servicios de taller (selección múltiple)</label>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      {% set wk_opts = [
+        "LAVADO","LAVADO ESPECIAL","SELLAR TOP RIEL","SELLAR PISO","SELLAR EMPAQUE","QUITAR CLAVOS",
+        "SOLDAR","ENDEREZAR PANEL","CORREGIR SEGURO","PINTURA PARCIAL","PINTURA TOTAL"
+      ] %}
+      <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
+        {% for w in wk_opts %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="checkbox" name="workshop_services" value="{{ w }}">
+            <span style="font-weight:800;">{{ w }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0;">Clasificación de chasis</h3>
+        <div class="hint" style="margin-top:6px;">
+          Al guardar, el chasis ingresa automáticamente al inventario del predio y, si hay hallazgos, genera un único ticket a taller.
         </div>
+      </div>
+      <div class="mini-pill" id="chassisSummaryPill">Sin chasis seleccionado</div>
+    </div>
 
-        <div class="kv">
-          <div class="k">Placa</div><div>{{ ch.plate or "—" }}</div>
-          <div class="k">type_code</div><div>{{ ch.type_code or "—" }}</div>
-          <div class="k">Creado</div><div>{{ ch.created_at.strftime("%Y-%m-%d %H:%M") if ch.created_at else "—" }}</div>
-        </div>
+    <input type="hidden" name="chassis_id" id="chassis_id" value="">
+    <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
+    <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
 
-        <div class="sep"></div>
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Seleccionar chasis</label>
+        <select id="chassisSelect">
+          <option value="">— Sin chasis —</option>
+        </select>
+      </div>
+      <div>
+        <label>Placa del chasis (texto visible)</label>
+        <input id="chassisPlateText" type="text" placeholder="Se puede confirmar / corregir aquí">
+      </div>
+    </div>
 
-        <!-- ✅ NUEVO: FORM CLASIFICACIÓN (solo UI; guarda por API /classify) -->
-        <div id="classifyCard" class="hidden">
+    <div id="chassisBlock" class="hidden" style="margin-top:14px;">
+      <div class="chassis-grid">
+        <div class="card" style="padding:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-            <div style="font-weight:900;">Clasificación de ingreso</div>
-            <span class="badge2 ok" id="clsStatusPill">LISTO</span>
+            <div style="font-weight:900;">Mapa de llantas</div>
+            <button class="btn btn-sm" type="button" id="btnReloadChassis">Recargar</button>
           </div>
 
-          <div class="help" style="margin-top:6px;">
-            Al guardar: se ingresa a inventario del predio y, si hay hallazgos, se genera <b>un ticket único</b> a taller.
+          <div class="help" style="margin-top:8px;">
+            Toca una llanta para indicar si el marchamo de ingreso viene <b>OK / DISTINTO / NO TIENE / ILEGIBLE</b> y el estado actual de la llanta.
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
-            <div class="frow" style="grid-template-columns:140px 1fr;">
-              <div style="font-weight:800;">Estructura</div>
-              <select id="c_structure">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
+          <div class="map-area" style="margin-top:10px;">
+            <div class="frame"></div>
 
-            <div class="frow" style="grid-template-columns:140px 1fr;">
-              <div style="font-weight:800;">Twistlocks</div>
-              <select id="c_twistlocks">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
+            <div class="axle ax1"></div>
+            <div class="axle ax2"></div>
+            <div class="axle ax3 hidden" id="axle3"></div>
 
-            <div class="frow" style="grid-template-columns:140px 1fr;">
-              <div style="font-weight:800;">Pata de apoyo</div>
-              <select id="c_landing">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
+            <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
+            <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
+            <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
+            <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
 
-            <div class="frow" style="grid-template-columns:140px 1fr;">
-              <div style="font-weight:800;">Luces</div>
-              <select id="c_lights">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
+            <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
+            <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
+            <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
+            <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
 
-            <div class="frow" style="grid-template-columns:140px 1fr;">
-              <div style="font-weight:800;">Faldones</div>
-              <select id="c_mudflap">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
-
-            <div class="frow" style="grid-template-columns:140px 1fr;">
-              <div style="font-weight:800;">Placa (texto)</div>
-              <input id="c_plate" type="text" placeholder="Ej: S012345" value="{{ ch.plate or '' }}">
-            </div>
+            <div class="wheel hidden" data-pos="AX3_L_IN" id="wAX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
+            <div class="wheel hidden" data-pos="AX3_L_OUT" id="wAX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
+            <div class="wheel hidden" data-pos="AX3_R_IN" id="wAX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
+            <div class="wheel hidden" data-pos="AX3_R_OUT" id="wAX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
           </div>
 
-          <div class="frow" style="grid-template-columns:140px 1fr;margin-top:10px;">
-            <div style="font-weight:800;">Resumen daños</div>
-            <textarea id="c_damage" placeholder="Ej: Twistlocks flojos, faldones quebrados..."></textarea>
-          </div>
-
-          <div class="frow" style="grid-template-columns:140px 1fr;margin-top:10px;">
-            <div style="font-weight:800;">Comentarios</div>
-            <textarea id="c_comments" placeholder="Observaciones generales..."></textarea>
-          </div>
-
-          <div class="btn-row" style="margin-top:12px;justify-content:flex-end;">
-            <button class="btn btn-ghost" type="button" id="btnClsReset">Limpiar</button>
-            <button class="btn" type="button" id="btnClsSave">Guardar Clasificación</button>
+          <div class="legend">
+            <div class="lg"><span class="dot ok"></span> OK</div>
+            <div class="lg"><span class="dot g"></span> GASTADA</div>
+            <div class="lg"><span class="dot p"></span> PINCHADA</div>
+            <div class="lg"><span class="dot c"></span> CAMBIAR</div>
+            <div class="lg"><span class="dot n"></span> NO_APTA</div>
           </div>
 
           <div class="help" style="margin-top:10px;">
-            Nota: si no marcás nada raro, no hay ticket. Si marcás algo, el ticket sale con el detalle (estructura + llantas + validación).
+            Si una llanta viene con marchamo <b>DISTINTO / NO TIENE / ILEGIBLE</b>, eso sale en el ticket como revisión.
           </div>
-
-          <div class="sep"></div>
         </div>
 
-        <!-- Tabla de posiciones (config) -->
-        <table class="pos-table" style="margin-top:14px;">
-          <thead>
-            <tr>
-              <th>Posición</th>
-              <th>Número llanta</th>
-              <th>Marca</th>
-              <th>Marchamo</th>
-              <th>Estado</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody id="posTbody">
-            <tr><td colspan="6">Cargando...</td></tr>
-          </tbody>
-        </table>
+        <div class="card" style="padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="font-weight:900;">Clasificación estructural del chasis</div>
+            <span class="badge2 ok" id="chassisIssuesBadge">LISTO</span>
+          </div>
 
-        <div class="help" style="margin-top:10px;">
-          <span id="helpCfg">Config: los cambios se guardan por posición. Si no existe la llanta, se crea en catálogo automáticamente.</span>
-          <span id="helpCls" class="hidden">Clasificación: aquí seguís viendo la configuración; la clasificación se guarda al final y NO modifica número/marca.</span>
+          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;">
+            <div>
+              <label>Estructura</label>
+              <select id="ci_structure">
+                <option value="">—</option>
+                <option value="BUENO">BUENO</option>
+                <option value="DAÑADO">DAÑADO</option>
+                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
+                <option value="ATADO">ATADO</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Twistlocks</label>
+              <select id="ci_twistlocks">
+                <option value="">—</option>
+                <option value="BUENO">BUENO</option>
+                <option value="DAÑADO">DAÑADO</option>
+                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
+                <option value="ATADO">ATADO</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Pata de apoyo</label>
+              <select id="ci_landing_gear">
+                <option value="">—</option>
+                <option value="BUENO">BUENO</option>
+                <option value="DAÑADO">DAÑADO</option>
+                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
+                <option value="ATADO">ATADO</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Luces</label>
+              <select id="ci_lights">
+                <option value="">—</option>
+                <option value="BUENO">BUENO</option>
+                <option value="DAÑADO">DAÑADO</option>
+                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
+                <option value="ATADO">ATADO</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Faldones</label>
+              <select id="ci_mudflap">
+                <option value="">—</option>
+                <option value="BUENO">BUENO</option>
+                <option value="DAÑADO">DAÑADO</option>
+                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
+                <option value="ATADO">ATADO</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label>Resumen de daños del chasis</label>
+            <textarea id="ci_damage_summary" rows="3" placeholder="Ej: twistlock derecho dañado, faldón izquierdo quebrado..."></textarea>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label>Comentarios del chasis</label>
+            <textarea id="ci_comments" rows="3" placeholder="Observaciones adicionales..."></textarea>
+          </div>
+
+          <div class="help" style="margin-top:10px;">
+            El ticket se genera automáticamente si existe al menos un hallazgo estructural o de llantas.
+          </div>
+
+          <div style="margin-top:14px;">
+            <table class="pos-table">
+              <thead>
+                <tr>
+                  <th>Posición</th>
+                  <th>Marchamo config</th>
+                  <th>Ingreso</th>
+                  <th>Validación</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="chassisPosTbody">
+                <tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
   </div>
-</div>
 
-<!-- MODAL -->
-<div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
+  <h3 style="margin-top:18px;">Chofer que entrega</h3>
+  <label>Nombre completo</label>
+  <input name="driver_name" placeholder="Nombre y apellidos">
+
+  <label>Documento de identidad</label>
+  <input name="driver_id_doc" placeholder="Cédula / Pasaporte">
+
+  <label>Placa del cabezal</label>
+  <input name="truck_plate" placeholder="ABC-123">
+
+  <h3 style="margin-top:18px;">Ubicación en predio</h3>
+
+  <label>Bloque</label>
+  <select id="blockSelect" name="block" required>
+    {% for b in blocks %}
+      <option value="{{ b.code }}">{{ b.code }}</option>
+    {% endfor %}
+  </select>
+
+  <label>Estiba (1 a 15)</label>
+  <select id="baySelect" name="bay_number" required></select>
+
+  <label>Modo de colocación</label>
+  <select id="placementMode" name="placement_mode">
+    <option value="auto" selected>Automática (primer espacio libre desde el fondo)</option>
+    <option value="manual">Manual (seleccionar fila y nivel)</option>
+  </select>
+
+  <div id="manualBox" style="display:none;">
+    <label>Fila (1 = fondo ... 20 = frente)</label>
+    <select name="depth_row">
+      {% for i in range(1, 21) %}
+        <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+
+    <label>Nivel (1 a 4)</label>
+    <select name="tier">
+      {% for i in range(1, 5) %}
+        <option value="{{ i }}">{{ i }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <h3 style="margin-top:18px;">Notas rápidas</h3>
+  <label>Estado / Observaciones (compatibilidad con lo actual)</label>
+  <textarea name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
+
+  <h3 style="margin-top:18px;">Fotos</h3>
+  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+    <div>
+      <label>Fotos del contenedor (Gate In)</label>
+      <input type="file" name="photos" accept="image/*" multiple capture="environment">
+      <div class="hint" style="margin-top:6px;">En Android abre cámara o galería según el navegador.</div>
+    </div>
+    <div>
+      <label>Fotos de clasificación (daños / evidencias) (opcional)</label>
+      <input type="file" name="classification_photos" accept="image/*" multiple capture="environment">
+      <div class="hint" style="margin-top:6px;">Tu backend actual no las procesa aún (no rompe nada).</div>
+    </div>
+  </div>
+
+  <h3 style="margin-top:18px;">Resumen (copiable)</h3>
+  <div class="card" style="padding:12px; border-radius:16px;">
+    <div class="hint">Esto se genera en el frontend.</div>
+    <textarea id="summaryPreview" rows="3" readonly style="margin-top:8px; width:100%;"></textarea>
+    <input type="hidden" id="summary_text" name="summary_text" value="">
+  </div>
+
+  <button type="submit" style="margin-top:14px;">Guardar Gate In y generar ticket</button>
+</form>
+
+<div class="modal-backdrop" id="chassisModalBackdrop" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-h">
       <div style="font-weight:900;">
-        <span id="modalTitle">Editar llanta</span>
-        <span class="muted">•</span> <span id="mPosLabel"></span>
+        Clasificar llanta <span style="opacity:.7;">•</span> <span id="cmPosLabel"></span>
       </div>
-      <button class="xbtn" id="modalClose" title="Cerrar">✕</button>
+      <button class="xbtn" id="chassisModalClose" title="Cerrar">✕</button>
     </div>
 
     <div class="modal-b">
-      <!-- ✅ CLASIFICACIÓN: marchamo ingreso + check -->
-      <div class="cls-only hidden" id="clsFields">
-        <div class="frow">
-          <div style="font-weight:800;">Marchamo ingreso</div>
-          <input id="mIngresoMarchamo" type="text" placeholder="Ej: MCH-123456">
-        </div>
-
-        <div class="frow">
-          <div style="font-weight:800;">Validación</div>
-          <select id="mMarchamoCheck">
-            <option value="OK">OK</option>
-            <option value="DISTINTO">DISTINTO</option>
-            <option value="NO_TIENE">NO TIENE</option>
-            <option value="ILEGIBLE">ILEGIBLE</option>
-          </select>
-        </div>
-
-        <div class="help">
-          Regla de ticket: si NO es OK, se manda al taller automáticamente (DISTINTO / NO TIENE / ILEGIBLE).
-        </div>
-
-        <div class="sep"></div>
-      </div>
-
-      <!-- Configuración (catálogo) -->
-      <div class="cfg-only" id="cfgFields">
-        <div class="frow">
-          <div style="font-weight:800;">Marchamo</div>
-          <input id="mMarchamo" type="text" placeholder="Ej: MCH-123456">
-        </div>
-
-        <div class="frow">
-          <div style="font-weight:800;">Número llanta</div>
-          <input id="mTireNumber" type="text" placeholder="Ej: TL-000987">
-        </div>
-
-        <div class="frow">
-          <div style="font-weight:800;">Marca</div>
-          <input id="mBrand" type="text" placeholder="Ej: Michelin">
-        </div>
-
-        <div class="sep"></div>
+      <div class="frow">
+        <div style="font-weight:800;">Marchamo config</div>
+        <input id="cmMarchamoConfig" type="text" readonly>
       </div>
 
       <div class="frow">
-        <div style="font-weight:800;">Estado</div>
-        <select id="mState">
+        <div style="font-weight:800;">Validación ingreso</div>
+        <select id="cmSealStatus">
+          <option value="OK">OK</option>
+          <option value="DISTINTO">DISTINTO</option>
+          <option value="NO_TIENE">NO TIENE</option>
+          <option value="ILEGIBLE">ILEGIBLE</option>
+        </select>
+      </div>
+
+      <div class="frow" id="cmSealInputRow">
+        <div style="font-weight:800;">Marchamo ingreso</div>
+        <input id="cmSealInput" type="text" placeholder="Solo si viene distinto">
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:800;">Estado llanta ingreso</div>
+        <select id="cmTireState">
           <option value="OK">OK</option>
           <option value="GASTADA">GASTADA</option>
           <option value="PINCHADA">PINCHADA</option>
@@ -434,443 +794,451 @@
         </select>
       </div>
 
-      <div class="help" id="modalHelpCfg">
-        Config: si querés “vaciar” una posición, dejá número y marchamo vacíos y poné estado OK. (No borra el catálogo, solo desvincula.)
-      </div>
-
-      <div class="help hidden" id="modalHelpCls">
-        Clasificación: aquí NO tocamos número/marca. Solo ingreso + validación + estado.
+      <div class="help">
+        Si marcas DISTINTO / NO TIENE / ILEGIBLE, eso aparece en el ticket de taller automáticamente.
       </div>
     </div>
 
     <div class="modal-f">
-      <button class="btn btn-ghost" id="btnCancel" type="button">Cancelar</button>
-      <button class="btn" id="btnSave" type="button">Guardar</button>
+      <button class="btn btn-ghost" id="cmBtnCancel" type="button">Cancelar</button>
+      <button class="btn" id="cmBtnSave" type="button">Guardar</button>
     </div>
   </div>
 </div>
 
-<div id="chassisMeta"
-     data-chassis-id="{{ ch.id }}"
-     data-api-prefix="{{ url_for('yard.api_chassis_tires_get', chassis_id=ch.id) | replace('/tires','') }}">
-</div>
-
+<script id="chassisRowsData" type="application/json">{{ (chassis_rows if chassis_rows is defined else []) | tojson }}</script>
+<script src="{{ url_for('static', filename='js/container_mask.js') }}"></script>
 <script>
-(function(){
-  const meta = document.getElementById("chassisMeta");
-  const CHASSIS_ID = meta.dataset.chassisId;
+  const blockSelect = document.getElementById("blockSelect");
+  const baySelect = document.getElementById("baySelect");
+  const placementMode = document.getElementById("placementMode");
+  const manualBox = document.getElementById("manualBox");
 
-  // api_prefix: /yard/api/chassis/123
-  const API_PREFIX = meta.dataset.apiPrefix;
+  placementMode.addEventListener("change", () => {
+    manualBox.style.display = (placementMode.value === "manual") ? "block" : "none";
+  });
 
-  const API_GET = `${API_PREFIX}/tires`;
-  const API_SET = `${API_PREFIX}/tires`;
-  const API_CLASSIFY = `${API_PREFIX}/classify`;
+  async function loadBaysForBlock(blockCode){
+    const r = await fetch(`/api/yard/bays?block=${encodeURIComponent(blockCode)}`);
+    const data = await r.json();
 
-  const backdrop = document.getElementById("modalBackdrop");
-  const modalClose = document.getElementById("modalClose");
-  const btnCancel = document.getElementById("btnCancel");
-  const btnSave = document.getElementById("btnSave");
-  const btnReload = document.getElementById("btnReload");
+    baySelect.innerHTML = "";
+    (data.bays || []).forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b.bay_number;
+      opt.textContent = `${b.bay_number} (${b.code})`;
+      baySelect.appendChild(opt);
+    });
+  }
+  blockSelect.addEventListener("change", () => loadBaysForBlock(blockSelect.value));
+  loadBaysForBlock(blockSelect.value);
 
-  const modeConfig = document.getElementById("modeConfig");
-  const modeClassify = document.getElementById("modeClassify");
-  const modeHelpCfg = document.getElementById("modeHelpCfg");
-  const modeHelpCls = document.getElementById("modeHelpCls");
+  const shipSel = document.getElementById("shipping_line");
+  const shipOtherBox = document.getElementById("shipOtherBox");
+  shipSel.addEventListener("change", () => {
+    const v = shipSel.value || "";
+    shipOtherBox.style.display = (v === "VASI") ? "block" : "none";
+    buildSummary();
+  });
 
-  const classifyCard = document.getElementById("classifyCard");
-  const helpCfg = document.getElementById("helpCfg");
-  const helpCls = document.getElementById("helpCls");
+  const mgSel = document.getElementById("max_gross_select");
+  const mgOtherBox = document.getElementById("maxGrossOtherBox");
+  const mgHidden = document.getElementById("max_gross_kg_hidden");
+  const mgOtherInput = document.getElementById("max_gross_kg");
 
-  const btnClsSave = document.getElementById("btnClsSave");
-  const btnClsReset = document.getElementById("btnClsReset");
-  const clsStatusPill = document.getElementById("clsStatusPill");
+  function syncMaxGross(){
+    if (mgSel.value === "OTHER"){
+      mgOtherBox.style.display = "block";
+      mgHidden.value = "";
+    } else {
+      mgOtherBox.style.display = "none";
+      mgHidden.value = mgSel.value || "";
+    }
+    buildSummary();
+  }
+  mgSel.addEventListener("change", syncMaxGross);
+  mgOtherInput.addEventListener("input", buildSummary);
+  syncMaxGross();
 
-  const c_structure = document.getElementById("c_structure");
-  const c_twistlocks = document.getElementById("c_twistlocks");
-  const c_landing = document.getElementById("c_landing");
-  const c_lights = document.getElementById("c_lights");
-  const c_mudflap = document.getElementById("c_mudflap");
-  const c_plate = document.getElementById("c_plate");
-  const c_damage = document.getElementById("c_damage");
-  const c_comments = document.getElementById("c_comments");
+  const needsWorkshop = document.getElementById("needs_workshop");
+  const workshopBox = document.getElementById("workshopBox");
+  needsWorkshop.addEventListener("change", () => {
+    workshopBox.style.display = (needsWorkshop.value === "1") ? "block" : "none";
+    buildSummary();
+  });
 
-  const modalTitle = document.getElementById("modalTitle");
-  const mPosLabel = document.getElementById("mPosLabel");
-  const mMarchamo = document.getElementById("mMarchamo");
-  const mTireNumber = document.getElementById("mTireNumber");
-  const mBrand = document.getElementById("mBrand");
-  const mState = document.getElementById("mState");
+  const form = document.getElementById("gateInForm");
+  const summaryPreview = document.getElementById("summaryPreview");
+  const summaryHidden = document.getElementById("summary_text");
 
-  const clsFields = document.getElementById("clsFields");
-  const cfgFields = document.getElementById("cfgFields");
-  const mIngresoMarchamo = document.getElementById("mIngresoMarchamo");
-  const mMarchamoCheck = document.getElementById("mMarchamoCheck");
+  function getChecked(name){
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(x => x.value);
+  }
 
-  const modalHelpCfg = document.getElementById("modalHelpCfg");
-  const modalHelpCls = document.getElementById("modalHelpCls");
+  function getValue(name){
+    const el = document.querySelector(`[name="${name}"]`);
+    return el ? (el.value || "").trim() : "";
+  }
 
-  const tbody = document.getElementById("posTbody");
+  function buildSummary(){
+    let floor = getChecked("floor_flags");
+    if (floor.includes("OK") && floor.length > 1){
+      floor = floor.filter(x => x !== "OK");
+    }
+
+    let req = getChecked("requires_flags");
+    if (req.includes("NINGUNA") && req.length > 1){
+      req = ["NINGUNA"];
+      document.querySelectorAll(`input[name="requires_flags"]`).forEach(ch => {
+        if (ch.value !== "NINGUNA") ch.checked = false;
+      });
+    }
+
+    let wk = getChecked("workshop_services");
+
+    const year = getValue("year");
+    const rust = getValue("rust_pct");
+    const smell = getValue("bad_smell");
+    const stains = getValue("stains");
+    const hits = getValue("hits");
+    const spl = getValue("splinters");
+
+    const parts = [];
+
+    if (rust) parts.push(`${rust}%OXIDO`);
+    if (smell && smell !== "NO") parts.push(`MAL OLOR ${smell}`);
+    if (stains && stains !== "NO") parts.push(`MANCHAS ${stains}`);
+    if (hits && hits !== "NO") parts.push(`GOLPES ${hits}`);
+    if (spl && spl !== "NO") parts.push(`ASTILLAS ${spl}`);
+
+    req.filter(x => x !== "NINGUNA").forEach(x => parts.push(x));
+    if (req.includes("NINGUNA")) parts.push("NINGUNA");
+
+    if (floor.length){
+      floor.forEach(x => {
+        if (x !== "OK") parts.push(`PISO ${x}`);
+      });
+      if (floor.length === 1 && floor[0] === "OK") parts.push("PISO OK");
+    }
+
+    if (year) parts.push(`AÑO ${year}`);
+
+    if (getValue("needs_workshop") === "1"){
+      if (wk.length) wk.forEach(x => parts.push(`TALLER ${x}`));
+      else parts.push("TALLER (SIN DETALLE)");
+    }
+
+    const summary = parts.join(", ");
+    summaryPreview.value = summary;
+    summaryHidden.value = summary;
+  }
+
+  document.querySelectorAll("select, input, textarea").forEach(el => {
+    el.addEventListener("change", buildSummary);
+    el.addEventListener("input", buildSummary);
+  });
+
+  const chassisSelect = document.getElementById("chassisSelect");
+  const chassisBlock = document.getElementById("chassisBlock");
+  const chassisSummaryPill = document.getElementById("chassisSummaryPill");
+  const chassisPlateText = document.getElementById("chassisPlateText");
+  const chassisIdHidden = document.getElementById("chassis_id");
+  const chassisTireChecksHidden = document.getElementById("chassis_tire_checks_json");
+  const chassisInspectionHidden = document.getElementById("chassis_inspection_json");
+  const chassisPosTbody = document.getElementById("chassisPosTbody");
+  const btnReloadChassis = document.getElementById("btnReloadChassis");
+
+  const ci_structure = document.getElementById("ci_structure");
+  const ci_twistlocks = document.getElementById("ci_twistlocks");
+  const ci_landing_gear = document.getElementById("ci_landing_gear");
+  const ci_lights = document.getElementById("ci_lights");
+  const ci_mudflap = document.getElementById("ci_mudflap");
+  const ci_damage_summary = document.getElementById("ci_damage_summary");
+  const ci_comments = document.getElementById("ci_comments");
+  const chassisIssuesBadge = document.getElementById("chassisIssuesBadge");
+
+  const axle3 = document.getElementById("axle3");
+  const wAX3 = [
+    document.getElementById("wAX3_L_IN"),
+    document.getElementById("wAX3_L_OUT"),
+    document.getElementById("wAX3_R_IN"),
+    document.getElementById("wAX3_R_OUT"),
+  ];
+
   const wheels = Array.from(document.querySelectorAll(".wheel"));
 
-  let stateCache = {};     // config: positions dict (API_GET)
-  let classifyCache = {};  // classification per pos: {ingreso_marchamo, marchamo_check, tire_state}
-  let currentPos = null;
+  const chassisModalBackdrop = document.getElementById("chassisModalBackdrop");
+  const chassisModalClose = document.getElementById("chassisModalClose");
+  const cmBtnCancel = document.getElementById("cmBtnCancel");
+  const cmBtnSave = document.getElementById("cmBtnSave");
+  const cmPosLabel = document.getElementById("cmPosLabel");
+  const cmMarchamoConfig = document.getElementById("cmMarchamoConfig");
+  const cmSealStatus = document.getElementById("cmSealStatus");
+  const cmSealInput = document.getElementById("cmSealInput");
+  const cmSealInputRow = document.getElementById("cmSealInputRow");
+  const cmTireState = document.getElementById("cmTireState");
 
-  let MODE = "config"; // config | classify
+  let selectedChassisId = "";
+  let selectedChassisAxles = 2;
+  let chassisConfigCache = {};
+  let chassisChecksCache = {};
+  let currentPos = null;
 
   function esc(s){ return (s ?? "").toString(); }
 
   function posPretty(pos){
     const m = pos.match(/^AX(\d)_(L|R)_(IN|OUT)$/);
     if (!m) return pos;
-    return `A${m[1]} ${m[2]==="L"?"L":"R"}${m[3]==="IN"?"I":"O"}`;
+    return `A${m[1]} ${m[2] === "L" ? "L" : "R"}${m[3] === "IN" ? "I" : "O"}`;
   }
 
-  function setMode(newMode){
-    MODE = newMode;
-
-    if (MODE === "config"){
-      modeConfig.classList.add("active");
-      modeClassify.classList.remove("active");
-      modeHelpCfg.classList.remove("hidden");
-      modeHelpCls.classList.add("hidden");
-      classifyCard.classList.add("hidden");
-      helpCfg.classList.remove("hidden");
-      helpCls.classList.add("hidden");
-      repaintWheelsFromConfig();
-    }else{
-      modeConfig.classList.remove("active");
-      modeClassify.classList.add("active");
-      modeHelpCfg.classList.add("hidden");
-      modeHelpCls.classList.remove("hidden");
-      classifyCard.classList.remove("hidden");
-      helpCfg.classList.add("hidden");
-      helpCls.classList.remove("hidden");
-      repaintWheelsFromClassify();
-      refreshClsPill();
-    }
+  function wheelStateClass(st){
+    const s = (st || "OK").toUpperCase();
+    return `st-${s}`;
   }
 
-  function applyWheelClass(pos, tireState){
+  function applyWheelState(pos, st){
     const el = wheels.find(w => w.dataset.pos === pos);
     if (!el) return;
-
     el.classList.remove("st-OK","st-GASTADA","st-PINCHADA","st-CAMBIAR","st-NO_APTA");
-    const st = (tireState || "OK").toUpperCase();
-    el.classList.add(`st-${st}`);
+    el.classList.add(wheelStateClass(st));
   }
 
-  function repaintWheelsFromConfig(){
-    Object.keys(stateCache).forEach(pos => {
-      const st = stateCache[pos] ? stateCache[pos].tire_state : "OK";
-      applyWheelClass(pos, st);
+  function toggleAxles(axles){
+    const show3 = Number(axles) === 3;
+    axle3.classList.toggle("hidden", !show3);
+    wAX3.forEach(el => el.classList.toggle("hidden", !show3));
+  }
+
+  function buildInspectionPayload(){
+    return {
+      structure_status: ci_structure.value || "",
+      twistlocks_status: ci_twistlocks.value || "",
+      landing_gear_status: ci_landing_gear.value || "",
+      lights_status: ci_lights.value || "",
+      mudflap_status: ci_mudflap.value || "",
+      plate_text: chassisPlateText.value.trim(),
+      damage_summary: ci_damage_summary.value.trim(),
+      comments: ci_comments.value.trim()
+    };
+  }
+
+  function syncHiddenChassisPayloads(){
+    chassisIdHidden.value = selectedChassisId || "";
+    chassisTireChecksHidden.value = JSON.stringify(chassisChecksCache || {});
+    chassisInspectionHidden.value = JSON.stringify(buildInspectionPayload());
+  }
+
+  function refreshChassisIssueBadge(){
+    let issues = 0;
+
+    if (ci_structure.value && ci_structure.value !== "BUENO") issues++;
+    if (ci_twistlocks.value && ci_twistlocks.value !== "BUENO") issues++;
+    if (ci_landing_gear.value && ci_landing_gear.value !== "BUENO") issues++;
+    if (ci_lights.value && ci_lights.value !== "BUENO") issues++;
+    if (ci_mudflap.value && ci_mudflap.value !== "BUENO") issues++;
+    if ((ci_damage_summary.value || "").trim()) issues++;
+
+    Object.keys(chassisChecksCache).forEach(pos => {
+      const item = chassisChecksCache[pos] || {};
+      if ((item.seal_status || "OK") !== "OK") issues++;
+      if ((item.tire_state || "OK") !== "OK") issues++;
     });
+
+    if (!selectedChassisId){
+      chassisIssuesBadge.className = "badge2 ok";
+      chassisIssuesBadge.textContent = "SIN CHASIS";
+    } else if (issues > 0){
+      chassisIssuesBadge.className = "badge2 warn";
+      chassisIssuesBadge.textContent = `HALLAZGOS (${issues})`;
+    } else {
+      chassisIssuesBadge.className = "badge2 ok";
+      chassisIssuesBadge.textContent = "LISTO";
+    }
+
+    syncHiddenChassisPayloads();
   }
 
-  function repaintWheelsFromClassify(){
-    Object.keys(classifyCache).forEach(pos => {
-      const st = classifyCache[pos]?.tire_state || "OK";
-      applyWheelClass(pos, st);
-    });
-  }
-
-  function badge(st){
-    const s = (st || "OK").toUpperCase();
-    return `<span class="badge" data-st="${s}">${s}</span>`;
-  }
-
-  function renderTable(positions){
-    const keys = Object.keys(positions || {}).sort();
+  function renderChassisTable(){
+    const keys = Object.keys(chassisConfigCache || {}).sort();
     if (!keys.length){
-      tbody.innerHTML = `<tr><td colspan="6">No hay posiciones para este chasis.</td></tr>`;
+      chassisPosTbody.innerHTML = `<tr><td colspan="5">No hay posiciones para este chasis.</td></tr>`;
       return;
     }
 
     const rows = keys.map(pos => {
-      const p = positions[pos];
-      const tire_number = p ? (p.tire_number || "") : "";
-      const brand = p ? (p.brand || "") : "";
-      const marchamo = p ? (p.marchamo || "") : "";
-      const st = p ? (p.tire_state || "OK") : "OK";
+      const cfg = chassisConfigCache[pos] || {};
+      const chk = chassisChecksCache[pos] || {};
 
       return `
         <tr>
-          <td style="font-weight:900;">${esc(posPretty(pos))}<div class="help">${esc(pos)}</div></td>
-          <td>${tire_number ? esc(tire_number) : "—"}</td>
-          <td>${brand ? esc(brand) : "—"}</td>
-          <td>${marchamo ? esc(marchamo) : "—"}</td>
-          <td>${badge(st)}</td>
-          <td style="text-align:right;">
-            <button class="btn btn-sm" type="button" data-edit="${esc(pos)}">Editar</button>
-          </td>
+          <td style="font-weight:800;">${esc(posPretty(pos))}<div class="help">${esc(pos)}</div></td>
+          <td>${cfg.marchamo ? esc(cfg.marchamo) : "—"}</td>
+          <td>${chk.seal_input ? esc(chk.seal_input) : "—"}</td>
+          <td>${esc(chk.seal_status || "OK")}</td>
+          <td><span class="badge" data-st="${esc(chk.tire_state || "OK")}">${esc(chk.tire_state || "OK")}</span></td>
         </tr>
       `;
     }).join("");
 
-    tbody.innerHTML = rows;
-
-    Array.from(document.querySelectorAll("[data-edit]")).forEach(btn => {
-      btn.addEventListener("click", () => openModal(btn.dataset.edit));
-    });
+    chassisPosTbody.innerHTML = rows;
   }
 
-  function initClassifyCacheFromConfig(){
-    classifyCache = {};
-    Object.keys(stateCache || {}).forEach(pos => {
-      const st = stateCache[pos]?.tire_state || "OK";
-      classifyCache[pos] = {
-        ingreso_marchamo: "",
-        marchamo_check: "OK",
-        tire_state: (st || "OK").toUpperCase()
+  function initChecksFromConfig(){
+    chassisChecksCache = {};
+    Object.keys(chassisConfigCache || {}).forEach(pos => {
+      const cfg = chassisConfigCache[pos] || {};
+      chassisChecksCache[pos] = {
+        seal_status: "OK",
+        seal_input: "",
+        tire_state: (cfg.tire_state || "OK").toUpperCase()
       };
+      applyWheelState(pos, cfg.tire_state || "OK");
     });
+    renderChassisTable();
+    refreshChassisIssueBadge();
   }
 
-  function refreshClsPill(){
-    // si hay cualquier validación != OK o cualquier estado != OK o cualquier estructura marcada, poner WARNING
-    let issues = 0;
-
-    Object.keys(classifyCache).forEach(pos => {
-      const v = classifyCache[pos] || {};
-      if ((v.marchamo_check || "OK") !== "OK") issues++;
-      if ((v.tire_state || "OK") !== "OK") issues++;
-    });
-
-    const structVals = [
-      c_structure.value, c_twistlocks.value, c_landing.value, c_lights.value, c_mudflap.value
-    ].filter(Boolean);
-
-    if (structVals.some(v => v !== "BUENO")) issues++;
-
-    if (issues > 0){
-      clsStatusPill.className = "badge2 warn";
-      clsStatusPill.textContent = `HALLAZGOS (${issues})`;
-    }else{
-      clsStatusPill.className = "badge2 ok";
-      clsStatusPill.textContent = "LISTO";
-    }
+  async function loadChassisConfig(chassisId){
+    const r = await fetch(`/api/chassis/${chassisId}/tires`, {headers: {"Accept":"application/json"}});
+    const j = await r.json();
+    if (!r.ok || !j.ok) throw new Error(j.error || "LOAD_CHASSIS_TIRES_FAILED");
+    chassisConfigCache = j.positions || {};
+    initChecksFromConfig();
   }
 
-  async function loadPositions(){
-    tbody.innerHTML = `<tr><td colspan="6">Cargando...</td></tr>`;
-    try{
-      const r = await fetch(API_GET, {headers: {"Accept":"application/json"}});
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.error || "LOAD_FAILED");
-
-      stateCache = j.positions || {};
-      renderTable(stateCache);
-
-      // Inicializa clasificación (solo si no hay nada aún)
-      if (!Object.keys(classifyCache).length){
-        initClassifyCacheFromConfig();
-      }else{
-        // asegurar que existan todas las posiciones
-        Object.keys(stateCache).forEach(pos => {
-          if (!classifyCache[pos]){
-            classifyCache[pos] = {ingreso_marchamo:"", marchamo_check:"OK", tire_state:(stateCache[pos]?.tire_state||"OK").toUpperCase()};
-          }
-        });
-      }
-
-      // aplicar outlines según modo
-      if (MODE === "config") repaintWheelsFromConfig();
-      else repaintWheelsFromClassify();
-
-      refreshClsPill();
-    }catch(e){
-      tbody.innerHTML = `<tr><td colspan="6">Error cargando llantas: ${esc(e.message)}</td></tr>`;
-    }
-  }
-
-  function openModal(pos){
+  function openChassisModal(pos){
     currentPos = pos;
-    const p = stateCache[pos] || null;
-    const cls = classifyCache[pos] || {ingreso_marchamo:"", marchamo_check:"OK", tire_state:"OK"};
+    const cfg = chassisConfigCache[pos] || {};
+    const chk = chassisChecksCache[pos] || {seal_status:"OK", seal_input:"", tire_state:"OK"};
 
-    mPosLabel.textContent = posPretty(pos);
+    cmPosLabel.textContent = posPretty(pos);
+    cmMarchamoConfig.value = cfg.marchamo || "";
+    cmSealStatus.value = (chk.seal_status || "OK").toUpperCase();
+    cmSealInput.value = chk.seal_input || "";
+    cmTireState.value = (chk.tire_state || cfg.tire_state || "OK").toUpperCase();
 
-    if (MODE === "config"){
-      modalTitle.textContent = "Editar llanta (config)";
-      clsFields.classList.add("hidden");
-      cfgFields.classList.remove("hidden");
-      modalHelpCfg.classList.remove("hidden");
-      modalHelpCls.classList.add("hidden");
-
-      mMarchamo.value = p?.marchamo || "";
-      mTireNumber.value = p?.tire_number || "";
-      mBrand.value = p?.brand || "";
-      mState.value = (p?.tire_state || "OK").toUpperCase();
-    }else{
-      modalTitle.textContent = "Clasificar llanta (ingreso)";
-      clsFields.classList.remove("hidden");
-      cfgFields.classList.add("hidden");
-      modalHelpCfg.classList.add("hidden");
-      modalHelpCls.classList.remove("hidden");
-
-      mIngresoMarchamo.value = cls.ingreso_marchamo || "";
-      mMarchamoCheck.value = (cls.marchamo_check || "OK").toUpperCase();
-      mState.value = (cls.tire_state || "OK").toUpperCase();
-    }
-
-    backdrop.style.display = "flex";
-    backdrop.setAttribute("aria-hidden","false");
-    setTimeout(()=> (MODE==="config" ? mMarchamo : mIngresoMarchamo).focus(), 50);
+    syncSealInputVisibility();
+    chassisModalBackdrop.style.display = "flex";
+    chassisModalBackdrop.setAttribute("aria-hidden","false");
   }
 
-  function closeModal(){
+  function closeChassisModal(){
     currentPos = null;
-    backdrop.style.display = "none";
-    backdrop.setAttribute("aria-hidden","true");
+    chassisModalBackdrop.style.display = "none";
+    chassisModalBackdrop.setAttribute("aria-hidden","true");
   }
 
-  async function saveModal(){
+  function syncSealInputVisibility(){
+    const v = (cmSealStatus.value || "OK").toUpperCase();
+    cmSealInputRow.style.display = (v === "DISTINTO") ? "grid" : "none";
+    if (v !== "DISTINTO"){
+      cmSealInput.value = "";
+    }
+  }
+
+  function saveChassisModal(){
     if (!currentPos) return;
-
-    btnSave.disabled = true;
-    btnSave.textContent = "Guardando...";
-
-    try{
-      if (MODE === "config"){
-        const payload = {
-          position_code: currentPos,
-          marchamo: mMarchamo.value.trim(),
-          tire_number: mTireNumber.value.trim(),
-          brand: mBrand.value.trim(),
-          tire_state: mState.value.trim()
-        };
-
-        const r = await fetch(API_SET, {
-          method: "POST",
-          headers: {"Content-Type":"application/json", "Accept":"application/json"},
-          body: JSON.stringify(payload)
-        });
-        const j = await r.json();
-        if (!r.ok || !j.ok) throw new Error(j.error || "SAVE_FAILED");
-
-        closeModal();
-        await loadPositions();
-      }else{
-        // clasificación: guardado local, no pega a API hasta “Guardar Clasificación”
-        classifyCache[currentPos] = {
-          ingreso_marchamo: mIngresoMarchamo.value.trim(),
-          marchamo_check: mMarchamoCheck.value.trim().toUpperCase(),
-          tire_state: mState.value.trim().toUpperCase()
-        };
-        closeModal();
-        repaintWheelsFromClassify();
-        refreshClsPill();
-      }
-    }catch(e){
-      alert("No se pudo guardar: " + e.message);
-    }finally{
-      btnSave.disabled = false;
-      btnSave.textContent = "Guardar";
-    }
-  }
-
-  function buildClassifyPayload(){
-    const tires = Object.keys(classifyCache).sort().map(pos => {
-      const v = classifyCache[pos] || {};
-      return {
-        position_code: pos,
-        ingreso_marchamo: (v.ingreso_marchamo || ""),
-        marchamo_check: (v.marchamo_check || "OK"),
-        tire_state: (v.tire_state || "OK")
-      };
-    });
-
-    return {
-      structure_status: c_structure.value || "",
-      twistlocks_status: c_twistlocks.value || "",
-      landing_gear_status: c_landing.value || "",
-      lights_status: c_lights.value || "",
-      mudflap_status: c_mudflap.value || "",
-      plate_text: c_plate.value.trim(),
-      damage_summary: c_damage.value.trim(),
-      comments: c_comments.value.trim(),
-      tires: tires
+    chassisChecksCache[currentPos] = {
+      seal_status: (cmSealStatus.value || "OK").toUpperCase(),
+      seal_input: (cmSealInput.value || "").trim(),
+      tire_state: (cmTireState.value || "OK").toUpperCase()
     };
+    applyWheelState(currentPos, cmTireState.value || "OK");
+    renderChassisTable();
+    refreshChassisIssueBadge();
+    closeChassisModal();
   }
 
-  async function saveClassification(){
-    btnClsSave.disabled = true;
-    btnClsSave.textContent = "Guardando...";
+  function preloadChassisRows(){
     try{
-      const payload = buildClassifyPayload();
+      const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
+      const rows = JSON.parse(raw);
 
-      const r = await fetch(API_CLASSIFY, {
-        method: "POST",
-        headers: {"Content-Type":"application/json", "Accept":"application/json"},
-        body: JSON.stringify(payload)
+      chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
+
+      rows.forEach(item => {
+        const opt = document.createElement("option");
+        opt.value = item.id;
+        opt.textContent = `${item.chassis_number} (${item.axles || "?"} ejes)`;
+        opt.dataset.axles = item.axles || 2;
+        opt.dataset.plate = item.plate || "";
+        chassisSelect.appendChild(opt);
       });
-
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.error || "CLASSIFY_FAILED");
-
-      // refrescar config (porque el endpoint puede actualizar tire_state)
-      await loadPositions();
-
-      // feedback
-      const tId = j.ticket_id ? `Ticket: #${j.ticket_id}` : "Sin ticket";
-      const eirPrev = j.eir_prev_id ? `EIR anterior: #${j.eir_prev_id}` : "Sin EIR anterior";
-
-      alert(`✅ Clasificación guardada.\n${tId}\n${eirPrev}`);
-
-      // después de guardar, podemos resetear validaciones (opcional)
-      // initClassifyCacheFromConfig(); repaintWheelsFromClassify(); refreshClsPill();
-
     }catch(e){
-      alert("No se pudo guardar la clasificación: " + e.message);
-    }finally{
-      btnClsSave.disabled = false;
-      btnClsSave.textContent = "Guardar Clasificación";
+      console.error("No se pudieron precargar los chasis:", e);
+      chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
     }
   }
 
-  function resetClassification(){
-    c_structure.value = "";
-    c_twistlocks.value = "";
-    c_landing.value = "";
-    c_lights.value = "";
-    c_mudflap.value = "";
-    c_damage.value = "";
-    c_comments.value = "";
-    c_plate.value = "{{ ch.plate or '' }}";
+  chassisSelect.addEventListener("change", async () => {
+    selectedChassisId = chassisSelect.value || "";
+    chassisIdHidden.value = selectedChassisId || "";
 
-    initClassifyCacheFromConfig();
-    repaintWheelsFromClassify();
-    refreshClsPill();
-  }
+    if (!selectedChassisId){
+      chassisBlock.classList.add("hidden");
+      chassisSummaryPill.textContent = "Sin chasis seleccionado";
+      chassisSummaryPill.className = "mini-pill";
+      chassisConfigCache = {};
+      chassisChecksCache = {};
+      refreshChassisIssueBadge();
+      syncHiddenChassisPayloads();
+      return;
+    }
 
-  // wheel click opens modal
-  wheels.forEach(w => w.addEventListener("click", ()=> openModal(w.dataset.pos)));
+    const selectedOpt = chassisSelect.options[chassisSelect.selectedIndex];
+    selectedChassisAxles = Number((selectedOpt && selectedOpt.dataset && selectedOpt.dataset.axles) || 2);
+    chassisPlateText.value = (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.plate) || "";
 
-  // close handlers
-  modalClose.addEventListener("click", closeModal);
-  btnCancel.addEventListener("click", closeModal);
-  backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
-  document.addEventListener("keydown", (e)=>{ if (e.key === "Escape" && backdrop.style.display === "flex") closeModal(); });
+    toggleAxles(selectedChassisAxles);
+    chassisBlock.classList.remove("hidden");
+    chassisSummaryPill.textContent = `Chasis #${selectedOpt.textContent}`;
+    chassisSummaryPill.className = "mini-pill";
 
-  btnSave.addEventListener("click", saveModal);
-  btnReload.addEventListener("click", loadPositions);
+    try{
+      await loadChassisConfig(selectedChassisId);
+    }catch(e){
+      alert("No se pudo cargar la configuración de llantas del chasis: " + e.message);
+    }
+  });
 
-  // mode switches
-  modeConfig.addEventListener("click", ()=> setMode("config"));
-  modeClassify.addEventListener("click", ()=> setMode("classify"));
+  btnReloadChassis.addEventListener("click", async () => {
+    if (!selectedChassisId) return;
+    try{
+      await loadChassisConfig(selectedChassisId);
+    }catch(e){
+      alert("No se pudo recargar la configuración del chasis.");
+    }
+  });
 
-  // classify buttons
-  btnClsSave.addEventListener("click", saveClassification);
-  btnClsReset.addEventListener("click", resetClassification);
+  [ci_structure, ci_twistlocks, ci_landing_gear, ci_lights, ci_mudflap, ci_damage_summary, ci_comments, chassisPlateText].forEach(el => {
+    el.addEventListener("change", refreshChassisIssueBadge);
+    el.addEventListener("input", refreshChassisIssueBadge);
+  });
 
-  // update pill as structure changes
-  [c_structure,c_twistlocks,c_landing,c_lights,c_mudflap].forEach(el => el.addEventListener("change", refreshClsPill));
+  wheels.forEach(w => {
+    w.addEventListener("click", () => {
+      if (!selectedChassisId) return;
+      if (w.classList.contains("hidden")) return;
+      openChassisModal(w.dataset.pos);
+    });
+  });
 
-  // init
-  loadPositions();
-  setMode("config");
-})();
+  cmSealStatus.addEventListener("change", syncSealInputVisibility);
+  chassisModalClose.addEventListener("click", closeChassisModal);
+  cmBtnCancel.addEventListener("click", closeChassisModal);
+  cmBtnSave.addEventListener("click", saveChassisModal);
+  chassisModalBackdrop.addEventListener("click", (e) => {
+    if (e.target === chassisModalBackdrop) closeChassisModal();
+  });
+
+  form.addEventListener("submit", () => {
+    buildSummary();
+    syncHiddenChassisPayloads();
+  });
+
+  preloadChassisRows();
+  buildSummary();
+  refreshChassisIssueBadge();
 </script>
-
 {% endblock %}
