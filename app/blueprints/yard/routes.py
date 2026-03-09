@@ -2429,31 +2429,48 @@ def chassis_detail(chassis_id: int):
 @yard_bp.get("/api/chassis/<int:chassis_id>/tires")
 @login_required
 def api_chassis_tires_get(chassis_id: int):
-    site_id = _ensure_active_site()
+    _ensure_active_site()
     ch = Chassis.query.get_or_404(chassis_id)
-
-    if ch.site_id != site_id and getattr(current_user, "role", None) != "admin":
-        abort(403)
 
     axles = int(getattr(ch, "axles", 2) or 2)
     allowed = set(allowed_positions_for(axles))
 
     rows = ChassisTire.query.filter_by(chassis_id=ch.id).all()
-    positions = {p: None for p in allowed}
+
+    positions = {}
+    for p in allowed:
+        positions[p] = {
+            "marchamo": None,
+            "tire_state": "OK",
+            "tire_number": None,
+            "brand": None,
+        }
 
     for r in rows:
-        if r.position_code not in allowed:
+        pos = (r.position_code or "").strip().upper()
+        if pos not in allowed:
             continue
-        positions[r.position_code] = {
+
+        positions[pos] = {
             "marchamo": r.marchamo,
-            "tire_state": r.tire_state,
+            "tire_state": (r.tire_state or "OK").upper(),
             "tire_number": r.tire.tire_number if r.tire else None,
             "brand": r.tire.brand if r.tire else None,
         }
 
-    return jsonify({"ok": True, "positions": positions})
-
-
+    return jsonify({
+        "ok": True,
+        "chassis": {
+            "id": ch.id,
+            "chassis_number": ch.chassis_number,
+            "plate": ch.plate,
+            "axles": ch.axles,
+            "status": ch.status,
+            "site_id": ch.site_id,
+            "type_code": getattr(ch, "type_code", None),
+        },
+        "positions": positions
+    })
 @yard_bp.post("/api/chassis/<int:chassis_id>/tires")
 @login_required
 def api_chassis_tires_set(chassis_id: int):

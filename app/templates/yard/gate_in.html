@@ -216,14 +216,6 @@
   .help{font-size:12px;opacity:.75}
   .hidden{display:none !important;}
   .sep{height:1px;background:rgba(255,255,255,.10);margin:10px 0}
-
-  #chassisSelect option{
-  padding:6px 8px;
-  }
-  #chassisSelect option:checked{
-    background: rgba(255,255,255,.22);
-    color: #fff;
-  }
 </style>
 
 <h2>Gate In</h2>
@@ -1052,8 +1044,17 @@
 
   function esc(s){ return (s ?? "").toString(); }
 
+  function normalizeText(s){
+    return (s || "")
+      .toString()
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, " ")
+      .replace(/-/g, "");
+  }
+
   function posPretty(pos){
-    const m = pos.match(/^AX(\d)_(L|R)_(IN|OUT)$/);
+    const m = (pos || "").match(/^AX(\d)_(L|R)_(IN|OUT)$/);
     if (!m) return pos;
     return `A${m[1]} ${m[2] === "L" ? "L" : "R"}${m[3] === "IN" ? "I" : "O"}`;
   }
@@ -1183,9 +1184,28 @@
   }
 
   async function loadChassisConfig(chassisId){
-    const r = await fetch(`/api/chassis/${chassisId}/tires`, {headers: {"Accept":"application/json"}});
-    const j = await r.json();
-    if (!r.ok || !j.ok) throw new Error(j.error || "LOAD_CHASSIS_TIRES_FAILED");
+    const r = await fetch(`/api/chassis/${chassisId}/tires`, {
+      headers: {"Accept":"application/json"}
+    });
+
+    let j = {};
+    try{
+      j = await r.json();
+    }catch(_e){
+      throw new Error(`Respuesta inválida del servidor (${r.status})`);
+    }
+
+    if (!r.ok || !j.ok){
+      throw new Error(j.error || `LOAD_CHASSIS_TIRES_FAILED (${r.status})`);
+    }
+
+    if (j.chassis){
+      chassisGeneralStatus.value = j.chassis.status || "";
+      ci_plate_text.value = j.chassis.plate || "";
+      selectedChassisAxles = Number(j.chassis.axles || 2);
+      toggleAxles(selectedChassisAxles);
+    }
+
     chassisConfigCache = j.positions || {};
     initChecksFromConfig();
   }
@@ -1245,18 +1265,29 @@
   }
 
   function findChassisByInputValue(value){
-    const q = (value || "").trim().toUpperCase();
+    const q = normalizeText(value);
     if (!q) return null;
 
-    return chassisRowsMaster.find(item => {
-      const number = (item.chassis_number || "").toUpperCase();
-      const plate = (item.plate || "").toUpperCase();
+    let found = chassisRowsMaster.find(item => {
+      const number = normalizeText(item.chassis_number);
+      const plate = normalizeText(item.plate);
       return number === q || plate === q;
-    }) || null;
+    });
+
+    if (found) return found;
+
+    found = chassisRowsMaster.find(item => {
+      const number = normalizeText(item.chassis_number);
+      const plate = normalizeText(item.plate);
+      return number.includes(q) || plate.includes(q);
+    });
+
+    return found || null;
   }
 
   function clearChassisPanel(){
     selectedChassisId = "";
+    selectedChassisAxles = 2;
     chassisIdHidden.value = "";
 
     chassisBlock.classList.add("hidden");
@@ -1280,6 +1311,8 @@
     ci_needs_workshop.value = "0";
 
     chassisPosTbody.innerHTML = `<tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>`;
+
+    toggleAxles(2);
 
     wheels.forEach(w => {
       w.classList.remove("st-OK","st-GASTADA","st-PINCHADA","st-CAMBIAR","st-NO_APTA");
@@ -1314,11 +1347,22 @@
     try{
       await loadChassisConfig(selectedChassisId);
     }catch(e){
+      console.error("Error cargando configuración de chasis:", e);
       alert("No se pudo cargar la configuración de llantas del chasis: " + e.message);
     }
   }
 
   btnLoadSelectedChassis.addEventListener("click", loadSelectedChassisFromInput);
+
+  btnReloadChassis.addEventListener("click", async () => {
+    if (!selectedChassisId) return;
+    try{
+      await loadChassisConfig(selectedChassisId);
+    }catch(e){
+      console.error("Error recargando configuración de chasis:", e);
+      alert("No se pudo recargar la configuración del chasis: " + e.message);
+    }
+  });
 
   btnClearSelectedChassis.addEventListener("click", () => {
     chassisSearch.value = "";
@@ -1380,11 +1424,4 @@
   refreshChassisIssueBadge();
 </script>
 
-#chassisSelect option{
-  padding:6px 8px;
-}
-#chassisSelect option:checked{
-  background: rgba(255,255,255,.22);
-  color: #fff;
-}
 {% endblock %}
