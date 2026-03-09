@@ -324,7 +324,7 @@
         <label>Buscar / seleccionar chasis</label>
         <input id="chassisSearch" type="text" placeholder="Digita número de chasis o placa..." style="margin-bottom:8px;">
 
-        <select id="chassisSelect" size="8" style="min-height:220px;">
+        <select id="chassisSelect" size="10" style="min-height:220px;">
           <option value="">— Sin chasis —</option>
           {% for ch in (chassis_rows or []) %}
             <option
@@ -337,6 +337,11 @@
             </option>
           {% endfor %}
         </select>
+
+        <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+          <button type="button" id="btnLoadSelectedChassis" class="btn">Cargar chasis</button>
+          <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
+        </div>
 
         <div class="hint" style="margin-top:8px;">
           Total chasis cargados: {{ (chassis_rows or []) | length }}
@@ -994,6 +999,8 @@
 
   const chassisSearch = document.getElementById("chassisSearch");
   const chassisSelect = document.getElementById("chassisSelect");
+  const btnLoadSelectedChassis = document.getElementById("btnLoadSelectedChassis");
+  const btnClearSelectedChassis = document.getElementById("btnClearSelectedChassis");
   const chassisAllOptions = Array.from(chassisSelect.querySelectorAll("option")).slice(1); // sin "— Sin chasis —"
   const chassisBlock = document.getElementById("chassisBlock");
   const chassisSummaryPill = document.getElementById("chassisSummaryPill");
@@ -1246,6 +1253,11 @@
     });
 
     filtered.forEach(opt => chassisSelect.appendChild(opt));
+    if (filtered.length > 0) {
+      chassisSelect.selectedIndex = 1;
+    } else {
+      chassisSelect.selectedIndex = 0;
+    }
   }
 
   function preloadChassisRows(){
@@ -1263,10 +1275,12 @@
     filterChassisSelect(q);
   });
   async function handleChassisSelection(){
-    selectedChassisId = chassisSelect.value || "";
-    chassisIdHidden.value = selectedChassisId || "";
+    const selectedOpt = chassisSelect.options[chassisSelect.selectedIndex];
 
-    if (!selectedChassisId){
+    if (!selectedOpt || !selectedOpt.value){
+      selectedChassisId = "";
+      chassisIdHidden.value = "";
+
       chassisBlock.classList.add("hidden");
       chassisSummaryPill.textContent = "Sin chasis seleccionado";
       chassisSummaryPill.className = "mini-pill";
@@ -1291,10 +1305,8 @@
       return;
     }
 
-    const selectedOpt = chassisSelect.options[chassisSelect.selectedIndex];
-    if (!selectedOpt || !selectedOpt.value){
-      return;
-    }
+    selectedChassisId = selectedOpt.value;
+    chassisIdHidden.value = selectedChassisId;
 
     selectedChassisAxles = Number(selectedOpt.dataset.axles || 2);
 
@@ -1313,10 +1325,23 @@
     }
   }
 
-chassisSelect.addEventListener("change", handleChassisSelection);
-chassisSelect.addEventListener("click", handleChassisSelection);
-chassisSelect.addEventListener("keyup", handleChassisSelection);
+btnLoadSelectedChassis.addEventListener("click", handleChassisSelection);
+
+btnClearSelectedChassis.addEventListener("click", () => {
+  chassisSelect.selectedIndex = 0;
+  chassisSearch.value = "";
+  resetChassisSelectOptions();
+  handleChassisSelection();
+});
+
 chassisSelect.addEventListener("dblclick", handleChassisSelection);
+
+chassisSelect.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    handleChassisSelection();
+  }
+});
 
   [
     ci_structure,
