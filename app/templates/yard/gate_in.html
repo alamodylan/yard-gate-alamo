@@ -315,10 +315,26 @@
       <div>
         <label>Buscar / seleccionar chasis</label>
         <input id="chassisSearch" type="text" placeholder="Digita número de chasis o placa..." style="margin-bottom:8px;">
+
         <select id="chassisSelect" size="8" style="min-height:220px;">
           <option value="">— Sin chasis —</option>
+          {% for ch in (chassis_rows or []) %}
+            <option
+              value="{{ ch.id }}"
+              data-axles="{{ ch.axles or 2 }}"
+              data-plate="{{ ch.plate or '' }}"
+              data-status="{{ ch.status or '' }}"
+            >
+              {{ ch.chassis_number }} | {{ ch.plate or 'SIN PLACA' }} | {{ ch.axles or '?' }} ejes
+            </option>
+          {% endfor %}
         </select>
+
+        <div class="hint" style="margin-top:8px;">
+          Total chasis cargados: {{ (chassis_rows or []) | length }}
+        </div>
       </div>
+
       <div>
         <label>Estado general del chasis (referencia)</label>
         <input id="chassisGeneralStatus" type="text" readonly placeholder="Se carga desde el maestro del chasis">
@@ -970,6 +986,7 @@
 
   const chassisSearch = document.getElementById("chassisSearch");
   const chassisSelect = document.getElementById("chassisSelect");
+  const chassisAllOptions = Array.from(chassisSelect.querySelectorAll("option")).slice(1); // sin "— Sin chasis —"
   const chassisBlock = document.getElementById("chassisBlock");
   const chassisSummaryPill = document.getElementById("chassisSummaryPill");
   const chassisGeneralStatus = document.getElementById("chassisGeneralStatus");
@@ -1204,57 +1221,39 @@
     closeChassisModal();
   }
 
-  let chassisRowsMaster = [];
+  function resetChassisSelectOptions(){
+    chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
+    chassisAllOptions.forEach(opt => chassisSelect.appendChild(opt));
+  }
 
-  function renderChassisSelect(rows){
-    const currentValue = chassisSelect.value || "";
+  function filterChassisSelect(query){
+    const q = (query || "").trim().toUpperCase();
+
     chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
 
-    rows.forEach(item => {
-      const opt = document.createElement("option");
-      opt.value = item.id;
-      opt.textContent = `${item.chassis_number} | ${item.plate || "SIN PLACA"} | ${item.axles || "?"} ejes`;
-      opt.dataset.axles = item.axles || 2;
-      opt.dataset.plate = item.plate || "";
-      opt.dataset.status = item.status || "";
-      chassisSelect.appendChild(opt);
+    const filtered = chassisAllOptions.filter(opt => {
+      const text = (opt.textContent || "").toUpperCase();
+      const plate = (opt.dataset.plate || "").toUpperCase();
+      return text.includes(q) || plate.includes(q);
     });
 
-    if (currentValue && Array.from(chassisSelect.options).some(o => o.value === currentValue)){
-      chassisSelect.value = currentValue;
-    }
+    filtered.forEach(opt => chassisSelect.appendChild(opt));
   }
 
   function preloadChassisRows(){
-    try{
-      const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
-      const rows = JSON.parse(raw);
-      chassisRowsMaster = Array.isArray(rows) ? rows : [];
-      renderChassisSelect(chassisRowsMaster);
-    }catch(e){
-      console.error("No se pudieron precargar los chasis:", e);
-      chassisRowsMaster = [];
-      renderChassisSelect([]);
-    }
+    // Ya no rellena desde JSON; los options vienen pintados desde el servidor.
+    resetChassisSelectOptions();
   }
-
   chassisSearch.addEventListener("input", () => {
-    const q = (chassisSearch.value || "").trim().toUpperCase();
+    const q = (chassisSearch.value || "").trim();
 
     if (!q){
-      renderChassisSelect(chassisRowsMaster);
+      resetChassisSelectOptions();
       return;
     }
 
-    const filtered = chassisRowsMaster.filter(item => {
-      const number = (item.chassis_number || "").toUpperCase();
-      const plate = (item.plate || "").toUpperCase();
-      return number.includes(q) || plate.includes(q);
-    });
-
-    renderChassisSelect(filtered);
+    filterChassisSelect(q);
   });
-
   chassisSelect.addEventListener("change", async () => {
     selectedChassisId = chassisSelect.value || "";
     chassisIdHidden.value = selectedChassisId || "";
