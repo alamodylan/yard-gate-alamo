@@ -759,7 +759,6 @@ def gate_in_view():
 
     chassis_rows = (
         Chassis.query
-        .filter_by(site_id=site_id)
         .order_by(Chassis.chassis_number.asc())
         .all()
     )
@@ -776,6 +775,7 @@ def gate_in_view():
                 "plate": ch.plate or "",
                 "status": getattr(ch, "status", "") or "",
                 "type_code": ch.type_code or "",
+                "site_id": ch.site_id,
             }
             for ch in chassis_rows
         ],
@@ -862,8 +862,36 @@ def gate_in_post():
             return redirect(url_for("yard.gate_in_view"))
 
         selected_chassis = Chassis.query.get(int(chassis_id_raw))
-        if not selected_chassis or selected_chassis.site_id != site_id:
-            flash("El chasis seleccionado no pertenece al predio actual.", "danger")
+        if not selected_chassis:
+            flash("El chasis seleccionado no existe.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        # Regla:
+        # - Se puede seleccionar desde el maestro general
+        # - Pero NO puede ingresar aquí si está activo en inventario de otro predio
+        # - Si está activo en este mismo predio, también se bloquea por doble ingreso
+        active_inv = (
+            ChassisInventory.query
+            .filter_by(chassis_id=selected_chassis.id, is_in_yard=True)
+            .first()
+        )
+
+        if active_inv:
+            inv_site = Site.query.get(active_inv.site_id)
+            inv_site_name = inv_site.name if inv_site else f"ID {active_inv.site_id}"
+
+            if active_inv.site_id == site_id:
+                flash(
+                    f"El chasis {selected_chassis.chassis_number} ya se encuentra en inventario de este predio.",
+                    "danger"
+                )
+                return redirect(url_for("yard.gate_in_view"))
+
+            flash(
+                f"El chasis {selected_chassis.chassis_number} está activo en inventario del predio {inv_site_name}. "
+                f"Primero debe realizarse el Gate Out / EIR de salida en ese predio.",
+                "danger"
+            )
             return redirect(url_for("yard.gate_in_view"))
 
         try:
@@ -871,6 +899,13 @@ def gate_in_post():
             chassis_tire_checks = parsed_tires if isinstance(parsed_tires, dict) else {}
         except Exception:
             flash("La clasificación de llantas del chasis viene dañada.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        try:
+            parsed_inspection = json.loads(chassis_inspection_json_raw or "{}")
+            chassis_inspection = parsed_inspection if isinstance(parsed_inspection, dict) else {}
+        except Exception:
+            flash("La clasificación estructural del chasis viene dañada.", "danger")
             return redirect(url_for("yard.gate_in_view"))
 
         try:

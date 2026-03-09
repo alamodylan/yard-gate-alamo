@@ -221,6 +221,7 @@
 <h2>Gate In</h2>
 
 <form id="gateInForm" method="post" enctype="multipart/form-data" class="card" style="max-width: 1180px;">
+
   <h3>Identificación</h3>
 
   <div class="grid" style="display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;">
@@ -272,9 +273,6 @@
       <select id="max_gross_select" name="max_gross_select">
         <option value="" selected>—</option>
         <option value="32500">32500 KG</option>
-        <option value="30000">30000 KG</option>
-        <option value="28000">28000 KG</option>
-        <option value="26000">26000 KG</option>
         <option value="OTHER">Otro…</option>
       </select>
 
@@ -293,13 +291,218 @@
       <input name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
     </div>
     <div>
-      <label>Comentarios generales (opcional)</label>
+      <label>Comentarios generales del contenedor (opcional)</label>
       <input name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
     </div>
   </div>
 
+  <div class="section-card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div>
+        <h3 style="margin:0;">Clasificación de chasis</h3>
+        <div class="hint" style="margin-top:6px;">
+          Al guardar, el chasis ingresa automáticamente al inventario del predio y, si hay hallazgos, genera un único ticket a taller.
+        </div>
+      </div>
+      <div class="mini-pill" id="chassisSummaryPill">Sin chasis seleccionado</div>
+    </div>
+
+    <input type="hidden" name="chassis_id" id="chassis_id" value="">
+    <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
+    <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Seleccionar chasis</label>
+        <select id="chassisSelect">
+          <option value="">— Sin chasis —</option>
+        </select>
+      </div>
+      <div>
+        <label>Estado general del chasis (referencia)</label>
+        <input id="chassisGeneralStatus" type="text" readonly placeholder="Se carga desde el maestro del chasis">
+      </div>
+    </div>
+
+    <div id="chassisBlock" class="hidden" style="margin-top:14px;">
+      <div class="chassis-grid">
+        <div class="card" style="padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="font-weight:900;">Mapa de llantas</div>
+            <button class="btn btn-sm" type="button" id="btnReloadChassis">Recargar</button>
+          </div>
+
+          <div class="help" style="margin-top:8px;">
+            Toca una llanta para indicar si el marchamo de ingreso viene <b>OK / DISTINTO / NO TIENE / ILEGIBLE</b> y el estado actual de la llanta.
+          </div>
+
+          <div class="map-area" style="margin-top:10px;">
+            <div class="frame"></div>
+
+            <div class="axle ax1"></div>
+            <div class="axle ax2"></div>
+            <div class="axle ax3 hidden" id="axle3"></div>
+
+            <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
+            <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
+            <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
+            <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
+
+            <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
+            <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
+            <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
+            <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
+
+            <div class="wheel hidden" data-pos="AX3_L_IN" id="wAX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
+            <div class="wheel hidden" data-pos="AX3_L_OUT" id="wAX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
+            <div class="wheel hidden" data-pos="AX3_R_IN" id="wAX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
+            <div class="wheel hidden" data-pos="AX3_R_OUT" id="wAX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
+          </div>
+
+          <div class="legend">
+            <div class="lg"><span class="dot ok"></span> OK</div>
+            <div class="lg"><span class="dot g"></span> GASTADA</div>
+            <div class="lg"><span class="dot p"></span> PINCHADA</div>
+            <div class="lg"><span class="dot c"></span> CAMBIAR</div>
+            <div class="lg"><span class="dot n"></span> NO_APTA</div>
+          </div>
+
+          <div class="help" style="margin-top:10px;">
+            Si una llanta viene con marchamo <b>DISTINTO / NO TIENE / ILEGIBLE</b>, eso sale en el ticket como revisión. Si el estado no es <b>OK</b>, también sale en ticket.
+          </div>
+        </div>
+
+        <div class="card" style="padding:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+            <div style="font-weight:900;">Clasificación estructural del chasis</div>
+            <span class="badge2 ok" id="chassisIssuesBadge">LISTO</span>
+          </div>
+
+          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;">
+            <div>
+              <label>Estructura</label>
+              <select id="ci_structure">
+                <option value="">—</option>
+                <option value="OK">OK</option>
+                <option value="DANO_LEVE">DAÑO LEVE</option>
+                <option value="DANO_GRAVE">DAÑO GRAVE</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Twistlocks</label>
+              <select id="ci_twistlocks">
+                <option value="">—</option>
+                <option value="OK">OK</option>
+                <option value="DANO_LEVE">DAÑO LEVE</option>
+                <option value="DANO_GRAVE">DAÑO GRAVE</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Patas</label>
+              <select id="ci_landing_gear">
+                <option value="">—</option>
+                <option value="OK">OK</option>
+                <option value="DANO_LEVE">DAÑO LEVE</option>
+                <option value="DANO_GRAVE">DAÑO GRAVE</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Luces</label>
+              <select id="ci_lights">
+                <option value="">—</option>
+                <option value="OK">OK</option>
+                <option value="UNA_DANADA">UNA DAÑADA</option>
+                <option value="AMBAS_DANADAS">AMBAS DAÑADAS</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Faldones</label>
+              <select id="ci_mudflap">
+                <option value="">—</option>
+                <option value="OK">OK</option>
+                <option value="DANADO">DAÑADO</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Requiere taller (chasis)</label>
+              <select id="ci_needs_workshop">
+                <option value="0" selected>No</option>
+                <option value="1">Sí</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="sep"></div>
+
+          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <div>
+              <label>Placa configurada</label>
+              <input id="ci_plate_text" type="text" readonly placeholder="Se carga desde el chasis">
+            </div>
+
+            <div>
+              <label>Validación de placa</label>
+              <select id="ci_plate_validation_status">
+                <option value="">—</option>
+                <option value="MISMA">MISMA</option>
+                <option value="DISTINTA">DISTINTA</option>
+                <option value="NO_TRAE">NO TRAE</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="ciPlateObservedWrap" style="margin-top:12px; display:none;">
+            <label>Placa observada</label>
+            <input id="ci_plate_text_observed" type="text" placeholder="Escribe la placa que trae el chasis">
+          </div>
+
+          <div style="margin-top:12px;">
+            <label>Resumen corto de daños del chasis</label>
+            <textarea id="ci_damage_summary" rows="3" placeholder="Ej: twistlock derecho dañado, faldón izquierdo quebrado..."></textarea>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label>Comentarios del chequeador</label>
+            <textarea id="ci_comments" rows="3" placeholder="Observaciones adicionales..."></textarea>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label>Comentarios del chofer</label>
+            <textarea id="ci_driver_comments" rows="3" placeholder="Lo que indique el chofer sobre el chasis..."></textarea>
+          </div>
+
+          <div class="help" style="margin-top:10px;">
+            El ticket se genera automáticamente si existe al menos un hallazgo estructural, de placa, marchamo o llantas.
+          </div>
+
+          <div style="margin-top:14px;">
+            <table class="pos-table">
+              <thead>
+                <tr>
+                  <th>Posición</th>
+                  <th>Marchamo config</th>
+                  <th>Ingreso</th>
+                  <th>Validación</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="chassisPosTbody">
+                <tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <details open style="margin-top:14px;">
-    <summary style="cursor:pointer; font-weight:900;">Condición estructural</summary>
+    <summary style="cursor:pointer; font-weight:900;">Condición estructural del contenedor</summary>
 
     <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
       <div>
@@ -376,7 +579,7 @@
   </details>
 
   <details open style="margin-top:14px;">
-    <summary style="cursor:pointer; font-weight:900;">Condición general</summary>
+    <summary style="cursor:pointer; font-weight:900;">Condición general del contenedor</summary>
 
     <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
       <div>
@@ -462,7 +665,7 @@
     </div>
   </details>
 
-  <h3 style="margin-top:18px;">Clasificación final</h3>
+  <h3 style="margin-top:18px;">Clasificación final del contenedor</h3>
 
   <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
     <div>
@@ -481,7 +684,7 @@
     </div>
 
     <div>
-      <label>Requiere servicio de taller (opcional)</label>
+      <label>Requiere servicio de taller (contenedor)</label>
       <select id="needs_workshop" name="needs_workshop">
         <option value="0" selected>No</option>
         <option value="1">Sí</option>
@@ -503,180 +706,6 @@
             <span style="font-weight:800;">{{ w }}</span>
           </label>
         {% endfor %}
-      </div>
-    </div>
-  </div>
-
-  <div class="section-card">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h3 style="margin:0;">Clasificación de chasis</h3>
-        <div class="hint" style="margin-top:6px;">
-          Al guardar, el chasis ingresa automáticamente al inventario del predio y, si hay hallazgos, genera un único ticket a taller.
-        </div>
-      </div>
-      <div class="mini-pill" id="chassisSummaryPill">Sin chasis seleccionado</div>
-    </div>
-
-    <input type="hidden" name="chassis_id" id="chassis_id" value="">
-    <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
-    <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
-
-    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
-      <div>
-        <label>Seleccionar chasis</label>
-        <select id="chassisSelect">
-          <option value="">— Sin chasis —</option>
-        </select>
-      </div>
-      <div>
-        <label>Placa del chasis (texto visible)</label>
-        <input id="chassisPlateText" type="text" placeholder="Se puede confirmar / corregir aquí">
-      </div>
-    </div>
-
-    <div id="chassisBlock" class="hidden" style="margin-top:14px;">
-      <div class="chassis-grid">
-        <div class="card" style="padding:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-            <div style="font-weight:900;">Mapa de llantas</div>
-            <button class="btn btn-sm" type="button" id="btnReloadChassis">Recargar</button>
-          </div>
-
-          <div class="help" style="margin-top:8px;">
-            Toca una llanta para indicar si el marchamo de ingreso viene <b>OK / DISTINTO / NO TIENE / ILEGIBLE</b> y el estado actual de la llanta.
-          </div>
-
-          <div class="map-area" style="margin-top:10px;">
-            <div class="frame"></div>
-
-            <div class="axle ax1"></div>
-            <div class="axle ax2"></div>
-            <div class="axle ax3 hidden" id="axle3"></div>
-
-            <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
-            <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
-            <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
-            <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
-
-            <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
-            <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
-            <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
-            <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
-
-            <div class="wheel hidden" data-pos="AX3_L_IN" id="wAX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
-            <div class="wheel hidden" data-pos="AX3_L_OUT" id="wAX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
-            <div class="wheel hidden" data-pos="AX3_R_IN" id="wAX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
-            <div class="wheel hidden" data-pos="AX3_R_OUT" id="wAX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
-          </div>
-
-          <div class="legend">
-            <div class="lg"><span class="dot ok"></span> OK</div>
-            <div class="lg"><span class="dot g"></span> GASTADA</div>
-            <div class="lg"><span class="dot p"></span> PINCHADA</div>
-            <div class="lg"><span class="dot c"></span> CAMBIAR</div>
-            <div class="lg"><span class="dot n"></span> NO_APTA</div>
-          </div>
-
-          <div class="help" style="margin-top:10px;">
-            Si una llanta viene con marchamo <b>DISTINTO / NO TIENE / ILEGIBLE</b>, eso sale en el ticket como revisión.
-          </div>
-        </div>
-
-        <div class="card" style="padding:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-            <div style="font-weight:900;">Clasificación estructural del chasis</div>
-            <span class="badge2 ok" id="chassisIssuesBadge">LISTO</span>
-          </div>
-
-          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;">
-            <div>
-              <label>Estructura</label>
-              <select id="ci_structure">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Twistlocks</label>
-              <select id="ci_twistlocks">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Pata de apoyo</label>
-              <select id="ci_landing_gear">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Luces</label>
-              <select id="ci_lights">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Faldones</label>
-              <select id="ci_mudflap">
-                <option value="">—</option>
-                <option value="BUENO">BUENO</option>
-                <option value="DAÑADO">DAÑADO</option>
-                <option value="FUERA_DE_SERVICIO">FUERA_DE_SERVICIO</option>
-                <option value="ATADO">ATADO</option>
-              </select>
-            </div>
-          </div>
-
-          <div style="margin-top:12px;">
-            <label>Resumen de daños del chasis</label>
-            <textarea id="ci_damage_summary" rows="3" placeholder="Ej: twistlock derecho dañado, faldón izquierdo quebrado..."></textarea>
-          </div>
-
-          <div style="margin-top:12px;">
-            <label>Comentarios del chasis</label>
-            <textarea id="ci_comments" rows="3" placeholder="Observaciones adicionales..."></textarea>
-          </div>
-
-          <div class="help" style="margin-top:10px;">
-            El ticket se genera automáticamente si existe al menos un hallazgo estructural o de llantas.
-          </div>
-
-          <div style="margin-top:14px;">
-            <table class="pos-table">
-              <thead>
-                <tr>
-                  <th>Posición</th>
-                  <th>Marchamo config</th>
-                  <th>Ingreso</th>
-                  <th>Validación</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody id="chassisPosTbody">
-                <tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -745,7 +774,7 @@
 
   <h3 style="margin-top:18px;">Resumen (copiable)</h3>
   <div class="card" style="padding:12px; border-radius:16px;">
-    <div class="hint">Esto se genera en el frontend.</div>
+    <div class="hint">Esto se genera en el frontend para la clasificación del contenedor.</div>
     <textarea id="summaryPreview" rows="3" readonly style="margin-top:8px; width:100%;"></textarea>
     <input type="hidden" id="summary_text" name="summary_text" value="">
   </div>
@@ -787,15 +816,15 @@
         <div style="font-weight:800;">Estado llanta ingreso</div>
         <select id="cmTireState">
           <option value="OK">OK</option>
-          <option value="GASTADA">GASTADA</option>
-          <option value="PINCHADA">PINCHADA</option>
-          <option value="CAMBIAR">CAMBIAR</option>
-          <option value="NO_APTA">NO_APTA</option>
+          <option value="GASTADA">GASTADA (REGULAR)</option>
+          <option value="PINCHADA">PINCHADA (BAJA DE AIRE)</option>
+          <option value="CAMBIAR">CAMBIAR (MAL ESTADO)</option>
+          <option value="NO_APTA">NO_APTA (DAÑADA)</option>
         </select>
       </div>
 
       <div class="help">
-        Si marcas DISTINTO / NO TIENE / ILEGIBLE, eso aparece en el ticket de taller automáticamente.
+        Si marcas DISTINTO / NO TIENE / ILEGIBLE, eso aparece en el ticket de taller automáticamente. Si el estado no es OK, también.
       </div>
     </div>
 
@@ -933,7 +962,7 @@
     summaryHidden.value = summary;
   }
 
-  document.querySelectorAll("select, input, textarea").forEach(el => {
+  document.querySelectorAll('select[name], input[name], textarea[name]').forEach(el => {
     el.addEventListener("change", buildSummary);
     el.addEventListener("input", buildSummary);
   });
@@ -941,7 +970,7 @@
   const chassisSelect = document.getElementById("chassisSelect");
   const chassisBlock = document.getElementById("chassisBlock");
   const chassisSummaryPill = document.getElementById("chassisSummaryPill");
-  const chassisPlateText = document.getElementById("chassisPlateText");
+  const chassisGeneralStatus = document.getElementById("chassisGeneralStatus");
   const chassisIdHidden = document.getElementById("chassis_id");
   const chassisTireChecksHidden = document.getElementById("chassis_tire_checks_json");
   const chassisInspectionHidden = document.getElementById("chassis_inspection_json");
@@ -953,8 +982,14 @@
   const ci_landing_gear = document.getElementById("ci_landing_gear");
   const ci_lights = document.getElementById("ci_lights");
   const ci_mudflap = document.getElementById("ci_mudflap");
+  const ci_needs_workshop = document.getElementById("ci_needs_workshop");
+  const ci_plate_text = document.getElementById("ci_plate_text");
+  const ci_plate_validation_status = document.getElementById("ci_plate_validation_status");
+  const ci_plate_text_observed = document.getElementById("ci_plate_text_observed");
+  const ciPlateObservedWrap = document.getElementById("ciPlateObservedWrap");
   const ci_damage_summary = document.getElementById("ci_damage_summary");
   const ci_comments = document.getElementById("ci_comments");
+  const ci_driver_comments = document.getElementById("ci_driver_comments");
   const chassisIssuesBadge = document.getElementById("chassisIssuesBadge");
 
   const axle3 = document.getElementById("axle3");
@@ -1012,14 +1047,19 @@
 
   function buildInspectionPayload(){
     return {
+      general_chassis_status: chassisGeneralStatus.value.trim(),
       structure_status: ci_structure.value || "",
       twistlocks_status: ci_twistlocks.value || "",
       landing_gear_status: ci_landing_gear.value || "",
       lights_status: ci_lights.value || "",
       mudflap_status: ci_mudflap.value || "",
-      plate_text: chassisPlateText.value.trim(),
+      plate_text: ci_plate_text.value.trim(),
+      plate_validation_status: ci_plate_validation_status.value || "",
+      plate_text_observed: ci_plate_text_observed.value.trim(),
       damage_summary: ci_damage_summary.value.trim(),
-      comments: ci_comments.value.trim()
+      comments: ci_comments.value.trim(),
+      driver_comments: ci_driver_comments.value.trim(),
+      needs_workshop: ci_needs_workshop.value === "1"
     };
   }
 
@@ -1029,15 +1069,27 @@
     chassisInspectionHidden.value = JSON.stringify(buildInspectionPayload());
   }
 
+  function refreshPlateObservedVisibility(){
+    const v = (ci_plate_validation_status.value || "").toUpperCase();
+    ciPlateObservedWrap.style.display = (v === "DISTINTA") ? "block" : "none";
+    if (v !== "DISTINTA"){
+      ci_plate_text_observed.value = "";
+    }
+    refreshChassisIssueBadge();
+  }
+
   function refreshChassisIssueBadge(){
     let issues = 0;
 
-    if (ci_structure.value && ci_structure.value !== "BUENO") issues++;
-    if (ci_twistlocks.value && ci_twistlocks.value !== "BUENO") issues++;
-    if (ci_landing_gear.value && ci_landing_gear.value !== "BUENO") issues++;
-    if (ci_lights.value && ci_lights.value !== "BUENO") issues++;
-    if (ci_mudflap.value && ci_mudflap.value !== "BUENO") issues++;
+    if (ci_structure.value && ci_structure.value !== "OK") issues++;
+    if (ci_twistlocks.value && ci_twistlocks.value !== "OK") issues++;
+    if (ci_landing_gear.value && ci_landing_gear.value !== "OK") issues++;
+    if (ci_lights.value && ci_lights.value !== "OK") issues++;
+    if (ci_mudflap.value && ci_mudflap.value !== "OK") issues++;
+    if (ci_plate_validation_status.value && ci_plate_validation_status.value !== "MISMA") issues++;
     if ((ci_damage_summary.value || "").trim()) issues++;
+    if ((ci_comments.value || "").trim()) issues++;
+    if ((ci_driver_comments.value || "").trim()) issues++;
 
     Object.keys(chassisChecksCache).forEach(pos => {
       const item = chassisChecksCache[pos] || {};
@@ -1048,7 +1100,7 @@
     if (!selectedChassisId){
       chassisIssuesBadge.className = "badge2 ok";
       chassisIssuesBadge.textContent = "SIN CHASIS";
-    } else if (issues > 0){
+    } else if (issues > 0 || ci_needs_workshop.value === "1"){
       chassisIssuesBadge.className = "badge2 warn";
       chassisIssuesBadge.textContent = `HALLAZGOS (${issues})`;
     } else {
@@ -1163,6 +1215,7 @@
         opt.textContent = `${item.chassis_number} (${item.axles || "?"} ejes)`;
         opt.dataset.axles = item.axles || 2;
         opt.dataset.plate = item.plate || "";
+        opt.dataset.status = item.status || "";
         chassisSelect.appendChild(opt);
       });
     }catch(e){
@@ -1181,6 +1234,20 @@
       chassisSummaryPill.className = "mini-pill";
       chassisConfigCache = {};
       chassisChecksCache = {};
+      chassisGeneralStatus.value = "";
+      ci_plate_text.value = "";
+      ci_plate_validation_status.value = "";
+      ci_plate_text_observed.value = "";
+      ci_structure.value = "";
+      ci_twistlocks.value = "";
+      ci_landing_gear.value = "";
+      ci_lights.value = "";
+      ci_mudflap.value = "";
+      ci_damage_summary.value = "";
+      ci_comments.value = "";
+      ci_driver_comments.value = "";
+      ci_needs_workshop.value = "0";
+      refreshPlateObservedVisibility();
       refreshChassisIssueBadge();
       syncHiddenChassisPayloads();
       return;
@@ -1188,7 +1255,9 @@
 
     const selectedOpt = chassisSelect.options[chassisSelect.selectedIndex];
     selectedChassisAxles = Number((selectedOpt && selectedOpt.dataset && selectedOpt.dataset.axles) || 2);
-    chassisPlateText.value = (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.plate) || "";
+
+    chassisGeneralStatus.value = (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.status) || "";
+    ci_plate_text.value = (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.plate) || "";
 
     toggleAxles(selectedChassisAxles);
     chassisBlock.classList.remove("hidden");
@@ -1211,10 +1280,25 @@
     }
   });
 
-  [ci_structure, ci_twistlocks, ci_landing_gear, ci_lights, ci_mudflap, ci_damage_summary, ci_comments, chassisPlateText].forEach(el => {
+  [
+    ci_structure,
+    ci_twistlocks,
+    ci_landing_gear,
+    ci_lights,
+    ci_mudflap,
+    ci_needs_workshop,
+    ci_plate_text,
+    ci_plate_validation_status,
+    ci_plate_text_observed,
+    ci_damage_summary,
+    ci_comments,
+    ci_driver_comments
+  ].forEach(el => {
     el.addEventListener("change", refreshChassisIssueBadge);
     el.addEventListener("input", refreshChassisIssueBadge);
   });
+
+  ci_plate_validation_status.addEventListener("change", refreshPlateObservedVisibility);
 
   wheels.forEach(w => {
     w.addEventListener("click", () => {
@@ -1239,6 +1323,7 @@
 
   preloadChassisRows();
   buildSummary();
+  refreshPlateObservedVisibility();
   refreshChassisIssueBadge();
 </script>
 {% endblock %}
