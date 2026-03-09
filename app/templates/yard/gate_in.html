@@ -216,6 +216,14 @@
   .help{font-size:12px;opacity:.75}
   .hidden{display:none !important;}
   .sep{height:1px;background:rgba(255,255,255,.10);margin:10px 0}
+
+  #chassisSelect option{
+  padding:6px 8px;
+  }
+  #chassisSelect option:checked{
+    background: rgba(255,255,255,.22);
+    color: #fff;
+  }
 </style>
 
 <h2>Gate In</h2>
@@ -1254,7 +1262,7 @@
 
     filterChassisSelect(q);
   });
-  chassisSelect.addEventListener("change", async () => {
+  async function handleChassisSelection(){
     selectedChassisId = chassisSelect.value || "";
     chassisIdHidden.value = selectedChassisId || "";
 
@@ -1284,10 +1292,14 @@
     }
 
     const selectedOpt = chassisSelect.options[chassisSelect.selectedIndex];
-    selectedChassisAxles = Number((selectedOpt && selectedOpt.dataset && selectedOpt.dataset.axles) || 2);
+    if (!selectedOpt || !selectedOpt.value){
+      return;
+    }
 
-    chassisGeneralStatus.value = (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.status) || "";
-    ci_plate_text.value = (selectedOpt && selectedOpt.dataset && selectedOpt.dataset.plate) || "";
+    selectedChassisAxles = Number(selectedOpt.dataset.axles || 2);
+
+    chassisGeneralStatus.value = selectedOpt.dataset.status || "";
+    ci_plate_text.value = selectedOpt.dataset.plate || "";
 
     toggleAxles(selectedChassisAxles);
     chassisBlock.classList.remove("hidden");
@@ -1299,16 +1311,12 @@
     }catch(e){
       alert("No se pudo cargar la configuración de llantas del chasis: " + e.message);
     }
-  });
+  }
 
-  btnReloadChassis.addEventListener("click", async () => {
-    if (!selectedChassisId) return;
-    try{
-      await loadChassisConfig(selectedChassisId);
-    }catch(e){
-      alert("No se pudo recargar la configuración del chasis.");
-    }
-  });
+chassisSelect.addEventListener("change", handleChassisSelection);
+chassisSelect.addEventListener("click", handleChassisSelection);
+chassisSelect.addEventListener("keyup", handleChassisSelection);
+chassisSelect.addEventListener("dblclick", handleChassisSelection);
 
   [
     ci_structure,
@@ -1356,4 +1364,12 @@
   refreshPlateObservedVisibility();
   refreshChassisIssueBadge();
 </script>
+
+#chassisSelect option{
+  padding:6px 8px;
+}
+#chassisSelect option:checked{
+  background: rgba(255,255,255,.22);
+  color: #fff;
+}
 {% endblock %}
