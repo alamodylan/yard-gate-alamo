@@ -968,6 +968,7 @@
     el.addEventListener("input", buildSummary);
   });
 
+  const chassisSearch = document.getElementById("chassisSearch");
   const chassisSelect = document.getElementById("chassisSelect");
   const chassisBlock = document.getElementById("chassisBlock");
   const chassisSummaryPill = document.getElementById("chassisSummaryPill");
@@ -1203,27 +1204,56 @@
     closeChassisModal();
   }
 
+  let chassisRowsMaster = [];
+
+  function renderChassisSelect(rows){
+    const currentValue = chassisSelect.value || "";
+    chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
+
+    rows.forEach(item => {
+      const opt = document.createElement("option");
+      opt.value = item.id;
+      opt.textContent = `${item.chassis_number} | ${item.plate || "SIN PLACA"} | ${item.axles || "?"} ejes`;
+      opt.dataset.axles = item.axles || 2;
+      opt.dataset.plate = item.plate || "";
+      opt.dataset.status = item.status || "";
+      chassisSelect.appendChild(opt);
+    });
+
+    if (currentValue && Array.from(chassisSelect.options).some(o => o.value === currentValue)){
+      chassisSelect.value = currentValue;
+    }
+  }
+
   function preloadChassisRows(){
     try{
       const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
       const rows = JSON.parse(raw);
-
-      chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
-
-      rows.forEach(item => {
-        const opt = document.createElement("option");
-        opt.value = item.id;
-        opt.textContent = `${item.chassis_number} (${item.axles || "?"} ejes)`;
-        opt.dataset.axles = item.axles || 2;
-        opt.dataset.plate = item.plate || "";
-        opt.dataset.status = item.status || "";
-        chassisSelect.appendChild(opt);
-      });
+      chassisRowsMaster = Array.isArray(rows) ? rows : [];
+      renderChassisSelect(chassisRowsMaster);
     }catch(e){
       console.error("No se pudieron precargar los chasis:", e);
-      chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
+      chassisRowsMaster = [];
+      renderChassisSelect([]);
     }
   }
+
+  chassisSearch.addEventListener("input", () => {
+    const q = (chassisSearch.value || "").trim().toUpperCase();
+
+    if (!q){
+      renderChassisSelect(chassisRowsMaster);
+      return;
+    }
+
+    const filtered = chassisRowsMaster.filter(item => {
+      const number = (item.chassis_number || "").toUpperCase();
+      const plate = (item.plate || "").toUpperCase();
+      return number.includes(q) || plate.includes(q);
+    });
+
+    renderChassisSelect(filtered);
+  });
 
   chassisSelect.addEventListener("change", async () => {
     selectedChassisId = chassisSelect.value || "";
