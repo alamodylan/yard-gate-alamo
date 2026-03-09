@@ -322,21 +322,13 @@
     <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
       <div>
         <label>Buscar / seleccionar chasis</label>
-        <input id="chassisSearch" type="text" placeholder="Digita número de chasis o placa..." style="margin-bottom:8px;">
+        <input id="chassisSearch" list="chassisList" type="text" placeholder="Digita número de chasis o placa..." autocomplete="off">
 
-        <select id="chassisSelect" size="10" style="min-height:220px;">
-          <option value="">— Sin chasis —</option>
+        <datalist id="chassisList">
           {% for ch in (chassis_rows or []) %}
-            <option
-              value="{{ ch.id }}"
-              data-axles="{{ ch.axles or 2 }}"
-              data-plate="{{ ch.plate or '' }}"
-              data-status="{{ ch.status or '' }}"
-            >
-              {{ ch.chassis_number }} | {{ ch.plate or 'SIN PLACA' }} | {{ ch.axles or '?' }} ejes
-            </option>
+            <option value="{{ ch.chassis_number }}">{{ ch.chassis_number }} | {{ ch.plate or 'SIN PLACA' }} | {{ ch.axles or '?' }} ejes</option>
           {% endfor %}
-        </select>
+        </datalist>
 
         <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
           <button type="button" id="btnLoadSelectedChassis" class="btn">Cargar chasis</button>
@@ -889,6 +881,7 @@
       baySelect.appendChild(opt);
     });
   }
+
   blockSelect.addEventListener("change", () => loadBaysForBlock(blockSelect.value));
   loadBaysForBlock(blockSelect.value);
 
@@ -915,6 +908,7 @@
     }
     buildSummary();
   }
+
   mgSel.addEventListener("change", syncMaxGross);
   mgOtherInput.addEventListener("input", buildSummary);
   syncMaxGross();
@@ -997,11 +991,13 @@
     el.addEventListener("input", buildSummary);
   });
 
+  // =========================
+  // Chasis
+  // =========================
   const chassisSearch = document.getElementById("chassisSearch");
-  const chassisSelect = document.getElementById("chassisSelect");
   const btnLoadSelectedChassis = document.getElementById("btnLoadSelectedChassis");
   const btnClearSelectedChassis = document.getElementById("btnClearSelectedChassis");
-  const chassisAllOptions = Array.from(chassisSelect.querySelectorAll("option")).slice(1); // sin "— Sin chasis —"
+
   const chassisBlock = document.getElementById("chassisBlock");
   const chassisSummaryPill = document.getElementById("chassisSummaryPill");
   const chassisGeneralStatus = document.getElementById("chassisGeneralStatus");
@@ -1051,6 +1047,7 @@
   let selectedChassisAxles = 2;
   let chassisConfigCache = {};
   let chassisChecksCache = {};
+  let chassisRowsMaster = [];
   let currentPos = null;
 
   function esc(s){ return (s ?? "").toString(); }
@@ -1236,86 +1233,82 @@
     closeChassisModal();
   }
 
-  function resetChassisSelectOptions(){
-    chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
-    chassisAllOptions.forEach(opt => chassisSelect.appendChild(opt));
+  function preloadChassisRows(){
+    try{
+      const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
+      const rows = JSON.parse(raw);
+      chassisRowsMaster = Array.isArray(rows) ? rows : [];
+    }catch(e){
+      console.error("No se pudieron precargar los chasis:", e);
+      chassisRowsMaster = [];
+    }
   }
 
-  function filterChassisSelect(query){
-    const q = (query || "").trim().toUpperCase();
+  function findChassisByInputValue(value){
+    const q = (value || "").trim().toUpperCase();
+    if (!q) return null;
 
-    chassisSelect.innerHTML = `<option value="">— Sin chasis —</option>`;
+    return chassisRowsMaster.find(item => {
+      const number = (item.chassis_number || "").toUpperCase();
+      const plate = (item.plate || "").toUpperCase();
+      return number === q || plate === q;
+    }) || null;
+  }
 
-    const filtered = chassisAllOptions.filter(opt => {
-      const text = (opt.textContent || "").toUpperCase();
-      const plate = (opt.dataset.plate || "").toUpperCase();
-      return text.includes(q) || plate.includes(q);
+  function clearChassisPanel(){
+    selectedChassisId = "";
+    chassisIdHidden.value = "";
+
+    chassisBlock.classList.add("hidden");
+    chassisSummaryPill.textContent = "Sin chasis seleccionado";
+    chassisSummaryPill.className = "mini-pill";
+
+    chassisConfigCache = {};
+    chassisChecksCache = {};
+    chassisGeneralStatus.value = "";
+    ci_plate_text.value = "";
+    ci_plate_validation_status.value = "";
+    ci_plate_text_observed.value = "";
+    ci_structure.value = "";
+    ci_twistlocks.value = "";
+    ci_landing_gear.value = "";
+    ci_lights.value = "";
+    ci_mudflap.value = "";
+    ci_damage_summary.value = "";
+    ci_comments.value = "";
+    ci_driver_comments.value = "";
+    ci_needs_workshop.value = "0";
+
+    chassisPosTbody.innerHTML = `<tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>`;
+
+    wheels.forEach(w => {
+      w.classList.remove("st-OK","st-GASTADA","st-PINCHADA","st-CAMBIAR","st-NO_APTA");
+      w.classList.add("st-OK");
     });
 
-    filtered.forEach(opt => chassisSelect.appendChild(opt));
-    if (filtered.length > 0) {
-      chassisSelect.selectedIndex = 1;
-    } else {
-      chassisSelect.selectedIndex = 0;
-    }
+    refreshPlateObservedVisibility();
+    refreshChassisIssueBadge();
+    syncHiddenChassisPayloads();
   }
 
-  function preloadChassisRows(){
-    // Ya no rellena desde JSON; los options vienen pintados desde el servidor.
-    resetChassisSelectOptions();
-  }
-  chassisSearch.addEventListener("input", () => {
-    const q = (chassisSearch.value || "").trim();
+  async function loadSelectedChassisFromInput(){
+    const item = findChassisByInputValue(chassisSearch.value);
 
-    if (!q){
-      resetChassisSelectOptions();
+    if (!item){
+      alert("No se encontró el chasis. Escribe el número exacto o una placa exacta.");
       return;
     }
 
-    filterChassisSelect(q);
-  });
-  async function handleChassisSelection(){
-    const selectedOpt = chassisSelect.options[chassisSelect.selectedIndex];
-
-    if (!selectedOpt || !selectedOpt.value){
-      selectedChassisId = "";
-      chassisIdHidden.value = "";
-
-      chassisBlock.classList.add("hidden");
-      chassisSummaryPill.textContent = "Sin chasis seleccionado";
-      chassisSummaryPill.className = "mini-pill";
-      chassisConfigCache = {};
-      chassisChecksCache = {};
-      chassisGeneralStatus.value = "";
-      ci_plate_text.value = "";
-      ci_plate_validation_status.value = "";
-      ci_plate_text_observed.value = "";
-      ci_structure.value = "";
-      ci_twistlocks.value = "";
-      ci_landing_gear.value = "";
-      ci_lights.value = "";
-      ci_mudflap.value = "";
-      ci_damage_summary.value = "";
-      ci_comments.value = "";
-      ci_driver_comments.value = "";
-      ci_needs_workshop.value = "0";
-      refreshPlateObservedVisibility();
-      refreshChassisIssueBadge();
-      syncHiddenChassisPayloads();
-      return;
-    }
-
-    selectedChassisId = selectedOpt.value;
+    selectedChassisId = String(item.id);
     chassisIdHidden.value = selectedChassisId;
+    selectedChassisAxles = Number(item.axles || 2);
 
-    selectedChassisAxles = Number(selectedOpt.dataset.axles || 2);
-
-    chassisGeneralStatus.value = selectedOpt.dataset.status || "";
-    ci_plate_text.value = selectedOpt.dataset.plate || "";
+    chassisGeneralStatus.value = item.status || "";
+    ci_plate_text.value = item.plate || "";
 
     toggleAxles(selectedChassisAxles);
     chassisBlock.classList.remove("hidden");
-    chassisSummaryPill.textContent = `Chasis #${selectedOpt.textContent}`;
+    chassisSummaryPill.textContent = `Chasis #${item.chassis_number} | ${item.plate || "SIN PLACA"} | ${item.axles || "?"} ejes`;
     chassisSummaryPill.className = "mini-pill";
 
     try{
@@ -1325,23 +1318,19 @@
     }
   }
 
-btnLoadSelectedChassis.addEventListener("click", handleChassisSelection);
+  btnLoadSelectedChassis.addEventListener("click", loadSelectedChassisFromInput);
 
-btnClearSelectedChassis.addEventListener("click", () => {
-  chassisSelect.selectedIndex = 0;
-  chassisSearch.value = "";
-  resetChassisSelectOptions();
-  handleChassisSelection();
-});
+  btnClearSelectedChassis.addEventListener("click", () => {
+    chassisSearch.value = "";
+    clearChassisPanel();
+  });
 
-chassisSelect.addEventListener("dblclick", handleChassisSelection);
-
-chassisSelect.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    e.preventDefault();
-    handleChassisSelection();
-  }
-});
+  chassisSearch.addEventListener("keydown", (e) => {
+    if (e.key === "Enter"){
+      e.preventDefault();
+      loadSelectedChassisFromInput();
+    }
+  });
 
   [
     ci_structure,
@@ -1385,6 +1374,7 @@ chassisSelect.addEventListener("keydown", (e) => {
   });
 
   preloadChassisRows();
+  clearChassisPanel();
   buildSummary();
   refreshPlateObservedVisibility();
   refreshChassisIssueBadge();
