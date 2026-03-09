@@ -757,28 +757,26 @@ def gate_in_view():
         .all()
     )
 
-    chassis_rows = (
-        Chassis.query
-        .order_by(Chassis.chassis_number.asc())
-        .all()
-    )
+    sql_rows = db.session.execute(text("""
+        SELECT
+            c.id,
+            c.chassis_number,
+            c.plate,
+            c.axles,
+            c.status,
+            c.site_id,
+            c.type_code
+        FROM yard_gate_alamo.chassis c
+        ORDER BY c.chassis_number ASC
+    """)).mappings().all()
+
+    chassis_rows = [dict(r) for r in sql_rows]
 
     return render_template(
         "yard/gate_in.html",
         blocks=blocks,
         sizes=SIZES,
-        chassis_rows=[
-            {
-                "id": ch.id,
-                "chassis_number": ch.chassis_number,
-                "axles": int(getattr(ch, "axles", 2) or 2),
-                "plate": ch.plate or "",
-                "status": getattr(ch, "status", "") or "",
-                "type_code": ch.type_code or "",
-                "site_id": ch.site_id,
-            }
-            for ch in chassis_rows
-        ],
+        chassis_rows=chassis_rows,
     )
 
 
@@ -1002,8 +1000,8 @@ def gate_in_post():
     # Guardar clasificación contenedor
     # =========================
     should_insert_class = any([
-        bool(summary_text),
         bool(shipping_line),
+        bool(summary_text),
         max_gross_kg is not None,
         tare_kg is not None,
         year is not None,
@@ -1012,6 +1010,13 @@ def gate_in_post():
     ])
 
     if should_insert_class:
+        shipping_line_db = (shipping_line or "").strip().upper()
+
+        # La tabla exige shipping_line NOT NULL.
+        # Si no seleccionaron naviera, guardamos un valor por defecto seguro.
+        if not shipping_line_db:
+            shipping_line_db = "ATM"
+
         sql_ins = text("""
             INSERT INTO yard_gate_alamo.container_classifications
             (site_id, container_id, classified_at, classified_by_user_id,
@@ -1026,7 +1031,7 @@ def gate_in_post():
             "site_id": site_id,
             "container_id": c.id,
             "uid": current_user.id,
-            "shipping_line": (shipping_line or None),
+            "shipping_line": shipping_line_db,
             "max_gross_kg": max_gross_kg,
             "tare_kg": tare_kg,
             "manufacture_year": year,
