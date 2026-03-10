@@ -16,7 +16,6 @@
   .kv .k{opacity:.8;font-weight:600}
   .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 
-  /* MAP */
   .map-card{padding:14px}
   .map-area{position:relative;width:100%;aspect-ratio: 3/6; min-height:520px; border-radius:16px;
             background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
@@ -54,7 +53,6 @@
     user-select:none;
   }
 
-  /* State coloring */
   .st-OK{outline: 3px solid rgba(0, 200, 120, .55)}
   .st-GASTADA{outline: 3px solid rgba(255, 193, 7, .6)}
   .st-PINCHADA{outline: 3px solid rgba(255, 87, 34, .65)}
@@ -67,10 +65,8 @@
   .dot.ok{background:rgba(0, 200, 120, .55)}
   .dot.g{background:rgba(255, 193, 7, .6)}
   .dot.p{background:rgba(255, 87, 34, .65)}
-  .dot.c{background:rgba(255, 0, 100, .65)}
   .dot.n{background:rgba(180, 0, 0, .7)}
 
-  /* Right side table */
   .pos-table{width:100%;border-collapse:collapse}
   .pos-table th,.pos-table td{padding:10px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left}
   .pos-table th{opacity:.85;font-weight:700}
@@ -87,7 +83,6 @@
   .badge[data-st="CAMBIAR"]{border-color:rgba(255,0,100,.65)}
   .badge[data-st="NO_APTA"]{border-color:rgba(180,0,0,.7)}
 
-  /* Modal */
   .modal-backdrop{
     position:fixed;inset:0;background:rgba(0,0,0,.55);
     display:none;align-items:center;justify-content:center;z-index:9999;
@@ -139,7 +134,6 @@
     </div>
 
     <div class="ch-grid">
-      <!-- LEFT: MAP -->
       <div class="card map-card">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div style="font-weight:800;">Mapa de llantas</div>
@@ -155,21 +149,17 @@
             <div class="axle ax3"></div>
           {% endif %}
 
-          <!-- Wheels are positioned in % so it scales -->
-          <!-- AX1 -->
           <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
           <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
           <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
           <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
 
-          <!-- AX2 -->
           <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
           <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
           <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
           <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
 
           {% if axles == 3 %}
-          <!-- AX3 -->
           <div class="wheel" data-pos="AX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
           <div class="wheel" data-pos="AX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
           <div class="wheel" data-pos="AX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
@@ -178,19 +168,17 @@
         </div>
 
         <div class="legend">
-          <div class="lg"><span class="dot ok"></span> OK</div>
-          <div class="lg"><span class="dot g"></span> GASTADA</div>
-          <div class="lg"><span class="dot p"></span> PINCHADA</div>
-          <div class="lg"><span class="dot c"></span> CAMBIAR</div>
-          <div class="lg"><span class="dot n"></span> NO_APTA</div>
+          <div class="lg"><span class="dot ok"></span> Verde (9-12 mm)</div>
+          <div class="lg"><span class="dot g"></span> Amarillo (4-8 mm)</div>
+          <div class="lg"><span class="dot n"></span> Rojo (1-3 mm)</div>
+          <div class="lg"><span class="dot p"></span> Pinchada</div>
         </div>
 
         <div class="help" style="margin-top:10px;">
-          Tip: tocá una llanta para editar marchamo, número, marca y estado.
+          Tip: tocá una llanta para editar marchamo, número, marca, estrías y pinchada.
         </div>
       </div>
 
-      <!-- RIGHT: DETAILS -->
       <div class="card card-pad">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
           <div style="font-weight:800;">Detalle por posición</div>
@@ -210,12 +198,14 @@
               <th>Número llanta</th>
               <th>Marca</th>
               <th>Marchamo</th>
+              <th>Estrías</th>
+              <th>Pinchada</th>
               <th>Estado</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="posTbody">
-            <tr><td colspan="6">Cargando...</td></tr>
+            <tr><td colspan="8">Cargando...</td></tr>
           </tbody>
         </table>
 
@@ -227,7 +217,6 @@
   </div>
 </div>
 
-<!-- MODAL -->
 <div class="modal-backdrop" id="modalBackdrop" aria-hidden="true">
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-h">
@@ -254,18 +243,39 @@
       </div>
 
       <div class="frow">
-        <div style="font-weight:700;">Estado</div>
-        <select id="mState">
-          <option value="OK">OK</option>
-          <option value="GASTADA">GASTADA</option>
-          <option value="PINCHADA">PINCHADA</option>
-          <option value="CAMBIAR">CAMBIAR</option>
-          <option value="NO_APTA">NO_APTA</option>
+        <div style="font-weight:700;">Estrías (mm)</div>
+        <select id="mEstriasMm">
+          <option value="">—</option>
+          <option value="12">12</option>
+          <option value="11">11</option>
+          <option value="10">10</option>
+          <option value="9">9</option>
+          <option value="8">8</option>
+          <option value="7">7</option>
+          <option value="6">6</option>
+          <option value="5">5</option>
+          <option value="4">4</option>
+          <option value="3">3</option>
+          <option value="2">2</option>
+          <option value="1">1</option>
         </select>
       </div>
 
+      <div class="frow">
+        <div style="font-weight:700;">Pinchada / desinflada</div>
+        <select id="mIsFlat">
+          <option value="0" selected>No</option>
+          <option value="1">Sí</option>
+        </select>
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:700;">Estado calculado</div>
+        <input id="mState" type="text" readonly>
+      </div>
+
       <div class="help">
-        Si querés “vaciar” una posición, dejá número y marchamo vacíos y poné estado OK. (No borra el catálogo, solo desvincula.)
+        Verde: 9-12 mm. Amarillo: 4-8 mm. Rojo: 1-3 mm. Si está pinchada, manda más que todo lo demás.
       </div>
     </div>
 
@@ -285,8 +295,6 @@
 (function(){
   const meta = document.getElementById("chassisMeta");
   const CHASSIS_ID = meta.dataset.chassisId;
-
-  // api_prefix queda como: /yard/api/chassis/123
   const API_PREFIX = meta.dataset.apiPrefix;
 
   const API_GET = `${API_PREFIX}/tires`;
@@ -302,18 +310,40 @@
   const mMarchamo = document.getElementById("mMarchamo");
   const mTireNumber = document.getElementById("mTireNumber");
   const mBrand = document.getElementById("mBrand");
+  const mEstriasMm = document.getElementById("mEstriasMm");
+  const mIsFlat = document.getElementById("mIsFlat");
   const mState = document.getElementById("mState");
 
   const tbody = document.getElementById("posTbody");
   const wheels = Array.from(document.querySelectorAll(".wheel"));
 
-  let stateCache = {}; // positions dict
+  let stateCache = {};
   let currentPos = null;
 
   function esc(s){ return (s ?? "").toString(); }
 
+  function calcTireStateFromData(estriasMm, isFlat){
+    if (String(isFlat) === "1" || isFlat === true){
+      return "PINCHADA";
+    }
+
+    const mm = parseInt(estriasMm, 10);
+    if (Number.isNaN(mm)){
+      return "OK";
+    }
+
+    if (mm >= 9 && mm <= 12) return "OK";
+    if (mm >= 4 && mm <= 8) return "GASTADA";
+    if (mm >= 1 && mm <= 3) return "NO_APTA";
+
+    return "OK";
+  }
+
+  function refreshModalCalculatedState(){
+    mState.value = calcTireStateFromData(mEstriasMm.value, mIsFlat.value);
+  }
+
   function posPretty(pos){
-    // AX2_L_OUT -> A2 LO
     const m = pos.match(/^AX(\d)_(L|R)_(IN|OUT)$/);
     if (!m) return pos;
     return `A${m[1]} ${m[2]==="L"?"L":"R"}${m[3]==="IN"?"I":"O"}`;
@@ -336,7 +366,7 @@
   function renderTable(positions){
     const keys = Object.keys(positions || {}).sort();
     if (!keys.length){
-      tbody.innerHTML = `<tr><td colspan="6">No hay posiciones para este chasis.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8">No hay posiciones para este chasis.</td></tr>`;
       return;
     }
 
@@ -345,6 +375,8 @@
       const tire_number = p ? (p.tire_number || "") : "";
       const brand = p ? (p.brand || "") : "";
       const marchamo = p ? (p.marchamo || "") : "";
+      const estrias = p && p.estrias_mm !== null && p.estrias_mm !== undefined && p.estrias_mm !== "" ? p.estrias_mm : "—";
+      const isFlat = p ? !!p.is_flat : false;
       const st = p ? (p.tire_state || "OK") : "OK";
 
       return `
@@ -353,6 +385,8 @@
           <td>${tire_number ? esc(tire_number) : "—"}</td>
           <td>${brand ? esc(brand) : "—"}</td>
           <td>${marchamo ? esc(marchamo) : "—"}</td>
+          <td>${estrias} mm</td>
+          <td>${isFlat ? "Sí" : "No"}</td>
           <td>${badge(st)}</td>
           <td style="text-align:right;">
             <button class="btn btn-sm" type="button" data-edit="${esc(pos)}">Editar</button>
@@ -363,27 +397,30 @@
 
     tbody.innerHTML = rows;
 
-    // bind edit buttons
     Array.from(document.querySelectorAll("[data-edit]")).forEach(btn => {
       btn.addEventListener("click", () => openModal(btn.dataset.edit));
     });
   }
 
   async function loadPositions(){
-    tbody.innerHTML = `<tr><td colspan="6">Cargando...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8">Cargando...</td></tr>`;
     try{
       const r = await fetch(API_GET, {headers: {"Accept":"application/json"}});
       const j = await r.json();
       if (!r.ok || !j.ok) throw new Error(j.error || "LOAD_FAILED");
+
       stateCache = j.positions || {};
-      // apply wheel outlines
+
       Object.keys(stateCache).forEach(pos => {
-        const st = stateCache[pos] ? stateCache[pos].tire_state : "OK";
+        const p = stateCache[pos] || {};
+        const st = calcTireStateFromData(p.estrias_mm, p.is_flat);
+        stateCache[pos].tire_state = st;
         applyWheelClass(pos, st);
       });
+
       renderTable(stateCache);
     }catch(e){
-      tbody.innerHTML = `<tr><td colspan="6">Error cargando llantas: ${esc(e.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8">Error cargando llantas: ${esc(e.message)}</td></tr>`;
     }
   }
 
@@ -395,7 +432,9 @@
     mMarchamo.value = p?.marchamo || "";
     mTireNumber.value = p?.tire_number || "";
     mBrand.value = p?.brand || "";
-    mState.value = (p?.tire_state || "OK").toUpperCase();
+    mEstriasMm.value = (p?.estrias_mm !== null && p?.estrias_mm !== undefined) ? String(p.estrias_mm) : "";
+    mIsFlat.value = p?.is_flat ? "1" : "0";
+    refreshModalCalculatedState();
 
     backdrop.style.display = "flex";
     backdrop.setAttribute("aria-hidden","false");
@@ -419,7 +458,8 @@
       marchamo: mMarchamo.value.trim(),
       tire_number: mTireNumber.value.trim(),
       brand: mBrand.value.trim(),
-      tire_state: mState.value.trim()
+      estrias_mm: mEstriasMm.value ? Number(mEstriasMm.value) : null,
+      is_flat: mIsFlat.value === "1"
     };
 
     try{
@@ -441,19 +481,19 @@
     }
   }
 
-  // wheel click opens modal
   wheels.forEach(w => w.addEventListener("click", ()=> openModal(w.dataset.pos)));
 
-  // close handlers
   modalClose.addEventListener("click", closeModal);
   btnCancel.addEventListener("click", closeModal);
   backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
   document.addEventListener("keydown", (e)=>{ if (e.key === "Escape" && backdrop.style.display === "flex") closeModal(); });
 
+  mEstriasMm.addEventListener("change", refreshModalCalculatedState);
+  mIsFlat.addEventListener("change", refreshModalCalculatedState);
+
   btnSave.addEventListener("click", saveModal);
   btnReload.addEventListener("click", loadPositions);
 
-  // init
   loadPositions();
 })();
 </script>

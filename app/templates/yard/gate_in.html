@@ -301,7 +301,7 @@
       <div>
         <h3 style="margin:0;">Clasificación de chasis</h3>
         <div class="hint" style="margin-top:6px;">
-          Al guardar, el chasis ingresa automáticamente al inventario del predio y, si hay hallazgos, genera un único ticket a taller.
+          Al guardar, el chasis ingresa automáticamente al inventario del predio, imprime ticket de clasificación y, si hay hallazgos, genera un único ticket a taller.
         </div>
       </div>
       <div class="mini-pill" id="chassisSummaryPill">Sin chasis seleccionado</div>
@@ -347,7 +347,7 @@
           </div>
 
           <div class="help" style="margin-top:8px;">
-            Toca una llanta para indicar si el marchamo de ingreso viene <b>OK / DISTINTO / NO TIENE / ILEGIBLE</b> y el estado actual de la llanta.
+            Toca una llanta para validar <b>marchamo</b>, <b>número de llanta</b>, <b>estrías (mm)</b> y si está <b>pinchada/desinflada</b>.
           </div>
 
           <div class="map-area" style="margin-top:10px;">
@@ -374,15 +374,14 @@
           </div>
 
           <div class="legend">
-            <div class="lg"><span class="dot ok"></span> OK</div>
-            <div class="lg"><span class="dot g"></span> GASTADA</div>
-            <div class="lg"><span class="dot p"></span> PINCHADA</div>
-            <div class="lg"><span class="dot c"></span> CAMBIAR</div>
-            <div class="lg"><span class="dot n"></span> NO_APTA</div>
+            <div class="lg"><span class="dot ok"></span> Verde (9-12 mm)</div>
+            <div class="lg"><span class="dot g"></span> Amarillo (4-8 mm)</div>
+            <div class="lg"><span class="dot n"></span> Rojo (1-3 mm)</div>
+            <div class="lg"><span class="dot p"></span> Pinchada</div>
           </div>
 
           <div class="help" style="margin-top:10px;">
-            Si una llanta viene con marchamo <b>DISTINTO / NO TIENE / ILEGIBLE</b>, eso sale en el ticket como revisión. Si el estado no es <b>OK</b>, también sale en ticket.
+            Si el marchamo o el número de llanta viene <b>DISTINTO</b>, se refleja como alerta en el ticket de clasificación.
           </div>
         </div>
 
@@ -491,7 +490,7 @@
           </div>
 
           <div class="help" style="margin-top:10px;">
-            El ticket se genera automáticamente si existe al menos un hallazgo estructural, de placa, marchamo o llantas.
+            El ticket de clasificación del chasis se imprime siempre. El ticket de taller solo si hay hallazgos.
           </div>
 
           <div style="margin-top:14px;">
@@ -500,13 +499,16 @@
                 <tr>
                   <th>Posición</th>
                   <th>Marchamo config</th>
-                  <th>Ingreso</th>
-                  <th>Validación</th>
+                  <th>Ingreso marchamo</th>
+                  <th>Llanta config</th>
+                  <th>Ingreso llanta</th>
+                  <th>Estrías</th>
+                  <th>Pinchada</th>
                   <th>Estado</th>
                 </tr>
               </thead>
               <tbody id="chassisPosTbody">
-                <tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>
+                <tr><td colspan="8">Selecciona un chasis para cargar llantas.</td></tr>
               </tbody>
             </table>
           </div>
@@ -812,33 +814,60 @@
       </div>
 
       <div class="frow">
-        <div style="font-weight:800;">Validación ingreso</div>
+        <div style="font-weight:800;">Marchamo ingreso</div>
         <select id="cmSealStatus">
           <option value="OK">OK</option>
           <option value="DISTINTO">DISTINTO</option>
-          <option value="NO_TIENE">NO TIENE</option>
-          <option value="ILEGIBLE">ILEGIBLE</option>
         </select>
-      </div>
-
-      <div class="frow" id="cmSealInputRow">
-        <div style="font-weight:800;">Marchamo ingreso</div>
-        <input id="cmSealInput" type="text" placeholder="Solo si viene distinto">
       </div>
 
       <div class="frow">
-        <div style="font-weight:800;">Estado llanta ingreso</div>
-        <select id="cmTireState">
+        <div style="font-weight:800;">Llanta config</div>
+        <input id="cmTireNumberConfig" type="text" readonly>
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:800;">Llanta ingreso</div>
+        <select id="cmTireNumberStatus">
           <option value="OK">OK</option>
-          <option value="GASTADA">GASTADA (REGULAR)</option>
-          <option value="PINCHADA">PINCHADA (BAJA DE AIRE)</option>
-          <option value="CAMBIAR">CAMBIAR (MAL ESTADO)</option>
-          <option value="NO_APTA">NO_APTA (DAÑADA)</option>
+          <option value="DISTINTO">DISTINTO</option>
         </select>
       </div>
 
+      <div class="frow">
+        <div style="font-weight:800;">Estrías (mm)</div>
+        <select id="cmEstriasMm">
+          <option value="">—</option>
+          <option value="12">12</option>
+          <option value="11">11</option>
+          <option value="10">10</option>
+          <option value="9">9</option>
+          <option value="8">8</option>
+          <option value="7">7</option>
+          <option value="6">6</option>
+          <option value="5">5</option>
+          <option value="4">4</option>
+          <option value="3">3</option>
+          <option value="2">2</option>
+          <option value="1">1</option>
+        </select>
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:800;">Pinchada / desinflada</div>
+        <select id="cmIsFlat">
+          <option value="0" selected>No</option>
+          <option value="1">Sí</option>
+        </select>
+      </div>
+
+      <div class="frow">
+        <div style="font-weight:800;">Estado calculado</div>
+        <input id="cmTireState" type="text" readonly>
+      </div>
+
       <div class="help">
-        Si marcas DISTINTO / NO TIENE / ILEGIBLE, eso aparece en el ticket de taller automáticamente. Si el estado no es OK, también.
+        Verde: <b>9-12 mm</b>. Amarillo: <b>4-8 mm</b>. Rojo: <b>1-3 mm</b>. Si está pinchada, queda como <b>PINCHADA</b>.
       </div>
     </div>
 
@@ -859,8 +888,6 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("Gate In script cargado");
-
   const blockSelect = document.getElementById("blockSelect");
   const baySelect = document.getElementById("baySelect");
   const placementMode = document.getElementById("placementMode");
@@ -926,8 +953,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const cmPosLabel = document.getElementById("cmPosLabel");
   const cmMarchamoConfig = document.getElementById("cmMarchamoConfig");
   const cmSealStatus = document.getElementById("cmSealStatus");
-  const cmSealInput = document.getElementById("cmSealInput");
-  const cmSealInputRow = document.getElementById("cmSealInputRow");
+  const cmTireNumberConfig = document.getElementById("cmTireNumberConfig");
+  const cmTireNumberStatus = document.getElementById("cmTireNumberStatus");
+  const cmEstriasMm = document.getElementById("cmEstriasMm");
+  const cmIsFlat = document.getElementById("cmIsFlat");
   const cmTireState = document.getElementById("cmTireState");
 
   let selectedChassisId = "";
@@ -948,6 +977,23 @@ document.addEventListener("DOMContentLoaded", () => {
       .toUpperCase()
       .replace(/\s+/g, " ")
       .replace(/-/g, "");
+  }
+
+  function calcTireStateFromData(estriasMm, isFlat){
+    if (String(isFlat) === "1" || isFlat === true){
+      return "PINCHADA";
+    }
+
+    const mm = parseInt(estriasMm, 10);
+    if (Number.isNaN(mm)){
+      return "OK";
+    }
+
+    if (mm >= 9 && mm <= 12) return "OK";
+    if (mm >= 4 && mm <= 8) return "GASTADA";
+    if (mm >= 1 && mm <= 3) return "NO_APTA";
+
+    return "OK";
   }
 
   function posPretty(pos){
@@ -979,8 +1025,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!baySelect) return;
 
     const url = `${API_BAYS_URL}?block=${encodeURIComponent(blockCode)}`;
-    console.log("loadBaysForBlock ->", url);
-
     const r = await fetch(url, { headers: { "Accept": "application/json" } });
     const data = await r.json();
 
@@ -1097,7 +1141,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function refreshPlateObservedVisibility(){
     if (!ci_plate_validation_status || !ciPlateObservedWrap || !ci_plate_text_observed) return;
-
     const v = (ci_plate_validation_status.value || "").toUpperCase();
     ciPlateObservedWrap.style.display = (v === "DISTINTA") ? "block" : "none";
     if (v !== "DISTINTA"){
@@ -1122,7 +1165,9 @@ document.addEventListener("DOMContentLoaded", () => {
     Object.keys(chassisChecksCache).forEach(pos => {
       const item = chassisChecksCache[pos] || {};
       if ((item.seal_status || "OK") !== "OK") issues++;
+      if ((item.tire_number_status || "OK") !== "OK") issues++;
       if ((item.tire_state || "OK") !== "OK") issues++;
+      if (item.is_flat === true) issues++;
     });
 
     if (!chassisIssuesBadge) {
@@ -1149,19 +1194,25 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const keys = Object.keys(chassisConfigCache || {}).sort();
     if (!keys.length){
-      chassisPosTbody.innerHTML = `<tr><td colspan="5">No hay posiciones para este chasis.</td></tr>`;
+      chassisPosTbody.innerHTML = `<tr><td colspan="8">No hay posiciones para este chasis.</td></tr>`;
       return;
     }
 
     chassisPosTbody.innerHTML = keys.map(pos => {
       const cfg = chassisConfigCache[pos] || {};
       const chk = chassisChecksCache[pos] || {};
+      const estriasTxt = (chk.estrias_mm !== undefined && chk.estrias_mm !== null && chk.estrias_mm !== "") ? chk.estrias_mm : "—";
+      const flatTxt = chk.is_flat ? "Sí" : "No";
+
       return `
         <tr>
           <td style="font-weight:800;">${esc(posPretty(pos))}<div class="help">${esc(pos)}</div></td>
           <td>${cfg.marchamo ? esc(cfg.marchamo) : "—"}</td>
-          <td>${chk.seal_input ? esc(chk.seal_input) : "—"}</td>
           <td>${esc(chk.seal_status || "OK")}</td>
+          <td>${cfg.tire_number ? esc(cfg.tire_number) : "—"}</td>
+          <td>${esc(chk.tire_number_status || "OK")}</td>
+          <td>${esc(estriasTxt)} mm</td>
+          <td>${flatTxt}</td>
           <td><span class="badge" data-st="${esc(chk.tire_state || "OK")}">${esc(chk.tire_state || "OK")}</span></td>
         </tr>
       `;
@@ -1174,10 +1225,12 @@ document.addEventListener("DOMContentLoaded", () => {
       const cfg = chassisConfigCache[pos] || {};
       chassisChecksCache[pos] = {
         seal_status: "OK",
-        seal_input: "",
-        tire_state: (cfg.tire_state || "OK").toUpperCase()
+        tire_number_status: "OK",
+        estrias_mm: (cfg.estrias_mm !== undefined && cfg.estrias_mm !== null) ? Number(cfg.estrias_mm) : "",
+        is_flat: !!cfg.is_flat,
+        tire_state: calcTireStateFromData(cfg.estrias_mm, !!cfg.is_flat)
       };
-      applyWheelState(pos, cfg.tire_state || "OK");
+      applyWheelState(pos, calcTireStateFromData(cfg.estrias_mm, !!cfg.is_flat));
     });
     renderChassisTable();
     refreshChassisIssueBadge();
@@ -1185,8 +1238,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function loadChassisConfig(chassisId){
     const url = API_CHASSIS_TIRES_URL_TEMPLATE.replace("999999", String(chassisId));
-    console.log("loadChassisConfig ->", url);
-
     const r = await fetch(url, { headers: { "Accept":"application/json" } });
 
     let j = {};
@@ -1214,15 +1265,22 @@ document.addEventListener("DOMContentLoaded", () => {
   function openChassisModal(pos){
     currentPos = pos;
     const cfg = chassisConfigCache[pos] || {};
-    const chk = chassisChecksCache[pos] || {seal_status:"OK", seal_input:"", tire_state:"OK"};
+    const chk = chassisChecksCache[pos] || {
+      seal_status:"OK",
+      tire_number_status:"OK",
+      estrias_mm:"",
+      is_flat:false,
+      tire_state:"OK"
+    };
 
     if (cmPosLabel) cmPosLabel.textContent = posPretty(pos);
     if (cmMarchamoConfig) cmMarchamoConfig.value = cfg.marchamo || "";
     if (cmSealStatus) cmSealStatus.value = (chk.seal_status || "OK").toUpperCase();
-    if (cmSealInput) cmSealInput.value = chk.seal_input || "";
-    if (cmTireState) cmTireState.value = (chk.tire_state || cfg.tire_state || "OK").toUpperCase();
-
-    syncSealInputVisibility();
+    if (cmTireNumberConfig) cmTireNumberConfig.value = cfg.tire_number || "";
+    if (cmTireNumberStatus) cmTireNumberStatus.value = (chk.tire_number_status || "OK").toUpperCase();
+    if (cmEstriasMm) cmEstriasMm.value = (chk.estrias_mm !== undefined && chk.estrias_mm !== null) ? String(chk.estrias_mm) : "";
+    if (cmIsFlat) cmIsFlat.value = chk.is_flat ? "1" : "0";
+    if (cmTireState) cmTireState.value = calcTireStateFromData(cmEstriasMm?.value, cmIsFlat?.value);
 
     if (chassisModalBackdrop) {
       chassisModalBackdrop.style.display = "flex";
@@ -1238,26 +1296,27 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function syncSealInputVisibility(){
-    if (!cmSealStatus || !cmSealInputRow || !cmSealInput) return;
-
-    const v = (cmSealStatus.value || "OK").toUpperCase();
-    cmSealInputRow.style.display = (v === "DISTINTO") ? "grid" : "none";
-    if (v !== "DISTINTO"){
-      cmSealInput.value = "";
-    }
+  function refreshModalCalculatedState(){
+    if (!cmTireState) return;
+    cmTireState.value = calcTireStateFromData(cmEstriasMm?.value, cmIsFlat?.value);
   }
 
   function saveChassisModal(){
     if (!currentPos) return;
 
+    const estriasValue = cmEstriasMm?.value || "";
+    const isFlatValue = cmIsFlat?.value === "1";
+    const tireStateValue = calcTireStateFromData(estriasValue, isFlatValue);
+
     chassisChecksCache[currentPos] = {
       seal_status: (cmSealStatus?.value || "OK").toUpperCase(),
-      seal_input: (cmSealInput?.value || "").trim(),
-      tire_state: (cmTireState?.value || "OK").toUpperCase()
+      tire_number_status: (cmTireNumberStatus?.value || "OK").toUpperCase(),
+      estrias_mm: estriasValue ? Number(estriasValue) : "",
+      is_flat: isFlatValue,
+      tire_state: tireStateValue
     };
 
-    applyWheelState(currentPos, cmTireState?.value || "OK");
+    applyWheelState(currentPos, tireStateValue);
     renderChassisTable();
     refreshChassisIssueBadge();
     closeChassisModal();
@@ -1268,7 +1327,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
       const rows = JSON.parse(raw);
       chassisRowsMaster = Array.isArray(rows) ? rows : [];
-      console.log("chassisRowsMaster cargados:", chassisRowsMaster.length);
     }catch(e){
       console.error("No se pudieron precargar los chasis:", e);
       chassisRowsMaster = [];
@@ -1328,7 +1386,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (ci_needs_workshop) ci_needs_workshop.value = "0";
 
     if (chassisPosTbody) {
-      chassisPosTbody.innerHTML = `<tr><td colspan="5">Selecciona un chasis para cargar llantas.</td></tr>`;
+      chassisPosTbody.innerHTML = `<tr><td colspan="8">Selecciona un chasis para cargar llantas.</td></tr>`;
     }
 
     toggleAxles(2);
@@ -1344,11 +1402,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadSelectedChassisFromInput(){
-    console.log("CLICK -> Cargar chasis");
-    console.log("Valor escrito:", chassisSearch?.value);
-
     const item = findChassisByInputValue(chassisSearch?.value || "");
-    console.log("Item encontrado:", item);
 
     if (!item){
       alert("No se encontró el chasis. Escribe el número exacto o una placa exacta.");
@@ -1373,7 +1427,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try{
       await loadChassisConfig(selectedChassisId);
-      console.log("Carga de chasis completada");
     }catch(e){
       console.error("Error cargando configuración de chasis:", e);
       alert("No se pudo cargar la configuración de llantas del chasis: " + e.message);
@@ -1381,9 +1434,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   window.__forceLoadChassis = async function () {
-    console.log("FORCED CLICK -> Cargar chasis");
-    alert("Entró al click de Cargar chasis");
-
     try {
       await loadSelectedChassisFromInput();
     } catch (e) {
@@ -1432,9 +1482,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnLoadSelectedChassis) {
     btnLoadSelectedChassis.addEventListener("click", loadSelectedChassisFromInput);
-    console.log("Listener conectado a btnLoadSelectedChassis");
-  } else {
-    console.error("No existe btnLoadSelectedChassis");
   }
 
   if (btnReloadChassis) {
@@ -1495,7 +1542,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  if (cmSealStatus) cmSealStatus.addEventListener("change", syncSealInputVisibility);
+  if (cmEstriasMm) cmEstriasMm.addEventListener("change", refreshModalCalculatedState);
+  if (cmIsFlat) cmIsFlat.addEventListener("change", refreshModalCalculatedState);
+
   if (chassisModalClose) chassisModalClose.addEventListener("click", closeChassisModal);
   if (cmBtnCancel) cmBtnCancel.addEventListener("click", closeChassisModal);
   if (cmBtnSave) cmBtnSave.addEventListener("click", saveChassisModal);
@@ -1519,8 +1568,6 @@ document.addEventListener("DOMContentLoaded", () => {
   if (blockSelect) loadBaysForBlock(blockSelect.value);
   syncMaxGross();
   buildSummary();
-
-  console.log("Inicialización completada");
 });
 </script>
 

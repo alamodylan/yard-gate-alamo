@@ -19,7 +19,18 @@ class ChassisTire(db.Model):
     tire_id = db.Column(db.Integer, db.ForeignKey(f"{SCHEMA}.tires.id"), nullable=True)
     marchamo = db.Column(db.String(30), nullable=True)
 
-    tire_state = db.Column(db.String(20), nullable=False, default="OK")  # OK/GASTADA/PINCHADA/CAMBIAR/NO_APTA
+    # Nuevo: medición de estrías en mm (1..12)
+    estrias_mm = db.Column(db.Integer, nullable=True)
+
+    # Nuevo: indica si la llanta está pinchada / desinflada
+    is_flat = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Estado calculado desde estrías / pinchada
+    # OK = verde
+    # GASTADA = amarillo
+    # NO_APTA = rojo
+    # PINCHADA = desinflada
+    tire_state = db.Column(db.String(20), nullable=False, default="OK")
 
     installed_at = db.Column(db.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
@@ -28,4 +39,10 @@ class ChassisTire(db.Model):
     tire = db.relationship("Tire", lazy=True)
 
     def __repr__(self) -> str:
-        return f"<ChassisTire chassis={self.chassis_id} pos={self.position_code} state={self.tire_state}>"
+        return (
+            f"<ChassisTire chassis={self.chassis_id} "
+            f"pos={self.position_code} "
+            f"mm={self.estrias_mm} "
+            f"flat={self.is_flat} "
+            f"state={self.tire_state}>"
+        )

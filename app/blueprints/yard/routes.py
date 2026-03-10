@@ -784,6 +784,7 @@ def gate_in_view():
 @login_required
 def gate_in_post():
     site_id = _ensure_active_site()
+    active_site = Site.query.get(site_id)
 
     code = (request.form.get("container_code") or "").strip().upper()
     size = (request.form.get("size") or "").strip()
@@ -897,13 +898,6 @@ def gate_in_post():
             chassis_tire_checks = parsed_tires if isinstance(parsed_tires, dict) else {}
         except Exception:
             flash("La clasificación de llantas del chasis viene dañada.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-
-        try:
-            parsed_inspection = json.loads(chassis_inspection_json_raw or "{}")
-            chassis_inspection = parsed_inspection if isinstance(parsed_inspection, dict) else {}
-        except Exception:
-            flash("La clasificación estructural del chasis viene dañada.", "danger")
             return redirect(url_for("yard.gate_in_view"))
 
         try:
@@ -1103,6 +1097,7 @@ def gate_in_post():
     # Procesar clasificación de chasis
     # =========================
     workshop_ticket_id = None
+    chassis_classification_ticket_payload = None
 
     if selected_chassis:
         axles = int(getattr(selected_chassis, "axles", 2) or 2)
@@ -1116,20 +1111,22 @@ def gate_in_post():
 
         plate_text = (chassis_inspection.get("plate_text") or "").strip()
         plate_validation_status = _norm_enum(chassis_inspection.get("plate_validation_status"))
-        plate_text_observed = (chassis_inspection.get("plate_text_observed") or "").strip()
 
         damage_summary = (chassis_inspection.get("damage_summary") or "").strip()
         comments = (chassis_inspection.get("comments") or "").strip()
         driver_comments = (chassis_inspection.get("driver_comments") or "").strip()
 
         tire_lines = []
+        ticket_alert_lines = []
+        ticket_tire_rows = []
         any_tire_issue = False
 
         tire_state_labels = {
             "GASTADA": "REGULAR",
-            "PINCHADA": "BAJA DE AIRE",
+            "PINCHADA": "DESINFLADA",
             "CAMBIAR": "MAL ESTADO",
-            "NO_APTA": "DAÑADA",
+            "NO_APTA": "ROJA",
+            "OK": "VERDE",
         }
 
         for pos, item in (chassis_tire_checks or {}).items():
@@ -1139,26 +1136,29 @@ def gate_in_post():
 
             item = item or {}
             seal_status = _norm_enum(item.get("seal_status")) or "OK"
-            seal_input = (item.get("seal_input") or "").strip()
-            tire_state = _norm_enum(item.get("tire_state")) or "OK"
+            tire_number_status = _norm_enum(item.get("tire_number_status")) or "OK"
 
-            if seal_status not in MARCHAMO_CHECK:
+            estrias_mm_raw = item.get("estrias_mm")
+            is_flat = bool(item.get("is_flat"))
+
+            estrias_mm = None
+            if estrias_mm_raw not in (None, "",):
+                try:
+                    estrias_mm = int(estrias_mm_raw)
+                except Exception:
+                    estrias_mm = None
+
+            tire_state = _calc_tire_state_from_data(estrias_mm, is_flat)
+
+            if seal_status not in {"OK", "DISTINTO"}:
                 seal_status = "OK"
+
+            if tire_number_status not in {"OK", "DISTINTO"}:
+                tire_number_status = "OK"
+
             if tire_state not in TIRE_STATES:
                 tire_state = "OK"
 
-            # Guardar lectura/hallazgo
-            _save_tire_reading(
-                site_id=site_id,
-                chassis_id=selected_chassis.id,
-                pos=pos,
-                ingreso_marchamo=(seal_input or None),
-                check=seal_status,
-                tire_state=tire_state,
-                user_id=current_user.id,
-            )
-
-            # Actualizar estado vigente del chasis en configuración
             row = ChassisTire.query.filter_by(chassis_id=selected_chassis.id, position_code=pos).first()
             if not row:
                 row = ChassisTire(
@@ -1166,30 +1166,60 @@ def gate_in_post():
                     position_code=pos,
                 )
 
+            marchamo_config = row.marchamo if row else None
+            tire_number_config = row.tire.tire_number if row and row.tire else None
+
+            # Guardar lectura/hallazgo
+            _save_tire_reading(
+                site_id=site_id,
+                chassis_id=selected_chassis.id,
+                pos=pos,
+                ingreso_marchamo=None,
+                check=seal_status,
+                tire_state=tire_state,
+                user_id=current_user.id,
+                estrias_mm=estrias_mm,
+                is_flat=is_flat,
+            )
+
+            # Actualizar estado vigente del chasis en configuración
+            row.estrias_mm = estrias_mm
+            row.is_flat = is_flat
             row.tire_state = tire_state
             row.updated_at = datetime.utcnow()
             db.session.add(row)
 
-            # Hallazgos de marchamo
-            if seal_status != "OK":
+            # Alertas ticket
+            if seal_status == "DISTINTO":
                 any_tire_issue = True
+                tire_lines.append(f"{pos}: MARCHAMO DISTINTO")
+                ticket_alert_lines.append(f"MARCHAMO DISTINTO EN {pos}")
 
-                if seal_status == "DISTINTO":
-                    tire_lines.append(
-                        f"{pos}: MARCHAMO DISTINTO - CONFIGURADO VS INGRESO NO COINCIDE"
-                        + (f" (INGRESO: {seal_input})" if seal_input else "")
-                    )
-                elif seal_status == "NO_TIENE":
-                    tire_lines.append(f"{pos}: MARCHAMO NO TIENE")
-                elif seal_status == "ILEGIBLE":
-                    tire_lines.append(f"{pos}: MARCHAMO ILEGIBLE")
+            if tire_number_status == "DISTINTO":
+                any_tire_issue = True
+                tire_lines.append(f"{pos}: NUMERO DE LLANTA DISTINTO")
+                ticket_alert_lines.append(f"NUMERO DE LLANTA DISTINTO EN {pos}")
 
-            # Hallazgos de estado
-            if tire_state != "OK":
+            if is_flat:
+                any_tire_issue = True
+                tire_lines.append(f"{pos}: PINCHADA (DESINFLADA)")
+                ticket_alert_lines.append(f"LLANTA PINCHADA EN {pos}")
+            elif tire_state != "OK":
                 any_tire_issue = True
                 tire_lines.append(
                     f"{pos}: ESTADO {tire_state} ({tire_state_labels.get(tire_state, tire_state)})"
                 )
+
+            ticket_tire_rows.append({
+                "pos": pos,
+                "marchamo_config": marchamo_config,
+                "seal_status": seal_status,
+                "tire_number_config": tire_number_config,
+                "tire_number_status": tire_number_status,
+                "estrias_mm": estrias_mm,
+                "is_flat": is_flat,
+                "tire_state": tire_state,
+            })
 
         structure_lines = []
 
@@ -1212,15 +1242,16 @@ def gate_in_post():
             line = f"Placa: {plate_validation_status}"
             if plate_text:
                 line += f" (CONFIGURADA: {plate_text})"
-            if plate_text_observed:
-                line += f" (OBSERVADA: {plate_text_observed})"
             structure_lines.append(line)
 
         if damage_summary:
             structure_lines.append(f"Resumen: {damage_summary}")
 
+        if comments:
+            structure_lines.append(f"Chequeador: {comments}")
+
         if driver_comments:
-            structure_lines.append(f"Comentario chofer: {driver_comments}")
+            structure_lines.append(f"Chofer: {driver_comments}")
 
         chassis_needs_workshop_manual = bool(chassis_inspection.get("needs_workshop"))
         needs_workshop_chassis = bool(structure_lines) or bool(any_tire_issue) or chassis_needs_workshop_manual
@@ -1238,7 +1269,6 @@ def gate_in_post():
             "mudflap_status": mudflap_status or None,
             "plate_text": plate_text or None,
             "plate_validation_status": plate_validation_status or None,
-            "plate_text_observed": plate_text_observed or None,
             "comments": comments or None,
             "driver_comments": driver_comments or None,
             "needs_workshop": needs_workshop_chassis,
@@ -1256,6 +1286,38 @@ def gate_in_post():
         else:
             inv.is_in_yard = True
         db.session.add(inv)
+
+        # Ticket de CLASIFICACION DE CHASIS - SIEMPRE
+        username = (
+            getattr(current_user, "name", None)
+            or getattr(current_user, "username", None)
+            or getattr(current_user, "email", None)
+            or f"USER {current_user.id}"
+        )
+
+        chassis_classification_ticket_payload = _build_chassis_gate_in_ticket_text(
+            site_name=(active_site.name if active_site else ""),
+            username=username,
+            occurred_at=mv.occurred_at or datetime.utcnow(),
+            chassis_number=selected_chassis.chassis_number,
+            plate=selected_chassis.plate,
+            structure_status=structure_status,
+            twistlocks_status=twistlocks_status,
+            landing_gear_status=landing_gear_status,
+            lights_status=lights_status,
+            mudflap_status=mudflap_status,
+            plate_validation_status=plate_validation_status,
+            damage_summary=damage_summary or None,
+            comments=comments or None,
+            driver_comments=driver_comments or None,
+            tire_rows=ticket_tire_rows,
+            alert_lines=ticket_alert_lines,
+        )
+
+        # =========================================================
+        # AQUI DEBES ENGANCHAR TU MISMO FLUJO DE PRINT AGENT
+        # que ya usas con la EPSON TM-U220PD.
+        # =========================================================
 
         # Ticket único a taller si hay hallazgos
         if needs_workshop_chassis:
@@ -1307,6 +1369,7 @@ def gate_in_post():
                 "movement_id": mv.id,
                 "container_id": c.id,
                 "needs_workshop": needs_workshop_chassis,
+                "classification_ticket": bool(chassis_classification_ticket_payload),
             },
         )
 
@@ -1931,6 +1994,27 @@ CHASSIS_KINDS = {"CHASIS", "LOW_BOY", "TANQUETA", "PLANA", "CARRETA"}
 def _norm_enum(val):
     return (val or "").strip().upper().replace(" ", "_")
 
+def _calc_tire_state_from_data(estrias_mm, is_flat=False):
+    if is_flat:
+        return "PINCHADA"
+
+    if estrias_mm in (None, "",):
+        return "OK"
+
+    try:
+        mm = int(estrias_mm)
+    except Exception:
+        return "OK"
+
+    if 9 <= mm <= 12:
+        return "OK"         # verde
+    if 4 <= mm <= 8:
+        return "GASTADA"    # amarillo
+    if 1 <= mm <= 3:
+        return "NO_APTA"    # rojo
+
+    return "OK"
+
 def classify_chassis_number(num: str):
     prefix = (num or "")[:2]
     if prefix == "40":
@@ -1942,6 +2026,85 @@ def classify_chassis_number(num: str):
     if prefix == "23":
         return 20, 3, "20FT_3AX"
     return None, None, "UNKNOWN"
+
+
+def _build_chassis_gate_in_ticket_text(
+    *,
+    site_name: str,
+    username: str,
+    occurred_at: datetime,
+    chassis_number: str,
+    plate: str | None,
+    structure_status: str | None,
+    twistlocks_status: str | None,
+    landing_gear_status: str | None,
+    lights_status: str | None,
+    mudflap_status: str | None,
+    plate_validation_status: str | None,
+    damage_summary: str | None,
+    comments: str | None,
+    driver_comments: str | None,
+    tire_rows: list[dict],
+    alert_lines: list[str],
+) -> str:
+    dt_local = occurred_at.replace(tzinfo=UTC_TZ).astimezone(CR_TZ)
+
+    lines = []
+    lines.append(APP_NAME)
+    lines.append("CLASIFICACION CHASIS - GATE IN")
+    lines.append(dt_local.strftime("%d/%m/%Y %I:%M %p"))
+    if site_name:
+        lines.append(f"PREDIO: {site_name}")
+    if username:
+        lines.append(f"USUARIO: {username}")
+
+    lines.append("--------------------------------")
+    lines.append(f"CHASIS: {chassis_number}")
+    lines.append(f"PLACA: {plate or 'SIN PLACA'}")
+
+    lines.append("--------------------------------")
+    lines.append("ESTRUCTURA")
+    lines.append(f"Estructura: {structure_status or '—'}")
+    lines.append(f"Twistlocks: {twistlocks_status or '—'}")
+    lines.append(f"Patas: {landing_gear_status or '—'}")
+    lines.append(f"Luces: {lights_status or '—'}")
+    lines.append(f"Faldones: {mudflap_status or '—'}")
+    lines.append(f"Placa: {plate_validation_status or '—'}")
+
+    if damage_summary:
+        lines.append(f"Resumen: {damage_summary}")
+    if comments:
+        lines.append(f"Chequeador: {comments}")
+    if driver_comments:
+        lines.append(f"Chofer: {driver_comments}")
+
+    lines.append("--------------------------------")
+    lines.append("LLANTAS")
+
+    for row in tire_rows:
+        estrias_txt = row.get("estrias_mm")
+        if estrias_txt in (None, ""):
+            estrias_txt = "—"
+
+        flat_txt = "SI" if row.get("is_flat") else "NO"
+
+        lines.append(
+            f"{row['pos']} | M:{row['marchamo_config'] or '—'} | "
+            f"M ING:{row['seal_status']} | "
+            f"L:{row['tire_number_config'] or '—'} | "
+            f"L ING:{row['tire_number_status']} | "
+            f"MM:{estrias_txt} | PINCH:{flat_txt} | "
+            f"EST:{row['tire_state']}"
+        )
+
+    if alert_lines:
+        lines.append("--------------------------------")
+        lines.append("ALERTAS")
+        for x in alert_lines:
+            lines.append(f"! {x}")
+
+    lines.append("--------------------------------")
+    return "\n".join(lines).strip()
 
 
 def allowed_positions_for(axles: int):
@@ -2063,26 +2226,97 @@ def _build_workshop_ticket_text(
     return "\n".join(out).strip()
 
 def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo: str | None,
-                       check: str, tire_state: str, user_id: int):
+                       check: str, tire_state: str, user_id: int, estrias_mm=None, is_flat=False):
     """
     Guarda lectura/hallazgo por llanta en tire_readings si existe, sin requerir modelo.
+    Se adapta a columnas reales de la tabla y llena event_type si es obligatorio.
     """
     cols = _get_table_columns("yard_gate_alamo", "tire_readings")
     if not cols:
         return  # si no existe, no rompe nada
 
-    # campos típicos; insertaremos solo lo que exista
-    _insert_dynamic("yard_gate_alamo", "tire_readings", {
-        "site_id": site_id,
-        "chassis_id": chassis_id,
-        "position_code": pos,
-        "ingreso_marchamo": ingreso_marchamo,
-        "marchamo_check": check,
-        "tire_state": tire_state,
-        "inspected_at": datetime.utcnow(),
-        "inspected_by_user_id": user_id,
-        "created_at": datetime.utcnow(),
-    })
+    payload = {}
+
+    # Campos base comunes
+    if "site_id" in cols:
+        payload["site_id"] = site_id
+    if "chassis_id" in cols:
+        payload["chassis_id"] = chassis_id
+
+    # Posición
+    if "position_code" in cols:
+        payload["position_code"] = pos
+    elif "tire_position" in cols:
+        payload["tire_position"] = pos
+    elif "position" in cols:
+        payload["position"] = pos
+
+    # Marchamo ingreso
+    if "ingreso_marchamo" in cols:
+        payload["ingreso_marchamo"] = ingreso_marchamo
+    elif "seal_input" in cols:
+        payload["seal_input"] = ingreso_marchamo
+    elif "observed_seal" in cols:
+        payload["observed_seal"] = ingreso_marchamo
+
+    # Validación marchamo
+    if "marchamo_check" in cols:
+        payload["marchamo_check"] = check
+    elif "seal_check" in cols:
+        payload["seal_check"] = check
+    elif "seal_status" in cols:
+        payload["seal_status"] = check
+
+    # Estado llanta
+    if "tire_state" in cols:
+        payload["tire_state"] = tire_state
+    elif "status" in cols:
+        payload["status"] = tire_state
+
+    # Nuevos campos de estrías / pinchada
+    if "estrias_mm" in cols:
+        payload["estrias_mm"] = estrias_mm
+    if "is_flat" in cols:
+        payload["is_flat"] = bool(is_flat)
+
+    # Usuario / fechas
+    if "inspected_by_user_id" in cols:
+        payload["inspected_by_user_id"] = user_id
+    elif "created_by_user_id" in cols:
+        payload["created_by_user_id"] = user_id
+    elif "user_id" in cols:
+        payload["user_id"] = user_id
+
+    now = datetime.utcnow()
+
+    if "inspected_at" in cols:
+        payload["inspected_at"] = now
+    elif "read_at" in cols:
+        payload["read_at"] = now
+    elif "occurred_at" in cols:
+        payload["occurred_at"] = now
+
+    if "created_at" in cols:
+        payload["created_at"] = now
+
+    # MUY IMPORTANTE: event_type obligatorio
+    if "event_type" in cols:
+        if check != "OK" or tire_state != "OK" or bool(is_flat):
+            payload["event_type"] = "ISSUE"
+        else:
+            payload["event_type"] = "INSPECTION"
+
+    if "notes" in cols and "notes" not in payload:
+        parts = [f"POS {pos}", f"MARCHAMO {check}", f"ESTADO {tire_state}"]
+        if estrias_mm not in (None, ""):
+            parts.append(f"MM {estrias_mm}")
+        if is_flat:
+            parts.append("PINCHADA SI")
+        if ingreso_marchamo:
+            parts.append(f"INGRESO {ingreso_marchamo}")
+        payload["notes"] = " | ".join(parts)
+
+    _insert_dynamic("yard_gate_alamo", "tire_readings", payload)
 
 # =========================
 # Chassis pages
@@ -2250,10 +2484,6 @@ def chassis_import_post():
     # -------------------------------------------
     # 2) Traer existentes en UNA sola consulta IN (del predio activo)
     # -------------------------------------------
-    # Nota: para "predio por fila", podría haber mismos chassis_number en otros predios.
-    # Aquí resolvemos upsert SOLO dentro del target_site_id de cada fila (ver paso 3).
-    # Para hacerlo eficiente sin explotar queries:
-    #   - agrupamos por site_id y consultamos IN por grupo.
     staged_by_site = {}
     for item in staged:
         staged_by_site.setdefault(item["site_id"], []).append(item)
@@ -2291,7 +2521,6 @@ def chassis_import_post():
             existing.status = status
             existing.chassis_kind = chassis_kind
             existing.has_plate = True if plate else False
-            # si lo importas, asumimos que está en patio (si querés permitir fuera de patio, lo hacemos con una columna extra)
             existing.is_in_yard = True
             db.session.add(existing)
             updated += 1
@@ -2444,6 +2673,8 @@ def api_chassis_tires_get(chassis_id: int):
             "tire_state": "OK",
             "tire_number": None,
             "brand": None,
+            "estrias_mm": None,
+            "is_flat": False,
         }
 
     for r in rows:
@@ -2456,6 +2687,8 @@ def api_chassis_tires_get(chassis_id: int):
             "tire_state": (r.tire_state or "OK").upper(),
             "tire_number": r.tire.tire_number if r.tire else None,
             "brand": r.tire.brand if r.tire else None,
+            "estrias_mm": getattr(r, "estrias_mm", None),
+            "is_flat": bool(getattr(r, "is_flat", False)),
         }
 
     return jsonify({
@@ -2471,6 +2704,8 @@ def api_chassis_tires_get(chassis_id: int):
         },
         "positions": positions
     })
+
+
 @yard_bp.post("/api/chassis/<int:chassis_id>/tires")
 @login_required
 def api_chassis_tires_set(chassis_id: int):
@@ -2491,10 +2726,21 @@ def api_chassis_tires_set(chassis_id: int):
     marchamo = (data.get("marchamo") or "").strip()
     tire_number = (data.get("tire_number") or "").strip()
     brand = (data.get("brand") or "").strip()
-    tire_state = (data.get("tire_state") or "OK").strip().upper()
 
-    if tire_state not in TIRE_STATES:
-        return jsonify({"ok": False, "error": "INVALID_TIRE_STATE"}), 400
+    estrias_mm_raw = data.get("estrias_mm")
+    is_flat = bool(data.get("is_flat"))
+
+    estrias_mm = None
+    if estrias_mm_raw not in (None, "",):
+        try:
+            estrias_mm = int(estrias_mm_raw)
+        except Exception:
+            return jsonify({"ok": False, "error": "INVALID_ESTRIAS_MM"}), 400
+
+        if estrias_mm < 1 or estrias_mm > 12:
+            return jsonify({"ok": False, "error": "ESTRIAS_OUT_OF_RANGE"}), 400
+
+    tire_state = _calc_tire_state_from_data(estrias_mm, is_flat)
 
     tire = None
     if tire_number:
@@ -2513,13 +2759,16 @@ def api_chassis_tires_set(chassis_id: int):
         row = ChassisTire(chassis_id=ch.id, position_code=pos)
 
     row.marchamo = marchamo or None
+    row.estrias_mm = estrias_mm
+    row.is_flat = is_flat
     row.tire_state = tire_state
     row.tire_id = tire.id if tire else None
     row.updated_at = datetime.utcnow()
 
     db.session.add(row)
     db.session.commit()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "tire_state": tire_state})
+
 
 @yard_bp.post("/api/chassis/<int:chassis_id>/classify")
 @login_required
@@ -2533,22 +2782,19 @@ def api_chassis_classify(chassis_id: int):
     data = request.get_json(silent=True) or {}
 
     # --------
-    # 1) Estructura (valores esperados: BUENO / DAÑADO / FUERA_DE_SERVICIO / ATADO)
+    # 1) Estructura
     # --------
     structure_status = _norm_enum(data.get("structure_status"))
     twistlocks_status = _norm_enum(data.get("twistlocks_status"))
-    landing_gear_status = _norm_enum(data.get("landing_gear_status"))   # "Pata de apoyo"
+    landing_gear_status = _norm_enum(data.get("landing_gear_status"))
     lights_status = _norm_enum(data.get("lights_status"))
-    mudflap_status = _norm_enum(data.get("mudflap_status"))             # "Faldones"
+    mudflap_status = _norm_enum(data.get("mudflap_status"))
     plate_text = (data.get("plate_text") or "").strip()
     comments = (data.get("comments") or "").strip()
-
-    # Este es el “resumen de daños” que irá al ticket
     damage_summary = (data.get("damage_summary") or "").strip()
 
     # --------
-    # 2) Llantas (dibujo): lista de items
-    #    tires: [{position_code, ingreso_marchamo, marchamo_check, tire_state}]
+    # 2) Llantas
     # --------
     tires = data.get("tires") or []
     axles = int(getattr(ch, "axles", 2) or 2)
@@ -2564,14 +2810,24 @@ def api_chassis_classify(chassis_id: int):
 
         ingreso_marchamo = (t.get("ingreso_marchamo") or "").strip()
         marchamo_check = (t.get("marchamo_check") or "OK").strip().upper()
-        tire_state = (t.get("tire_state") or "OK").strip().upper()
+        estrias_mm_raw = t.get("estrias_mm")
+        is_flat = bool(t.get("is_flat"))
+
+        estrias_mm = None
+        if estrias_mm_raw not in (None, "",):
+            try:
+                estrias_mm = int(estrias_mm_raw)
+            except Exception:
+                estrias_mm = None
+
+        tire_state = _calc_tire_state_from_data(estrias_mm, is_flat)
 
         if marchamo_check not in MARCHAMO_CHECK:
             marchamo_check = "OK"
         if tire_state not in TIRE_STATES:
             tire_state = "OK"
 
-        # Guardar lectura en tire_readings (si la tabla existe)
+        # Guardar lectura en tire_readings
         _save_tire_reading(
             site_id=site_id,
             chassis_id=ch.id,
@@ -2579,38 +2835,39 @@ def api_chassis_classify(chassis_id: int):
             ingreso_marchamo=(ingreso_marchamo or None),
             check=marchamo_check,
             tire_state=tire_state,
-            user_id=current_user.id
+            user_id=current_user.id,
+            estrias_mm=estrias_mm,
+            is_flat=is_flat,
         )
 
         # Actualizar estado configurado de la llanta del chasis
         row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
         if row:
+            row.estrias_mm = estrias_mm
+            row.is_flat = is_flat
             row.tire_state = tire_state
             row.updated_at = datetime.utcnow()
             db.session.add(row)
 
-        # Construcción de línea de ticket
-        if marchamo_check == "OK":
-            # no lo consideramos problema
-            pass
-        else:
+        if marchamo_check != "OK":
             any_tire_issue = True
             if marchamo_check == "DISTINTO":
-                tire_lines.append(f"{pos}: MARCHAMO DE INGRESO DISTINTO - REVISAR (ingreso: {ingreso_marchamo or '—'})")
+                tire_lines.append(f"{pos}: MARCHAMO DE INGRESO DISTINTO - REVISAR")
             elif marchamo_check == "NO_TIENE":
                 tire_lines.append(f"{pos}: MARCHAMO DE INGRESO NO TIENE - REVISAR")
             elif marchamo_check == "ILEGIBLE":
                 tire_lines.append(f"{pos}: MARCHAMO DE INGRESO ILEGIBLE - REVISAR")
 
-        # Estado de llanta NO_OK también genera ticket
-        if tire_state != "OK":
+        if is_flat:
             any_tire_issue = True
-            tire_lines.append(f"{pos}: ESTADO {tire_state}")
+            tire_lines.append(f"{pos}: PINCHADA (DESINFLADA)")
+        elif tire_state != "OK":
+            any_tire_issue = True
+            tire_lines.append(f"{pos}: ESTADO {tire_state} (MM={estrias_mm if estrias_mm is not None else '—'})")
 
     # --------
-    # 3) Determinar si requiere taller (mínimo 1 hallazgo)
+    # 3) Determinar si requiere taller
     # --------
-    # Hallazgo estructura: si damage_summary trae algo o si algún status está en DAÑADO/FUERA/ATADO
     structure_lines = []
     flagged = {"DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}
 
@@ -2630,13 +2887,13 @@ def api_chassis_classify(chassis_id: int):
     needs_workshop = bool(structure_lines) or bool(any_tire_issue)
 
     # --------
-    # 4) Conciliación contra EIR anterior (referencia)
+    # 4) Conciliación contra EIR anterior
     # --------
     last_eir = _fetch_last_final_eir_for_chassis(ch.id)
     eir_prev_id = int(last_eir["id"]) if last_eir and last_eir.get("id") else None
 
     # --------
-    # 5) Guardar inspección (chassis_inspections) sin modelo
+    # 5) Guardar inspección
     # --------
     _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
         "site_id": site_id,
@@ -2655,7 +2912,7 @@ def api_chassis_classify(chassis_id: int):
     })
 
     # --------
-    # 6) Ingreso automático al predio (inventario chasis)
+    # 6) Ingreso automático al predio
     # --------
     ch.is_in_yard = True
     db.session.add(ch)
@@ -2668,7 +2925,7 @@ def api_chassis_classify(chassis_id: int):
     db.session.add(inv)
 
     # --------
-    # 7) Ticket único a taller (solo si hay mínimo 1 hallazgo)
+    # 7) Ticket único a taller
     # --------
     ticket_id = None
     if needs_workshop:
@@ -2680,7 +2937,6 @@ def api_chassis_classify(chassis_id: int):
             eir_prev_id=eir_prev_id
         )
 
-        # Insert dinámico para no depender del schema exacto
         ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
             "site_id": site_id,
             "chassis_id": ch.id,
