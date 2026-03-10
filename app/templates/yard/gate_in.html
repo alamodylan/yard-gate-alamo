@@ -323,7 +323,7 @@
         </datalist>
 
         <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-          <button type="button" id="btnLoadSelectedChassis" class="btn">Cargar chasis</button>
+          <button type="button" id="btnLoadSelectedChassis" class="btn" onclick="window.__forceLoadChassis && window.__forceLoadChassis()">Cargar chasis</button>
           <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
         </div>
 
@@ -1358,29 +1358,45 @@ document.addEventListener("DOMContentLoaded", () => {
     el.addEventListener("input", buildSummary);
   });
 
-  btnLoadSelectedChassis.addEventListener("click", loadSelectedChassisFromInput);
-
-  btnReloadChassis.addEventListener("click", async () => {
-    if (!selectedChassisId) return;
-    try{
-      await loadChassisConfig(selectedChassisId);
-    }catch(e){
-      console.error("Error recargando configuración de chasis:", e);
-      alert("No se pudo recargar la configuración del chasis: " + e.message);
+    if (btnLoadSelectedChassis) {
+      btnLoadSelectedChassis.addEventListener("click", loadSelectedChassisFromInput);
+    } else {
+      console.error("No existe btnLoadSelectedChassis");
     }
-  });
 
-  btnClearSelectedChassis.addEventListener("click", () => {
-    chassisSearch.value = "";
-    clearChassisPanel();
-  });
-
-  chassisSearch.addEventListener("keydown", (e) => {
-    if (e.key === "Enter"){
-      e.preventDefault();
-      loadSelectedChassisFromInput();
+    if (btnReloadChassis) {
+      btnReloadChassis.addEventListener("click", async () => {
+        if (!selectedChassisId) return;
+        try{
+          await loadChassisConfig(selectedChassisId);
+        }catch(e){
+          console.error("Error recargando configuración de chasis:", e);
+          alert("No se pudo recargar la configuración del chasis: " + e.message);
+        }
+      });
+    } else {
+      console.error("No existe btnReloadChassis");
     }
-  });
+
+    if (btnClearSelectedChassis) {
+      btnClearSelectedChassis.addEventListener("click", () => {
+        chassisSearch.value = "";
+        clearChassisPanel();
+      });
+    } else {
+      console.error("No existe btnClearSelectedChassis");
+    }
+
+    if (chassisSearch) {
+      chassisSearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter"){
+          e.preventDefault();
+          loadSelectedChassisFromInput();
+        }
+      });
+    } else {
+      console.error("No existe chassisSearch");
+    }
 
   [
     ci_structure,
@@ -1410,13 +1426,25 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  cmSealStatus.addEventListener("change", syncSealInputVisibility);
-  chassisModalClose.addEventListener("click", closeChassisModal);
-  cmBtnCancel.addEventListener("click", closeChassisModal);
-  cmBtnSave.addEventListener("click", saveChassisModal);
-  chassisModalBackdrop.addEventListener("click", (e) => {
-    if (e.target === chassisModalBackdrop) closeChassisModal();
-  });
+  if (cmSealStatus) cmSealStatus.addEventListener("change", syncSealInputVisibility);
+  else console.error("No existe cmSealStatus");
+
+  if (chassisModalClose) chassisModalClose.addEventListener("click", closeChassisModal);
+  else console.error("No existe chassisModalClose");
+
+  if (cmBtnCancel) cmBtnCancel.addEventListener("click", closeChassisModal);
+  else console.error("No existe cmBtnCancel");
+
+  if (cmBtnSave) cmBtnSave.addEventListener("click", saveChassisModal);
+  else console.error("No existe cmBtnSave");
+
+  if (chassisModalBackdrop) {
+    chassisModalBackdrop.addEventListener("click", (e) => {
+      if (e.target === chassisModalBackdrop) closeChassisModal();
+    });
+  } else {
+    console.error("No existe chassisModalBackdrop");
+  }
 
   form.addEventListener("submit", () => {
     buildSummary();
@@ -1430,6 +1458,18 @@ document.addEventListener("DOMContentLoaded", () => {
   buildSummary();
   refreshPlateObservedVisibility();
   refreshChassisIssueBadge();
+
+  window.__forceLoadChassis = async function () {
+    console.log("FORCED CLICK -> Cargar chasis");
+    alert("Entró al click de Cargar chasis");
+
+    try {
+      await loadSelectedChassisFromInput();
+    } catch (e) {
+      console.error("Error en __forceLoadChassis:", e);
+      alert("Error al ejecutar carga de chasis: " + (e.message || e));
+    }
+  };
 });
 </script>
 
