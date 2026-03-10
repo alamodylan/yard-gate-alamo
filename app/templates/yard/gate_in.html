@@ -851,141 +851,34 @@
 
 <script id="chassisRowsData" type="application/json">{{ (chassis_rows if chassis_rows is defined else []) | tojson }}</script>
 <script src="{{ url_for('static', filename='js/container_mask.js') }}"></script>
+
 <script>
+  const API_BAYS_URL = "{{ url_for('yard.api_bays_by_block') }}";
+  const API_CHASSIS_TIRES_URL_TEMPLATE = "{{ url_for('yard.api_chassis_tires_get', chassis_id=999999) }}";
+</script>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
   const blockSelect = document.getElementById("blockSelect");
   const baySelect = document.getElementById("baySelect");
   const placementMode = document.getElementById("placementMode");
   const manualBox = document.getElementById("manualBox");
 
-  placementMode.addEventListener("change", () => {
-    manualBox.style.display = (placementMode.value === "manual") ? "block" : "none";
-  });
-
-  async function loadBaysForBlock(blockCode){
-    const r = await fetch(`/api/yard/bays?block=${encodeURIComponent(blockCode)}`);
-    const data = await r.json();
-
-    baySelect.innerHTML = "";
-    (data.bays || []).forEach(b => {
-      const opt = document.createElement("option");
-      opt.value = b.bay_number;
-      opt.textContent = `${b.bay_number} (${b.code})`;
-      baySelect.appendChild(opt);
-    });
-  }
-
-  blockSelect.addEventListener("change", () => loadBaysForBlock(blockSelect.value));
-  loadBaysForBlock(blockSelect.value);
-
   const shipSel = document.getElementById("shipping_line");
   const shipOtherBox = document.getElementById("shipOtherBox");
-  shipSel.addEventListener("change", () => {
-    const v = shipSel.value || "";
-    shipOtherBox.style.display = (v === "VASI") ? "block" : "none";
-    buildSummary();
-  });
 
   const mgSel = document.getElementById("max_gross_select");
   const mgOtherBox = document.getElementById("maxGrossOtherBox");
   const mgHidden = document.getElementById("max_gross_kg_hidden");
   const mgOtherInput = document.getElementById("max_gross_kg");
 
-  function syncMaxGross(){
-    if (mgSel.value === "OTHER"){
-      mgOtherBox.style.display = "block";
-      mgHidden.value = "";
-    } else {
-      mgOtherBox.style.display = "none";
-      mgHidden.value = mgSel.value || "";
-    }
-    buildSummary();
-  }
-
-  mgSel.addEventListener("change", syncMaxGross);
-  mgOtherInput.addEventListener("input", buildSummary);
-  syncMaxGross();
-
   const needsWorkshop = document.getElementById("needs_workshop");
   const workshopBox = document.getElementById("workshopBox");
-  needsWorkshop.addEventListener("change", () => {
-    workshopBox.style.display = (needsWorkshop.value === "1") ? "block" : "none";
-    buildSummary();
-  });
 
   const form = document.getElementById("gateInForm");
   const summaryPreview = document.getElementById("summaryPreview");
   const summaryHidden = document.getElementById("summary_text");
 
-  function getChecked(name){
-    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(x => x.value);
-  }
-
-  function getValue(name){
-    const el = document.querySelector(`[name="${name}"]`);
-    return el ? (el.value || "").trim() : "";
-  }
-
-  function buildSummary(){
-    let floor = getChecked("floor_flags");
-    if (floor.includes("OK") && floor.length > 1){
-      floor = floor.filter(x => x !== "OK");
-    }
-
-    let req = getChecked("requires_flags");
-    if (req.includes("NINGUNA") && req.length > 1){
-      req = ["NINGUNA"];
-      document.querySelectorAll(`input[name="requires_flags"]`).forEach(ch => {
-        if (ch.value !== "NINGUNA") ch.checked = false;
-      });
-    }
-
-    let wk = getChecked("workshop_services");
-
-    const year = getValue("year");
-    const rust = getValue("rust_pct");
-    const smell = getValue("bad_smell");
-    const stains = getValue("stains");
-    const hits = getValue("hits");
-    const spl = getValue("splinters");
-
-    const parts = [];
-
-    if (rust) parts.push(`${rust}%OXIDO`);
-    if (smell && smell !== "NO") parts.push(`MAL OLOR ${smell}`);
-    if (stains && stains !== "NO") parts.push(`MANCHAS ${stains}`);
-    if (hits && hits !== "NO") parts.push(`GOLPES ${hits}`);
-    if (spl && spl !== "NO") parts.push(`ASTILLAS ${spl}`);
-
-    req.filter(x => x !== "NINGUNA").forEach(x => parts.push(x));
-    if (req.includes("NINGUNA")) parts.push("NINGUNA");
-
-    if (floor.length){
-      floor.forEach(x => {
-        if (x !== "OK") parts.push(`PISO ${x}`);
-      });
-      if (floor.length === 1 && floor[0] === "OK") parts.push("PISO OK");
-    }
-
-    if (year) parts.push(`AÑO ${year}`);
-
-    if (getValue("needs_workshop") === "1"){
-      if (wk.length) wk.forEach(x => parts.push(`TALLER ${x}`));
-      else parts.push("TALLER (SIN DETALLE)");
-    }
-
-    const summary = parts.join(", ");
-    summaryPreview.value = summary;
-    summaryHidden.value = summary;
-  }
-
-  document.querySelectorAll('select[name], input[name], textarea[name]').forEach(el => {
-    el.addEventListener("change", buildSummary);
-    el.addEventListener("input", buildSummary);
-  });
-
-  // =========================
-  // Chasis
-  // =========================
   const chassisSearch = document.getElementById("chassisSearch");
   const btnLoadSelectedChassis = document.getElementById("btnLoadSelectedChassis");
   const btnClearSelectedChassis = document.getElementById("btnClearSelectedChassis");
@@ -1075,6 +968,84 @@
     const show3 = Number(axles) === 3;
     axle3.classList.toggle("hidden", !show3);
     wAX3.forEach(el => el.classList.toggle("hidden", !show3));
+  }
+
+  async function loadBaysForBlock(blockCode){
+    const url = `${API_BAYS_URL}?block=${encodeURIComponent(blockCode)}`;
+    console.log("loadBaysForBlock ->", url);
+
+    const r = await fetch(url, { headers: { "Accept": "application/json" } });
+    const data = await r.json();
+
+    baySelect.innerHTML = "";
+    (data.bays || []).forEach(b => {
+      const opt = document.createElement("option");
+      opt.value = b.bay_number;
+      opt.textContent = `${b.bay_number} (${b.code})`;
+      baySelect.appendChild(opt);
+    });
+  }
+
+  function getChecked(name){
+    return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(x => x.value);
+  }
+
+  function getValue(name){
+    const el = document.querySelector(`[name="${name}"]`);
+    return el ? (el.value || "").trim() : "";
+  }
+
+  function buildSummary(){
+    let floor = getChecked("floor_flags");
+    if (floor.includes("OK") && floor.length > 1){
+      floor = floor.filter(x => x !== "OK");
+    }
+
+    let req = getChecked("requires_flags");
+    if (req.includes("NINGUNA") && req.length > 1){
+      req = ["NINGUNA"];
+      document.querySelectorAll(`input[name="requires_flags"]`).forEach(ch => {
+        if (ch.value !== "NINGUNA") ch.checked = false;
+      });
+    }
+
+    let wk = getChecked("workshop_services");
+
+    const year = getValue("year");
+    const rust = getValue("rust_pct");
+    const smell = getValue("bad_smell");
+    const stains = getValue("stains");
+    const hits = getValue("hits");
+    const spl = getValue("splinters");
+
+    const parts = [];
+
+    if (rust) parts.push(`${rust}%OXIDO`);
+    if (smell && smell !== "NO") parts.push(`MAL OLOR ${smell}`);
+    if (stains && stains !== "NO") parts.push(`MANCHAS ${stains}`);
+    if (hits && hits !== "NO") parts.push(`GOLPES ${hits}`);
+    if (spl && spl !== "NO") parts.push(`ASTILLAS ${spl}`);
+
+    req.filter(x => x !== "NINGUNA").forEach(x => parts.push(x));
+    if (req.includes("NINGUNA")) parts.push("NINGUNA");
+
+    if (floor.length){
+      floor.forEach(x => {
+        if (x !== "OK") parts.push(`PISO ${x}`);
+      });
+      if (floor.length === 1 && floor[0] === "OK") parts.push("PISO OK");
+    }
+
+    if (year) parts.push(`AÑO ${year}`);
+
+    if (getValue("needs_workshop") === "1"){
+      if (wk.length) wk.forEach(x => parts.push(`TALLER ${x}`));
+      else parts.push("TALLER (SIN DETALLE)");
+    }
+
+    const summary = parts.join(", ");
+    summaryPreview.value = summary;
+    summaryHidden.value = summary;
   }
 
   function buildInspectionPayload(){
@@ -1184,7 +1155,10 @@
   }
 
   async function loadChassisConfig(chassisId){
-    const r = await fetch(`/api/chassis/${chassisId}/tires`, {
+    const url = API_CHASSIS_TIRES_URL_TEMPLATE.replace("999999", String(chassisId));
+    console.log("loadChassisConfig ->", url);
+
+    const r = await fetch(url, {
       headers: {"Accept":"application/json"}
     });
 
@@ -1258,6 +1232,7 @@
       const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
       const rows = JSON.parse(raw);
       chassisRowsMaster = Array.isArray(rows) ? rows : [];
+      console.log("chassisRowsMaster:", chassisRowsMaster.length);
     }catch(e){
       console.error("No se pudieron precargar los chasis:", e);
       chassisRowsMaster = [];
@@ -1288,6 +1263,7 @@
   function clearChassisPanel(){
     selectedChassisId = "";
     selectedChassisAxles = 2;
+    currentPos = null;
     chassisIdHidden.value = "";
 
     chassisBlock.classList.add("hidden");
@@ -1325,7 +1301,11 @@
   }
 
   async function loadSelectedChassisFromInput(){
+    console.log("CLICK -> Cargar chasis");
+    console.log("Valor escrito:", chassisSearch.value);
+
     const item = findChassisByInputValue(chassisSearch.value);
+    console.log("Item encontrado:", item);
 
     if (!item){
       alert("No se encontró el chasis. Escribe el número exacto o una placa exacta.");
@@ -1346,11 +1326,37 @@
 
     try{
       await loadChassisConfig(selectedChassisId);
+      console.log("Carga de chasis completada");
     }catch(e){
       console.error("Error cargando configuración de chasis:", e);
       alert("No se pudo cargar la configuración de llantas del chasis: " + e.message);
     }
   }
+
+  placementMode.addEventListener("change", () => {
+    manualBox.style.display = (placementMode.value === "manual") ? "block" : "none";
+  });
+
+  blockSelect.addEventListener("change", () => loadBaysForBlock(blockSelect.value));
+
+  shipSel.addEventListener("change", () => {
+    const v = shipSel.value || "";
+    shipOtherBox.style.display = (v === "VASI") ? "block" : "none";
+    buildSummary();
+  });
+
+  mgSel.addEventListener("change", syncMaxGross);
+  mgOtherInput.addEventListener("input", buildSummary);
+
+  needsWorkshop.addEventListener("change", () => {
+    workshopBox.style.display = (needsWorkshop.value === "1") ? "block" : "none";
+    buildSummary();
+  });
+
+  document.querySelectorAll('select[name], input[name], textarea[name]').forEach(el => {
+    el.addEventListener("change", buildSummary);
+    el.addEventListener("input", buildSummary);
+  });
 
   btnLoadSelectedChassis.addEventListener("click", loadSelectedChassisFromInput);
 
@@ -1417,11 +1423,14 @@
     syncHiddenChassisPayloads();
   });
 
+  loadBaysForBlock(blockSelect.value);
+  syncMaxGross();
   preloadChassisRows();
   clearChassisPanel();
   buildSummary();
   refreshPlateObservedVisibility();
   refreshChassisIssueBadge();
+});
 </script>
 
 {% endblock %}
