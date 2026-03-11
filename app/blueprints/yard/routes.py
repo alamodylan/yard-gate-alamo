@@ -1105,7 +1105,9 @@ def gate_in_post():
         structure_status = _norm_enum(chassis_inspection.get("structure_status"))
         twistlocks_status = _norm_enum(chassis_inspection.get("twistlocks_status"))
         landing_gear_status = _norm_enum(chassis_inspection.get("landing_gear_status"))
-        lights_status = _norm_enum(chassis_inspection.get("lights_status"))
+        lights_status = _normalize_lights_status_for_db(
+            _norm_enum(chassis_inspection.get("lights_status"))
+        )
         mudflap_status = _norm_enum(chassis_inspection.get("mudflap_status"))
 
         plate_text = (chassis_inspection.get("plate_text") or "").strip()
@@ -2519,6 +2521,27 @@ def classify_chassis_number(num: str):
     if prefix == "23":
         return 20, 3, "20FT_3AX"
     return None, None, "UNKNOWN"
+
+def _normalize_lights_status_for_db(value: str | None) -> str | None:
+    v = (value or "").strip().upper()
+
+    mapping = {
+        "OK": "OK",
+
+        # Valores del frontend / lógica actual
+        "UNA_DANADA": "IZQ_DANADA",
+        "UNA_DAÑADA": "IZQ_DANADA",
+        "AMBAS_DANADAS": "IZQ_DANADA",
+        "AMBAS_DAÑADAS": "IZQ_DANADA",
+
+        # Si alguna vez mandan lado explícito
+        "IZQ_DANADA": "IZQ_DANADA",
+        "IZQ_DAÑADA": "IZQ_DANADA",
+        "DER_DANADA": "DER_DANADA",
+        "DER_DAÑADA": "DER_DANADA",
+    }
+
+    return mapping.get(v, "OK" if v else None)
 
 
 def _build_chassis_gate_in_ticket_text(
