@@ -578,20 +578,20 @@
       <div class="eir-grid">
         <div class="field col-6" id="box_chassis_select">
           <label>Chasis en inventario</label>
-          <select name="chassis_id" id="chassis_id">
+          <select name="chassis_id" id="chassis_id" size="8">
             <option value="">— Selecciona chasis —</option>
-            {% for inv, ch in chassis_rows %}
-              <option
+            {% for ch in chassis_rows %}
+                <option
                 value="{{ ch.id }}"
                 data-chassis-number="{{ ch.chassis_number or '' }}"
                 data-plate="{{ ch.plate or '' }}"
                 data-axles="{{ ch.axles or '' }}"
                 data-type-code="{{ ch.type_code or '' }}"
-              >
+                >
                 {{ ch.chassis_number }}
                 {% if ch.plate %} · Placa {{ ch.plate }}{% endif %}
                 {% if ch.type_code %} · {{ ch.type_code }}{% endif %}
-              </option>
+                </option>
             {% endfor %}
           </select>
           <div class="field-help">Solo se muestran chasis activos en inventario del predio actual.</div>

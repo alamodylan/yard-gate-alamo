@@ -1449,11 +1449,10 @@ def gate_out_view():
         )
 
         chassis_rows = (
-            db.session.query(ChassisInventory, Chassis)
-            .join(Chassis, Chassis.id == ChassisInventory.chassis_id)
+            Chassis.query
             .filter(
-                ChassisInventory.site_id == site_id,
-                ChassisInventory.is_in_yard == True  # noqa: E712
+                Chassis.site_id == site_id,
+                Chassis.is_in_yard == True  # noqa: E712
             )
             .order_by(Chassis.chassis_number.asc())
             .all()
@@ -1654,7 +1653,6 @@ def gate_out_post():
         # Validar / cargar chasis
         # -------------------------
         ch = None
-        inv = None
         chassis_snapshot = None
 
         if has_chassis:
@@ -1667,13 +1665,8 @@ def gate_out_post():
                 flash("Chasis inválido.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
-            inv = (
-                ChassisInventory.query
-                .filter_by(site_id=site_id, chassis_id=ch.id, is_in_yard=True)
-                .first()
-            )
-            if not inv:
-                flash("Ese chasis no está disponible en inventario de este predio.", "danger")
+            if ch.site_id != site_id or not ch.is_in_yard:
+                flash("Ese chasis no está disponible en este predio.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
             # Snapshot de llantas / marchamos
@@ -1886,11 +1879,9 @@ def gate_out_post():
             ContainerPosition.query.filter_by(container_id=c.id).delete()
             c.is_in_yard = False
 
-        if inv:
-            inv.is_in_yard = False
-
         if ch:
             ch.is_in_yard = False
+            db.session.add(ch)
 
         audit_log(
             current_user.id,
@@ -2210,25 +2201,10 @@ def eir_revert_view(eir_id: int):
     if eir.has_chassis and eir.chassis_id:
         ch = Chassis.query.get(eir.chassis_id)
         if ch:
+            ch.site_id = eir.site_id
             ch.is_in_yard = True
             db.session.add(ch)
             reverted_anything = True
-
-            inv = (
-                ChassisInventory.query
-                .filter_by(site_id=eir.site_id, chassis_id=ch.id)
-                .first()
-            )
-            if not inv:
-                inv = ChassisInventory(
-                    site_id=eir.site_id,
-                    chassis_id=ch.id,
-                    is_in_yard=True
-                )
-            else:
-                inv.is_in_yard = True
-
-            db.session.add(inv)
 
     # ==========================================================
     # Marcar EIR como revertido
@@ -2961,26 +2937,18 @@ def chassis_import_post():
         session["chassis_import_errors"] = errors[:200]
         return redirect(url_for("yard.chassis_import_view"))
 
+        # -------------------------------------------
+    # 2) Traer existentes en UNA sola consulta IN (global por chassis_number)
     # -------------------------------------------
-    # 2) Traer existentes en UNA sola consulta IN (del predio activo)
-    # -------------------------------------------
-    staged_by_site = {}
-    for item in staged:
-        staged_by_site.setdefault(item["site_id"], []).append(item)
-
-    existing_map_by_site = {}  # {site_id: {chassis_number: Chassis}}
-
-    for sid, items in staged_by_site.items():
-        nums = [it["chassis_number"] for it in items]
-        existing_rows = (
-            Chassis.query
-            .filter(Chassis.site_id == sid, Chassis.chassis_number.in_(nums))
-            .all()
-        )
-        existing_map_by_site[sid] = {c.chassis_number: c for c in existing_rows}
+    existing_rows = (
+        Chassis.query
+        .filter(Chassis.chassis_number.in_(numbers))
+        .all()
+    )
+    existing_map = {c.chassis_number: c for c in existing_rows}
 
     # -------------------------
-    # 3) Upsert en memoria
+    # 3) Upsert en memoria (global)
     # -------------------------
     for item in staged:
         chassis_number = item["chassis_number"]
@@ -2992,8 +2960,10 @@ def chassis_import_post():
         chassis_kind = item["chassis_kind"]
         target_site_id = item["site_id"]
 
-        existing = existing_map_by_site.get(target_site_id, {}).get(chassis_number)
+        existing = existing_map.get(chassis_number)
+
         if existing:
+            existing.site_id = target_site_id
             existing.plate = plate
             existing.length_ft = length_ft
             existing.axles = axles
