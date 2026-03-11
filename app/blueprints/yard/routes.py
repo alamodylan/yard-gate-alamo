@@ -2598,6 +2598,25 @@ LABELS_ES = {
     "mudflap": "Faldones",
 }
 
+def _map_tire_condition_for_db(tire_state: str | None) -> str | None:
+    """
+    Mapea el estado interno de llanta a los únicos valores permitidos por
+    yard_gate_alamo.tire_readings.condition:
+    - OK
+    - DESGASTADA
+    - REPARABLE
+    """
+    value = (tire_state or "").strip().upper()
+
+    mapping = {
+        "OK": "OK",
+        "GASTADA": "DESGASTADA",
+        "PINCHADA": "REPARABLE",
+        "CAMBIAR": "REPARABLE",
+        "NO_APTA": "REPARABLE",
+    }
+    return mapping.get(value, "OK")
+
 def _get_table_columns(schema: str, table: str) -> set[str]:
     sql = text("""
         SELECT column_name
@@ -2755,9 +2774,9 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
 
     # condition real de la tabla
     # Guardamos el estado calculado de llanta ahí.
-    resolved_condition = (tire_state or "OK").strip().upper()
-    if resolved_condition not in TIRE_STATES:
-        resolved_condition = "OK"
+    # condition real permitido por la BD:
+    # OK / DESGASTADA / REPARABLE
+    resolved_condition = _map_tire_condition_for_db(tire_state)
 
     # comments real de la tabla
     comments_parts = [
