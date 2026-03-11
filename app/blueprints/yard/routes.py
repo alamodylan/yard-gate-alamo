@@ -1007,8 +1007,6 @@ def gate_in_post():
     if should_insert_class:
         shipping_line_db = (shipping_line or "").strip().upper()
 
-        # La tabla exige shipping_line NOT NULL.
-        # Si no seleccionaron naviera, guardamos un valor por defecto seguro.
         if not shipping_line_db:
             shipping_line_db = "ATM"
 
@@ -1138,6 +1136,7 @@ def gate_in_post():
             item = item or {}
             seal_status = _norm_enum(item.get("seal_status")) or "OK"
             tire_number_status = _norm_enum(item.get("tire_number_status")) or "OK"
+            pressure_psi = item.get("pressure_psi")
 
             estrias_mm_raw = item.get("estrias_mm")
             is_flat = bool(item.get("is_flat"))
@@ -1171,12 +1170,11 @@ def gate_in_post():
                     position_code=pos,
                 )
                 db.session.add(row)
-                db.session.flush()  # asegurar id real para tire_position_id
+                db.session.flush()
 
             marchamo_config = row.marchamo
             tire_number_config = row.tire.tire_number if row.tire else None
 
-            # Guardar lectura/hallazgo
             _save_tire_reading(
                 site_id=site_id,
                 chassis_id=selected_chassis.id,
@@ -1187,16 +1185,17 @@ def gate_in_post():
                 user_id=current_user.id,
                 estrias_mm=estrias_mm,
                 is_flat=is_flat,
+                event_type="GATE_IN",
+                pressure_psi=pressure_psi,
+                event_id=mv.id,
             )
 
-            # Actualizar estado vigente del chasis en configuración
             row.estrias_mm = estrias_mm
             row.is_flat = is_flat
             row.tire_state = tire_state
             row.updated_at = datetime.utcnow()
             db.session.add(row)
 
-            # Alertas ticket
             if seal_status == "DISTINTO":
                 any_tire_issue = True
                 tire_lines.append(f"{pos}: MARCHAMO DISTINTO")
@@ -1226,6 +1225,7 @@ def gate_in_post():
                 "estrias_mm": estrias_mm,
                 "is_flat": is_flat,
                 "tire_state": tire_state,
+                "pressure_psi": pressure_psi,
             })
 
         structure_lines = []
@@ -1263,7 +1263,6 @@ def gate_in_post():
         chassis_needs_workshop_manual = bool(chassis_inspection.get("needs_workshop"))
         needs_workshop_chassis = bool(structure_lines) or bool(any_tire_issue) or chassis_needs_workshop_manual
 
-        # Guardar inspección chasis
         _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
             "site_id": site_id,
             "chassis_id": selected_chassis.id,
@@ -1283,7 +1282,6 @@ def gate_in_post():
             "movement_id": mv.id,
         })
 
-        # Ingreso automático del chasis al inventario
         selected_chassis.is_in_yard = True
         db.session.add(selected_chassis)
 
@@ -1294,7 +1292,6 @@ def gate_in_post():
             inv.is_in_yard = True
         db.session.add(inv)
 
-        # Ticket de CLASIFICACION DE CHASIS - SIEMPRE
         username = (
             getattr(current_user, "name", None)
             or getattr(current_user, "username", None)
@@ -1321,12 +1318,6 @@ def gate_in_post():
             alert_lines=ticket_alert_lines,
         )
 
-        # =========================================================
-        # AQUI DEBES ENGANCHAR TU MISMO FLUJO DE PRINT AGENT
-        # que ya usas con la EPSON TM-U220PD.
-        # =========================================================
-
-        # Ticket único a taller si hay hallazgos
         if needs_workshop_chassis:
             last_eir = _fetch_last_final_eir_for_chassis(selected_chassis.id)
             eir_prev_id = int(last_eir["id"]) if last_eir and last_eir.get("id") else None
@@ -2701,123 +2692,104 @@ def _build_workshop_ticket_text(
 
 def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo: str | None,
                        check: str, tire_state: str, user_id: int, estrias_mm=None,
-                       is_flat=False, event_type: str = "GATE_IN"):
+                       is_flat=False, event_type: str = "GATE_IN", pressure_psi=None,
+                       event_id=None, second_seal=None):
     """
-    Guarda lectura/hallazgo por llanta en tire_readings si existe, sin requerir modelo.
-    Se adapta a columnas reales de la tabla y llena event_type si es obligatorio.
+    Guarda lectura/hallazgo en yard_gate_alamo.tire_readings usando la estructura REAL
+    de la tabla.
 
-    Si tire_readings exige tire_position_id NOT NULL, se resuelve contra
-    chassis_tires.id usando (chassis_id + position_code). Si no existe esa
-    posición, se crea antes del insert.
+    Tabla real:
+    - id
+    - site_id
+    - chassis_id
+    - event_type
+    - event_id
+    - tire_position_id
+    - seal_1
+    - seal_2
+    - pressure_psi
+    - condition
+    - comments
+    - recorded_at
+    - recorded_by_user_id
     """
     cols = _get_table_columns("yard_gate_alamo", "tire_readings")
     if not cols:
-        return  # si no existe, no rompe nada
+        return
 
     pos = (pos or "").strip().upper()
-    payload = {}
 
-    # Campos base comunes
-    if "site_id" in cols:
-        payload["site_id"] = site_id
-    if "chassis_id" in cols:
-        payload["chassis_id"] = chassis_id
+    allowed_event_types = {"GATE_IN", "EIR_OUT", "EIR_IN"}
+    resolved_event_type = event_type if event_type in allowed_event_types else "GATE_IN"
 
-    # =========================================================
-    # Resolver tire_position_id si la tabla lo requiere
-    # =========================================================
-    if "tire_position_id" in cols:
-        tire_pos_row = ChassisTire.query.filter_by(
+    # Resolver tire_position_id
+    tire_pos_row = ChassisTire.query.filter_by(
+        chassis_id=chassis_id,
+        position_code=pos
+    ).first()
+
+    if not tire_pos_row:
+        tire_pos_row = ChassisTire(
             chassis_id=chassis_id,
-            position_code=pos
-        ).first()
+            position_code=pos,
+            updated_at=datetime.utcnow(),
+        )
+        db.session.add(tire_pos_row)
+        db.session.flush()
 
-        if not tire_pos_row:
-            tire_pos_row = ChassisTire(
-                chassis_id=chassis_id,
-                position_code=pos,
-                updated_at=datetime.utcnow(),
-            )
-            db.session.add(tire_pos_row)
-            db.session.flush()
+    # Presión
+    resolved_pressure = pressure_psi
+    try:
+        if resolved_pressure not in (None, ""):
+            resolved_pressure = float(resolved_pressure)
+        else:
+            resolved_pressure = None
+    except Exception:
+        resolved_pressure = None
 
-        payload["tire_position_id"] = tire_pos_row.id
+    # Regla de DB:
+    # si event_type = GATE_IN => pressure_psi NOT NULL y > 0
+    if resolved_event_type == "GATE_IN":
+        if resolved_pressure is None or resolved_pressure <= 0:
+            resolved_pressure = 1
 
-    # Posición textual
-    if "position_code" in cols:
-        payload["position_code"] = pos
-    elif "tire_position" in cols:
-        payload["tire_position"] = pos
-    elif "position" in cols:
-        payload["position"] = pos
+    # condition real de la tabla
+    # Guardamos el estado calculado de llanta ahí.
+    resolved_condition = (tire_state or "OK").strip().upper()
+    if resolved_condition not in TIRE_STATES:
+        resolved_condition = "OK"
 
-    # Marchamo ingreso
-    if "ingreso_marchamo" in cols:
-        payload["ingreso_marchamo"] = ingreso_marchamo
-    elif "seal_input" in cols:
-        payload["seal_input"] = ingreso_marchamo
-    elif "observed_seal" in cols:
-        payload["observed_seal"] = ingreso_marchamo
+    # comments real de la tabla
+    comments_parts = [
+        f"POS {pos}",
+        f"CHECK_MARCHAMO {check}",
+        f"ESTADO {resolved_condition}",
+    ]
+    if estrias_mm not in (None, ""):
+        comments_parts.append(f"MM {estrias_mm}")
+    if is_flat:
+        comments_parts.append("PINCHADA SI")
+    if ingreso_marchamo:
+        comments_parts.append(f"SEAL_INGRESO {ingreso_marchamo}")
+    if second_seal:
+        comments_parts.append(f"SEAL_2 {second_seal}")
+    if resolved_pressure is not None:
+        comments_parts.append(f"PSI {resolved_pressure}")
 
-    # Validación marchamo
-    if "marchamo_check" in cols:
-        payload["marchamo_check"] = check
-    elif "seal_check" in cols:
-        payload["seal_check"] = check
-    elif "seal_status" in cols:
-        payload["seal_status"] = check
-
-    # Estado llanta
-    if "tire_state" in cols:
-        payload["tire_state"] = tire_state
-    elif "status" in cols:
-        payload["status"] = tire_state
-
-    # Estrías / pinchada
-    if "estrias_mm" in cols:
-        payload["estrias_mm"] = estrias_mm
-    if "is_flat" in cols:
-        payload["is_flat"] = bool(is_flat)
-
-        # Usuario / fechas
-    if "recorded_by_user_id" in cols:
-        payload["recorded_by_user_id"] = user_id
-    elif "inspected_by_user_id" in cols:
-        payload["inspected_by_user_id"] = user_id
-    elif "created_by_user_id" in cols:
-        payload["created_by_user_id"] = user_id
-    elif "user_id" in cols:
-        payload["user_id"] = user_id
-
-    now = datetime.utcnow()
-
-    if "recorded_at" in cols:
-        payload["recorded_at"] = now
-    elif "inspected_at" in cols:
-        payload["inspected_at"] = now
-    elif "read_at" in cols:
-        payload["read_at"] = now
-    elif "occurred_at" in cols:
-        payload["occurred_at"] = now
-
-    if "created_at" in cols:
-        payload["created_at"] = now
-
-    # Event type
-    if "event_type" in cols:
-        allowed_event_types = {"GATE_IN", "EIR_OUT", "EIR_IN"}
-        payload["event_type"] = event_type if event_type in allowed_event_types else "GATE_IN"
-
-    # Notas automáticas si la tabla las soporta
-    if "notes" in cols and "notes" not in payload:
-        parts = [f"POS {pos}", f"MARCHAMO {check}", f"ESTADO {tire_state}"]
-        if estrias_mm not in (None, ""):
-            parts.append(f"MM {estrias_mm}")
-        if is_flat:
-            parts.append("PINCHADA SI")
-        if ingreso_marchamo:
-            parts.append(f"INGRESO {ingreso_marchamo}")
-        payload["notes"] = " | ".join(parts)
+    payload = {
+        "site_id": site_id,
+        "chassis_id": chassis_id,
+        "event_type": resolved_event_type,
+        "event_id": event_id,
+        "tire_position_id": tire_pos_row.id,
+        "seal_1": ingreso_marchamo or (check if check != "OK" else None),
+        "seal_2": second_seal,
+        "pressure_psi": resolved_pressure,
+        "condition": resolved_condition,
+        "comments": " | ".join(comments_parts),
+        "recorded_at": datetime.utcnow(),
+        "recorded_by_user_id": user_id,
+    }
 
     _insert_dynamic("yard_gate_alamo", "tire_readings", payload)
 
