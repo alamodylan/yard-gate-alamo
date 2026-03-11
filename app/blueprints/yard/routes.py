@@ -1143,7 +1143,7 @@ def gate_in_post():
             is_flat = bool(item.get("is_flat"))
 
             estrias_mm = None
-            if estrias_mm_raw not in (None, "",):
+            if estrias_mm_raw not in (None, ""):
                 try:
                     estrias_mm = int(estrias_mm_raw)
                 except Exception:
@@ -1160,15 +1160,21 @@ def gate_in_post():
             if tire_state not in TIRE_STATES:
                 tire_state = "OK"
 
-            row = ChassisTire.query.filter_by(chassis_id=selected_chassis.id, position_code=pos).first()
+            row = ChassisTire.query.filter_by(
+                chassis_id=selected_chassis.id,
+                position_code=pos
+            ).first()
+
             if not row:
                 row = ChassisTire(
                     chassis_id=selected_chassis.id,
                     position_code=pos,
                 )
+                db.session.add(row)
+                db.session.flush()  # asegurar id real para tire_position_id
 
-            marchamo_config = row.marchamo if row else None
-            tire_number_config = row.tire.tire_number if row and row.tire else None
+            marchamo_config = row.marchamo
+            tire_number_config = row.tire.tire_number if row.tire else None
 
             # Guardar lectura/hallazgo
             _save_tire_reading(
@@ -2698,11 +2704,16 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
     """
     Guarda lectura/hallazgo por llanta en tire_readings si existe, sin requerir modelo.
     Se adapta a columnas reales de la tabla y llena event_type si es obligatorio.
+
+    Si tire_readings exige tire_position_id NOT NULL, se resuelve contra
+    chassis_tires.id usando (chassis_id + position_code). Si no existe esa
+    posición, se crea antes del insert.
     """
     cols = _get_table_columns("yard_gate_alamo", "tire_readings")
     if not cols:
         return  # si no existe, no rompe nada
 
+    pos = (pos or "").strip().upper()
     payload = {}
 
     # Campos base comunes
@@ -2711,7 +2722,27 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
     if "chassis_id" in cols:
         payload["chassis_id"] = chassis_id
 
-    # Posición
+    # =========================================================
+    # Resolver tire_position_id si la tabla lo requiere
+    # =========================================================
+    if "tire_position_id" in cols:
+        tire_pos_row = ChassisTire.query.filter_by(
+            chassis_id=chassis_id,
+            position_code=pos
+        ).first()
+
+        if not tire_pos_row:
+            tire_pos_row = ChassisTire(
+                chassis_id=chassis_id,
+                position_code=pos,
+                updated_at=datetime.utcnow(),
+            )
+            db.session.add(tire_pos_row)
+            db.session.flush()
+
+        payload["tire_position_id"] = tire_pos_row.id
+
+    # Posición textual
     if "position_code" in cols:
         payload["position_code"] = pos
     elif "tire_position" in cols:
@@ -2741,7 +2772,7 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
     elif "status" in cols:
         payload["status"] = tire_state
 
-    # Nuevos campos de estrías / pinchada
+    # Estrías / pinchada
     if "estrias_mm" in cols:
         payload["estrias_mm"] = estrias_mm
     if "is_flat" in cols:
@@ -2767,13 +2798,14 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
     if "created_at" in cols:
         payload["created_at"] = now
 
-    # MUY IMPORTANTE: event_type obligatorio
+    # event_type obligatorio
     if "event_type" in cols:
         if check != "OK" or tire_state != "OK" or bool(is_flat):
             payload["event_type"] = "ISSUE"
         else:
             payload["event_type"] = "INSPECTION"
 
+    # Notas automáticas si la tabla las soporta
     if "notes" in cols and "notes" not in payload:
         parts = [f"POS {pos}", f"MARCHAMO {check}", f"ESTADO {tire_state}"]
         if estrias_mm not in (None, ""):
