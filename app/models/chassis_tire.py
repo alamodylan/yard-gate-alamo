@@ -1,3 +1,4 @@
+# app/models/chassis_tire.py
 from datetime import datetime
 from app.extensions import db
 

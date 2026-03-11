@@ -2778,8 +2778,10 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
     if "is_flat" in cols:
         payload["is_flat"] = bool(is_flat)
 
-    # Usuario / fechas
-    if "inspected_by_user_id" in cols:
+        # Usuario / fechas
+    if "recorded_by_user_id" in cols:
+        payload["recorded_by_user_id"] = user_id
+    elif "inspected_by_user_id" in cols:
         payload["inspected_by_user_id"] = user_id
     elif "created_by_user_id" in cols:
         payload["created_by_user_id"] = user_id
@@ -2788,7 +2790,9 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
 
     now = datetime.utcnow()
 
-    if "inspected_at" in cols:
+    if "recorded_at" in cols:
+        payload["recorded_at"] = now
+    elif "inspected_at" in cols:
         payload["inspected_at"] = now
     elif "read_at" in cols:
         payload["read_at"] = now
