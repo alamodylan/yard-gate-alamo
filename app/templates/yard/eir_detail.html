@@ -1,0 +1,812 @@
+{% extends "base.html" %}
+{% block title %}EIR #{{ eir.id }} - Yard Gate Álamo{% endblock %}
+
+{% block content %}
+<style>
+  .eir-wrap{
+    max-width:1280px;
+    margin:0 auto;
+  }
+
+  .eir-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:16px;
+    margin-bottom:16px;
+  }
+
+  .eir-subtle{
+    color:#64748b;
+    font-size:14px;
+  }
+
+  .eir-card{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:18px;
+    padding:18px;
+    box-shadow:0 8px 24px rgba(15,23,42,.05);
+    margin-bottom:16px;
+  }
+
+  .eir-card h3{
+    margin:0 0 12px 0;
+    font-size:18px;
+  }
+
+  .badge-row{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    padding:7px 11px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+    border:1px solid #cbd5e1;
+    background:#f8fafc;
+    color:#334155;
+  }
+
+  .badge.ok{
+    background:#dcfce7;
+    color:#166534;
+    border-color:#bbf7d0;
+  }
+
+  .badge.warn{
+    background:#fff7ed;
+    color:#9a3412;
+    border-color:#fed7aa;
+  }
+
+  .badge.danger{
+    background:#fee2e2;
+    color:#991b1b;
+    border-color:#fecaca;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(12, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .col-12{grid-column:span 12;}
+  .col-8{grid-column:span 8;}
+  .col-6{grid-column:span 6;}
+  .col-4{grid-column:span 4;}
+  .col-3{grid-column:span 3;}
+
+  @media (max-width:980px){
+    .col-8,.col-6,.col-4,.col-3{grid-column:span 12;}
+    .eir-head{flex-direction:column;}
+  }
+
+  .kv{
+    border:1px solid #e2e8f0;
+    background:#f8fafc;
+    border-radius:14px;
+    padding:12px;
+  }
+
+  .kv-label{
+    font-size:12px;
+    color:#64748b;
+    font-weight:800;
+    margin-bottom:5px;
+    text-transform:uppercase;
+    letter-spacing:.03em;
+  }
+
+  .kv-value{
+    font-size:14px;
+    color:#0f172a;
+    font-weight:700;
+    word-break:break-word;
+  }
+
+  .subbox{
+    border:1px dashed #cbd5e1;
+    background:#f8fafc;
+    border-radius:16px;
+    padding:14px;
+    margin-top:14px;
+  }
+
+  .subbox h4{
+    margin:0 0 10px 0;
+    font-size:15px;
+  }
+
+  .table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+
+  .table th,
+  .table td{
+    border:1px solid #e2e8f0;
+    padding:8px;
+    text-align:left;
+    vertical-align:top;
+  }
+
+  .table th{
+    background:#f8fafc;
+  }
+
+  .damage-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1.7fr) minmax(280px,.8fr);
+    gap:16px;
+    align-items:start;
+  }
+
+  @media (max-width:1100px){
+    .damage-layout{grid-template-columns:1fr;}
+  }
+
+  .damage-views{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0,1fr));
+    gap:14px;
+  }
+
+  @media (max-width:1100px){
+    .damage-views{grid-template-columns:repeat(2, minmax(0,1fr));}
+  }
+
+  @media (max-width:760px){
+    .damage-views{grid-template-columns:1fr;}
+  }
+
+  .damage-panel{
+    background:#fff;
+    border:1px solid #cbd5e1;
+    border-radius:16px;
+    padding:12px;
+  }
+
+  .damage-panel h5{
+    margin:0 0 8px 0;
+    font-size:14px;
+  }
+
+  .damage-svg{
+    width:100%;
+    height:auto;
+    display:block;
+    background:#f8fafc;
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+  }
+
+  .legend-card{
+    background:#fff;
+    border:1px solid #cbd5e1;
+    border-radius:16px;
+    padding:14px;
+  }
+
+  .legend-card h4{
+    margin:0 0 12px 0;
+  }
+
+  .legend-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px 12px;
+    font-size:13px;
+  }
+
+  .legend-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .legend-code{
+    min-width:22px;
+    height:22px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .marker-label{
+    font-weight:900;
+    font-size:14px;
+    fill:#b91c1c;
+    text-anchor:middle;
+    dominant-baseline:middle;
+  }
+
+  .marker-dot{
+    fill:#fff;
+    stroke:#b91c1c;
+    stroke-width:1.8;
+  }
+
+  .actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    text-decoration:none;
+    border:none;
+    border-radius:12px;
+    padding:11px 16px;
+    font-weight:800;
+    font-size:14px;
+    cursor:pointer;
+  }
+
+  .btn-dark{
+    background:#0f172a;
+    color:#fff;
+  }
+
+  .btn-soft{
+    background:#e2e8f0;
+    color:#0f172a;
+  }
+
+  .muted{
+    color:#64748b;
+    font-size:13px;
+  }
+</style>
+
+{% set chassis_snapshot = eir.chassis_snapshot_json or {} %}
+{% set container_snapshot = eir.container_snapshot_json or {} %}
+{% set reefer_snapshot = eir.reefer_snapshot_json or {} %}
+{% set damages = eir.damages or [] %}
+
+<div class="eir-wrap">
+  <div class="eir-head">
+    <div>
+      <h2 style="margin:0;">EIR #{{ eir.id }}</h2>
+      <p class="eir-subtle" style="margin-top:8px;">
+        Condición de equipo registrada digitalmente.
+      </p>
+    </div>
+
+    <div class="badge-row">
+      <span class="badge">{{ eir.site.name if eir.site else 'Sin predio' }}</span>
+
+      {% if eir.status == 'FINAL' %}
+        <span class="badge ok">FINAL</span>
+      {% elif eir.status == 'EDITING' %}
+        <span class="badge warn">EDITING</span>
+      {% elif eir.status == 'REVERTED' %}
+        <span class="badge danger">REVERTED</span>
+      {% else %}
+        <span class="badge">{{ eir.status or 'DRAFT' }}</span>
+      {% endif %}
+
+      {% if eir.operation_type %}
+        <span class="badge">{{ eir.operation_type }}</span>
+      {% endif %}
+
+      {% if eir.is_reefer %}
+        <span class="badge warn">REEFER</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="eir-card">
+    <div class="actions">
+        <a class="btn btn-dark" href="{{ url_for('yard.eir_pdf_view', eir_id=eir.id) }}" target="_blank">Ver PDF / Imprimir</a>
+        <a class="btn btn-soft" href="{{ url_for('yard.eir_list_view') }}">Volver al listado</a>
+
+        {% if eir.status == 'FINAL' and eir.editable_until %}
+        <form method="post" action="{{ url_for('yard.eir_revert_view', eir_id=eir.id) }}"
+                onsubmit="return confirm('¿Deseas revertir este EIR y devolver el equipo a inventario?');"
+                style="margin:0;">
+            <button type="submit" class="btn btn-soft" style="background:#fee2e2;color:#991b1b;">
+            Revertir EIR
+            </button>
+        </form>
+        {% endif %}
+    </div>
+  </div>
+
+  <div class="eir-card">
+    <h3>Encabezado</h3>
+
+    <div class="grid">
+      <div class="kv col-3">
+        <div class="kv-label">Terminal</div>
+        <div class="kv-value">{{ eir.terminal_name or '—' }}</div>
+      </div>
+
+      <div class="kv col-3">
+        <div class="kv-label">Fecha de salida</div>
+        <div class="kv-value">{{ eir.trip_date or '—' }}</div>
+      </div>
+
+      <div class="kv col-3">
+        <div class="kv-label">Hora</div>
+        <div class="kv-value">{{ eir.trip_time.strftime('%H:%M') if eir.trip_time else '—' }}</div>
+      </div>
+
+      <div class="kv col-3">
+        <div class="kv-label">Transportista</div>
+        <div class="kv-value">{{ eir.carrier or 'ATM' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Origen</div>
+        <div class="kv-value">{{ eir.origin or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Destino</div>
+        <div class="kv-value">{{ eir.destination or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Tipo de operación</div>
+        <div class="kv-value">{{ eir.operation_type or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Chofer</div>
+        <div class="kv-value">{{ eir.driver_name or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Documento chofer</div>
+        <div class="kv-value">{{ eir.driver_id_doc or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Placa cabezal</div>
+        <div class="kv-value">{{ eir.truck_plate or '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="eir-card">
+    <h3>Equipo</h3>
+
+    <div class="grid">
+      <div class="kv col-4">
+        <div class="kv-label">Contenedor</div>
+        <div class="kv-value">{{ eir.container.code if eir.container else (container_snapshot.get('container_code') or '—') }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Tamaño</div>
+        <div class="kv-value">{{ eir.container_size or container_snapshot.get('size') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Naviera</div>
+        <div class="kv-value">{{ eir.shipping_line or container_snapshot.get('shipping_line') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Marchamo contenedor</div>
+        <div class="kv-value">{{ eir.container_seal or container_snapshot.get('seal') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Chasis</div>
+        <div class="kv-value">{{ eir.chassis.chassis_number if eir.chassis else (chassis_snapshot.get('chassis_number') or '—') }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Placa chasis</div>
+        <div class="kv-value">{{ eir.chassis_plate or chassis_snapshot.get('plate') or '—' }}</div>
+      </div>
+    </div>
+  </div>
+
+  {% if eir.has_chassis %}
+  <div class="eir-card">
+    <h3>Revisión de chasis</h3>
+
+    {% set insp = chassis_snapshot.get('inspection', {}) %}
+
+    <div class="subbox">
+      <h4>Inspección estructural</h4>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Elemento</th>
+            <th>Estado</th>
+            <th>Detalle</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Luces</td>
+            <td>{{ insp.get('lights', {}).get('status') or '—' }}</td>
+            <td>{{ insp.get('lights', {}).get('detail') or '—' }}</td>
+          </tr>
+          <tr>
+            <td>Twist locks</td>
+            <td>{{ insp.get('twist_locks', {}).get('status') or '—' }}</td>
+            <td>{{ insp.get('twist_locks', {}).get('detail') or '—' }}</td>
+          </tr>
+          <tr>
+            <td>Faldones</td>
+            <td>{{ insp.get('mudflaps', {}).get('status') or '—' }}</td>
+            <td>{{ insp.get('mudflaps', {}).get('detail') or '—' }}</td>
+          </tr>
+          <tr>
+            <td>Patas</td>
+            <td>{{ insp.get('landing_gear', {}).get('status') or '—' }}</td>
+            <td>{{ insp.get('landing_gear', {}).get('detail') or '—' }}</td>
+          </tr>
+          <tr>
+            <td>Estructura</td>
+            <td>{{ insp.get('structure', {}).get('status') or '—' }}</td>
+            <td>{{ insp.get('structure', {}).get('detail') or '—' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="subbox">
+      <h4>Llantas / marchamos</h4>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Posición</th>
+            <th>Marchamo</th>
+            <th>Número llanta</th>
+            <th>Marca</th>
+            <th>Estado</th>
+            <th>Estrías</th>
+            <th>Pinchada</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for tire in chassis_snapshot.get('tires', []) %}
+          <tr>
+            <td>{{ tire.get('position_code') or '—' }}</td>
+            <td>{{ tire.get('marchamo') or '—' }}</td>
+            <td>{{ tire.get('tire_number') or '—' }}</td>
+            <td>{{ tire.get('brand') or '—' }}</td>
+            <td>{{ tire.get('tire_state') or '—' }}</td>
+            <td>{{ tire.get('estrias_mm') if tire.get('estrias_mm') is not none else '—' }}</td>
+            <td>{{ 'Sí' if tire.get('is_flat') else 'No' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7">No hay snapshot de llantas registrado.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if eir.has_container %}
+  <div class="eir-card">
+    <h3>Daños del contenedor</h3>
+
+    <div class="damage-layout">
+      <div class="damage-views">
+        <div class="damage-panel">
+          <h5>Costado derecho</h5>
+          <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 120">
+            <rect x="30" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+            <rect x="178" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+            <line x1="30" y1="82" x2="25" y2="96" stroke="#334155" stroke-width="2"/>
+            <line x1="175" y1="82" x2="182" y2="96" stroke="#334155" stroke-width="2"/>
+            <line x1="110" y1="82" x2="110" y2="100" stroke="#334155" stroke-width="2"/>
+            <circle cx="60" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <circle cx="88" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <line x1="198" y1="58" x2="224" y2="58" stroke="#334155" stroke-width="2"/>
+            <g class="markers-layer"></g>
+          </svg>
+        </div>
+
+        <div class="damage-panel">
+          <h5>Costado izquierdo</h5>
+          <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 120">
+            <rect x="45" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+            <rect x="20" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+            <line x1="45" y1="82" x2="38" y2="96" stroke="#334155" stroke-width="2"/>
+            <line x1="190" y1="82" x2="196" y2="96" stroke="#334155" stroke-width="2"/>
+            <line x1="122" y1="82" x2="122" y2="100" stroke="#334155" stroke-width="2"/>
+            <circle cx="145" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <circle cx="173" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <line x1="20" y1="58" x2="5" y2="58" stroke="#334155" stroke-width="2"/>
+            <g class="markers-layer"></g>
+          </svg>
+        </div>
+
+        <div class="damage-panel">
+          <h5>Interior</h5>
+          <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 120">
+            <polygon points="30,28 210,28 180,92 60,92" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <polygon points="78,42 162,42 146,78 94,78" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+            <line x1="60" y1="92" x2="78" y2="42" stroke="#334155" stroke-width="1.2"/>
+            <line x1="180" y1="92" x2="162" y2="42" stroke="#334155" stroke-width="1.2"/>
+            <line x1="120" y1="92" x2="120" y2="42" stroke="#334155" stroke-width="1.2"/>
+            <g class="markers-layer"></g>
+          </svg>
+        </div>
+
+        <div class="damage-panel">
+          <h5>Frente</h5>
+          <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 120">
+            <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
+            <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
+            <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
+            <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
+            <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
+            <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <g class="markers-layer"></g>
+          </svg>
+        </div>
+
+        <div class="damage-panel">
+          <h5>Atrás</h5>
+          <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 120">
+            <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
+            <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
+            <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
+            <rect x="84" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
+            <rect x="144" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
+            <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
+            <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
+            <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <g class="markers-layer"></g>
+          </svg>
+        </div>
+
+        <div class="damage-panel">
+          <h5>Techo</h5>
+          <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 120">
+            <rect x="28" y="30" width="184" height="60" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+            <line x1="44" y1="30" x2="44" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="60" y1="30" x2="60" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="76" y1="30" x2="76" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="92" y1="30" x2="92" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="108" y1="30" x2="108" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="124" y1="30" x2="124" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="140" y1="30" x2="140" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="156" y1="30" x2="156" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="172" y1="30" x2="172" y2="90" stroke="#334155" stroke-width="1"/>
+            <line x1="188" y1="30" x2="188" y2="90" stroke="#334155" stroke-width="1"/>
+            <g class="markers-layer"></g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="legend-card">
+        <h4>Fallas y anomalías</h4>
+        <div class="legend-grid">
+          <div class="legend-pill"><span class="legend-code">A</span> Abollado</div>
+          <div class="legend-pill"><span class="legend-code">R</span> Rayado</div>
+          <div class="legend-pill"><span class="legend-code">G</span> Gotera</div>
+          <div class="legend-pill"><span class="legend-code">M</span> Malo</div>
+          <div class="legend-pill"><span class="legend-code">C</span> Costadura</div>
+          <div class="legend-pill"><span class="legend-code">F</span> Falla</div>
+          <div class="legend-pill"><span class="legend-code">H</span> Hueco</div>
+          <div class="legend-pill"><span class="legend-code">Q</span> Quebrado</div>
+        </div>
+
+        <div class="subbox">
+          <h4>Marcas registradas</h4>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Vista</th>
+                <th>Código</th>
+                <th>Nota</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in damages %}
+              <tr>
+                <td>{{ d.side }}</td>
+                <td>{{ d.damage_type }}</td>
+                <td>{{ d.notes or '—' }}</td>
+              </tr>
+              {% else %}
+              <tr>
+                <td colspan="3">No hay daños registrados.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if eir.is_reefer %}
+  <div class="eir-card">
+    <h3>Equipo refrigerado / RF</h3>
+
+    <div class="grid">
+      <div class="kv col-4">
+        <div class="kv-label">Running / Non-running</div>
+        <div class="kv-value">{{ reefer_snapshot.get('running_status') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Temperatura</div>
+        <div class="kv-value">{{ reefer_snapshot.get('temperature') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Genset</div>
+        <div class="kv-value">{{ reefer_snapshot.get('genset') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Plug</div>
+        <div class="kv-value">{{ reefer_snapshot.get('plug') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Cord</div>
+        <div class="kv-value">{{ reefer_snapshot.get('cord') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Computer</div>
+        <div class="kv-value">{{ reefer_snapshot.get('computer') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Combustible</div>
+        <div class="kv-value">{{ reefer_snapshot.get('fuel') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Horímetro</div>
+        <div class="kv-value">{{ reefer_snapshot.get('hourmeter') or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Alternador</div>
+        <div class="kv-value">{{ reefer_snapshot.get('alternator') or '—' }}</div>
+      </div>
+
+      <div class="kv col-6">
+        <div class="kv-label">Batería</div>
+        <div class="kv-value">{{ reefer_snapshot.get('battery') or '—' }}</div>
+      </div>
+
+      <div class="kv col-6">
+        <div class="kv-label">Observaciones RF</div>
+        <div class="kv-value">{{ reefer_snapshot.get('notes') or '—' }}</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="eir-card">
+    <h3>Auditoría</h3>
+
+    <div class="grid">
+      <div class="kv col-4">
+        <div class="kv-label">Usuario creador</div>
+        <div class="kv-value">
+          {{ eir.created_by.name if eir.created_by and eir.created_by.name else (eir.created_by.username if eir.created_by and eir.created_by.username else (eir.created_by.email if eir.created_by else '—')) }}
+        </div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Creado</div>
+        <div class="kv-value">{{ eir.created_at or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Finalizado</div>
+        <div class="kv-value">{{ eir.finalized_at or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Editable / reversible hasta</div>
+        <div class="kv-value">{{ eir.editable_until or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">PDF generado</div>
+        <div class="kv-value">{{ eir.pdf_generated_at or '—' }}</div>
+      </div>
+
+      <div class="kv col-4">
+        <div class="kv-label">Salida de inventario</div>
+        <div class="kv-value">{{ eir.inventory_out_at or '—' }}</div>
+      </div>
+    </div>
+
+    <div class="subbox">
+      <h4>Observaciones generales</h4>
+      <div class="kv-value">{{ eir.general_notes or '—' }}</div>
+    </div>
+  </div>
+</div>
+
+<script id="eir-damages-json" type="application/json">
+[
+{% for d in damages %}
+  {
+    "side": {{ d.side|tojson }},
+    "damage_type": {{ d.damage_type|tojson }},
+    "x": {{ d.x|float }},
+    "y": {{ d.y|float }}
+  }{% if not loop.last %},{% endif %}
+{% endfor %}
+]
+</script>
+
+<script>
+  (function () {
+    const damagesJsonEl = document.getElementById("eir-damages-json");
+    let damageItems = [];
+
+    if (damagesJsonEl) {
+      try {
+        damageItems = JSON.parse(damagesJsonEl.textContent);
+      } catch (err) {
+        console.error("No se pudo parsear el JSON de daños del EIR:", err);
+        damageItems = [];
+      }
+    }
+
+    document.querySelectorAll(".damage-svg").forEach((svg) => {
+      const side = svg.dataset.side;
+      const layer = svg.querySelector(".markers-layer");
+      if (!layer) return;
+
+      const vb = svg.viewBox.baseVal;
+      const items = damageItems.filter((d) => d.side === side);
+
+      items.forEach((item) => {
+        const cx = Number(item.x) * vb.width;
+        const cy = Number(item.y) * vb.height;
+
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", cx);
+        circle.setAttribute("cy", cy);
+        circle.setAttribute("r", 11);
+        circle.setAttribute("class", "marker-dot");
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", cx);
+        text.setAttribute("y", cy + 0.5);
+        text.setAttribute("class", "marker-label");
+        text.textContent = item.damage_type;
+
+        layer.appendChild(circle);
+        layer.appendChild(text);
+      });
+    });
+  })();
+</script>
+{% endblock %}

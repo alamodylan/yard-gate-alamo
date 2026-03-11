@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}Listado de EIR - Yard Gate Álamo{% endblock %}
+
+{% block content %}
+<style>
+  .eir-wrap{
+    max-width:1280px;
+    margin:0 auto;
+  }
+
+  .eir-card{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:18px;
+    padding:18px;
+    box-shadow:0 8px 24px rgba(15,23,42,.05);
+    margin-bottom:16px;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:repeat(12, minmax(0,1fr));
+    gap:14px;
+  }
+
+  .col-12{grid-column:span 12;}
+  .col-4{grid-column:span 4;}
+  .col-3{grid-column:span 3;}
+  .col-2{grid-column:span 2;}
+
+  @media (max-width:980px){
+    .col-4,.col-3,.col-2{grid-column:span 12;}
+  }
+
+  .field label{
+    display:block;
+    margin-bottom:6px;
+    font-size:13px;
+    font-weight:800;
+    color:#334155;
+  }
+
+  .field input,
+  .field select{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid #cbd5e1;
+    border-radius:12px;
+    font-size:14px;
+    box-sizing:border-box;
+    background:#fff;
+  }
+
+  .actions{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    text-decoration:none;
+    border:none;
+    border-radius:12px;
+    padding:11px 16px;
+    font-weight:800;
+    font-size:14px;
+    cursor:pointer;
+  }
+
+  .btn-dark{
+    background:#0f172a;
+    color:#fff;
+  }
+
+  .btn-soft{
+    background:#e2e8f0;
+    color:#0f172a;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+  }
+
+  th, td{
+    border:1px solid #e2e8f0;
+    padding:9px;
+    text-align:left;
+    vertical-align:top;
+  }
+
+  th{
+    background:#f8fafc;
+  }
+
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    padding:6px 10px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+    border:1px solid #cbd5e1;
+    background:#f8fafc;
+    color:#334155;
+  }
+
+  .badge.ok{
+    background:#dcfce7;
+    color:#166534;
+    border-color:#bbf7d0;
+  }
+
+  .badge.warn{
+    background:#fff7ed;
+    color:#9a3412;
+    border-color:#fed7aa;
+  }
+
+  .badge.danger{
+    background:#fee2e2;
+    color:#991b1b;
+    border-color:#fecaca;
+  }
+</style>
+
+<div class="eir-wrap">
+  <div class="eir-card">
+    <h2 style="margin-top:0;">Listado de EIR</h2>
+
+    <form method="get" class="grid" style="margin-top:12px;">
+      <div class="field col-4">
+        <label>Buscar por contenedor o chasis</label>
+        <input name="q" value="{{ q or '' }}" placeholder="Ej: MSCU1234567 o 20123">
+      </div>
+
+      <div class="field col-2">
+        <label>Fecha desde</label>
+        <input type="date" name="date_from" value="{{ date_from or '' }}">
+      </div>
+
+      <div class="field col-2">
+        <label>Fecha hasta</label>
+        <input type="date" name="date_to" value="{{ date_to or '' }}">
+      </div>
+
+      <div class="field col-2">
+        <label>Estado</label>
+        <select name="status">
+          <option value="">Todos</option>
+          <option value="DRAFT" {{ 'selected' if status == 'DRAFT' else '' }}>DRAFT</option>
+          <option value="FINAL" {{ 'selected' if status == 'FINAL' else '' }}>FINAL</option>
+          <option value="EDITING" {{ 'selected' if status == 'EDITING' else '' }}>EDITING</option>
+          <option value="REVERTED" {{ 'selected' if status == 'REVERTED' else '' }}>REVERTED</option>
+        </select>
+      </div>
+
+      <div class="actions col-2" style="align-self:end;">
+        <button type="submit" class="btn btn-dark">Buscar</button>
+        <a href="{{ url_for('yard.eir_list_view') }}" class="btn btn-soft">Limpiar</a>
+      </div>
+    </form>
+  </div>
+
+  <div class="eir-card">
+    <table>
+      <thead>
+        <tr>
+          <th># EIR</th>
+          <th>Fecha</th>
+          <th>Predio</th>
+          <th>Contenedor</th>
+          <th>Chasis</th>
+          <th>Usuario</th>
+          <th>Estado</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for e in rows %}
+        <tr>
+          <td>#{{ e.id }}</td>
+          <td>
+            {{ e.trip_date or '—' }}
+            {% if e.trip_time %}
+              <br>{{ e.trip_time.strftime('%H:%M') }}
+            {% endif %}
+          </td>
+          <td>{{ e.site.name if e.site else '—' }}</td>
+          <td>{{ e.container.code if e.container else '—' }}</td>
+          <td>{{ e.chassis.chassis_number if e.chassis else '—' }}</td>
+          <td>
+            {{ e.created_by.name if e.created_by and e.created_by.name else (e.created_by.username if e.created_by and e.created_by.username else (e.created_by.email if e.created_by else '—')) }}
+          </td>
+          <td>
+            {% if e.status == 'FINAL' %}
+              <span class="badge ok">FINAL</span>
+            {% elif e.status == 'EDITING' %}
+              <span class="badge warn">EDITING</span>
+            {% elif e.status == 'REVERTED' %}
+              <span class="badge danger">REVERTED</span>
+            {% else %}
+              <span class="badge">{{ e.status or 'DRAFT' }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              <a class="btn btn-soft" href="{{ url_for('yard.eir_detail_view', eir_id=e.id) }}">Ver</a>
+              <a class="btn btn-dark" href="{{ url_for('yard.eir_pdf_view', eir_id=e.id) }}" target="_blank">PDF</a>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8">No hay EIRs para los filtros seleccionados.</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

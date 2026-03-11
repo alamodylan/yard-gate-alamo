@@ -1,0 +1,1458 @@
+{% extends "base.html" %}
+{% block title %}Gate Out / EIR - Yard Gate Álamo{% endblock %}
+
+{% block content %}
+{% set site_key = (active_site_key or '')|upper %}
+
+<style>
+  .eir-wrap{
+    max-width:1280px;
+    margin:0 auto;
+  }
+
+  .eir-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:16px;
+    margin-bottom:16px;
+  }
+
+  .eir-muted{
+    color:#64748b;
+    font-size:14px;
+  }
+
+  .eir-badge{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:8px 12px;
+    border-radius:999px;
+    background:#dcfce7;
+    color:#166534;
+    font-weight:800;
+    font-size:12px;
+  }
+
+  .eir-card{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:18px;
+    padding:18px;
+    box-shadow:0 8px 24px rgba(15,23,42,.05);
+    margin-bottom:16px;
+  }
+
+  .eir-card h3{
+    margin:0 0 12px 0;
+    font-size:18px;
+  }
+
+  .eir-note{
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    color:#1d4ed8;
+    border-radius:14px;
+    padding:12px 14px;
+    margin-bottom:14px;
+    font-size:14px;
+  }
+
+  .eir-warn{
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    border-radius:14px;
+    padding:12px 14px;
+    margin-bottom:14px;
+    font-size:14px;
+  }
+
+  .eir-grid{
+    display:grid;
+    grid-template-columns:repeat(12, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  .col-12{grid-column:span 12;}
+  .col-9{grid-column:span 9;}
+  .col-8{grid-column:span 8;}
+  .col-6{grid-column:span 6;}
+  .col-4{grid-column:span 4;}
+  .col-3{grid-column:span 3;}
+
+  @media (max-width:980px){
+    .col-9,.col-8,.col-6,.col-4,.col-3{grid-column:span 12;}
+    .eir-head{flex-direction:column;}
+  }
+
+  .field label{
+    display:block;
+    margin-bottom:6px;
+    font-size:13px;
+    font-weight:800;
+    color:#334155;
+  }
+
+  .field input,
+  .field select,
+  .field textarea{
+    width:100%;
+    padding:10px 12px;
+    border:1px solid #cbd5e1;
+    border-radius:12px;
+    font-size:14px;
+    box-sizing:border-box;
+    background:#fff;
+  }
+
+  .field textarea{
+    min-height:90px;
+    resize:vertical;
+  }
+
+  .field-help{
+    color:#64748b;
+    font-size:12px;
+    margin-top:5px;
+  }
+
+  .pill-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+
+  .equip-pill{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 14px;
+    border-radius:999px;
+    border:1px solid #cbd5e1;
+    background:#f8fafc;
+    font-weight:800;
+  }
+
+  .subbox{
+    border:1px dashed #cbd5e1;
+    border-radius:16px;
+    padding:14px;
+    background:#f8fafc;
+    margin-top:14px;
+  }
+
+  .subbox h4{
+    margin:0 0 10px 0;
+    font-size:15px;
+  }
+
+  .hidden{
+    display:none !important;
+  }
+
+  .table-preview{
+    width:100%;
+    border-collapse:collapse;
+    margin-top:10px;
+    font-size:13px;
+  }
+
+  .table-preview th,
+  .table-preview td{
+    border:1px solid #e2e8f0;
+    padding:8px;
+    text-align:left;
+    vertical-align:top;
+  }
+
+  .table-preview th{
+    background:#f8fafc;
+  }
+
+  .btn-main{
+    border:none;
+    background:#0f172a;
+    color:#fff;
+    border-radius:12px;
+    padding:12px 18px;
+    font-weight:800;
+    font-size:14px;
+    cursor:pointer;
+  }
+
+  .btn-soft{
+    border:none;
+    background:#e2e8f0;
+    color:#0f172a;
+    border-radius:12px;
+    padding:12px 18px;
+    font-weight:800;
+    font-size:14px;
+    cursor:pointer;
+  }
+
+  .btn-danger-soft{
+    border:none;
+    background:#fee2e2;
+    color:#991b1b;
+    border-radius:12px;
+    padding:10px 14px;
+    font-weight:800;
+    font-size:13px;
+    cursor:pointer;
+  }
+
+  .actions{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+
+  .tire-map{
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:10px;
+    margin-top:12px;
+  }
+
+  .tire-item{
+    border:1px solid #cbd5e1;
+    border-radius:14px;
+    padding:10px;
+    background:#fff;
+  }
+
+  .tire-pos{
+    font-size:12px;
+    color:#64748b;
+    font-weight:800;
+    margin-bottom:6px;
+  }
+
+  .tire-value{
+    font-size:14px;
+    color:#0f172a;
+    font-weight:800;
+  }
+
+  .damage-layout{
+    display:grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(280px, .8fr);
+    gap:16px;
+    align-items:start;
+  }
+
+  @media (max-width:1100px){
+    .damage-layout{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .damage-views{
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:14px;
+  }
+
+  @media (max-width:1100px){
+    .damage-views{
+      grid-template-columns:repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width:760px){
+    .damage-views{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .damage-panel{
+    background:#fff;
+    border:1px solid #cbd5e1;
+    border-radius:16px;
+    padding:12px;
+    position:relative;
+  }
+
+  .damage-panel h5{
+    margin:0 0 8px 0;
+    font-size:14px;
+  }
+
+  .damage-panel small{
+    color:#64748b;
+    display:block;
+    margin-bottom:8px;
+  }
+
+  .damage-svg{
+    width:100%;
+    height:auto;
+    display:block;
+    background:#f8fafc;
+    border:1px solid #e2e8f0;
+    border-radius:10px;
+    cursor:crosshair;
+  }
+
+  .legend-card{
+    background:#fff;
+    border:1px solid #cbd5e1;
+    border-radius:16px;
+    padding:14px;
+    position:sticky;
+    top:12px;
+  }
+
+  .legend-card h4{
+    margin:0 0 12px 0;
+  }
+
+  .legend-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px 12px;
+    font-size:13px;
+  }
+
+  .legend-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .legend-code{
+    min-width:22px;
+    height:22px;
+    border-radius:999px;
+    background:#0f172a;
+    color:#fff;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .damage-list{
+    margin-top:14px;
+    border-top:1px solid #e2e8f0;
+    padding-top:12px;
+  }
+
+  .damage-list-item{
+    border:1px solid #e2e8f0;
+    border-radius:12px;
+    padding:10px;
+    margin-bottom:8px;
+    background:#f8fafc;
+  }
+
+  .damage-list-head{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    align-items:center;
+    font-size:13px;
+    font-weight:800;
+    margin-bottom:6px;
+  }
+
+  .damage-empty{
+    color:#64748b;
+    font-size:13px;
+  }
+
+  .damage-toolbar{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+  }
+
+  .marker-label{
+    font-weight:900;
+    font-size:14px;
+    fill:#b91c1c;
+    pointer-events:none;
+    text-anchor:middle;
+    dominant-baseline:middle;
+  }
+
+  .marker-dot{
+    fill:#fff;
+    stroke:#b91c1c;
+    stroke-width:1.8;
+    pointer-events:none;
+  }
+
+  .damage-modal-backdrop{
+    position:fixed;
+    inset:0;
+    background:rgba(15,23,42,.38);
+    z-index:1000;
+    display:none;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+  }
+
+  .damage-modal{
+    width:min(460px, 100%);
+    background:#fff;
+    border-radius:18px;
+    border:1px solid #e2e8f0;
+    box-shadow:0 24px 60px rgba(15,23,42,.25);
+    padding:18px;
+  }
+
+  .damage-modal h4{
+    margin:0 0 10px 0;
+  }
+
+  .damage-modal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:flex-end;
+    margin-top:14px;
+    flex-wrap:wrap;
+  }
+</style>
+
+<div class="eir-wrap">
+  <div class="eir-head">
+    <div>
+      <h2 style="margin:0;">Gate Out / EIR</h2>
+      <p class="eir-muted" style="margin-top:8px;">
+        Este formulario representa la condición del equipo al salir del predio.
+      </p>
+    </div>
+    <div class="eir-badge">Predio activo: {{ site_key if site_key else '—' }}</div>
+  </div>
+
+  <div class="eir-note">
+    Al guardar este formulario debe generarse el EIR digital, salir el equipo de inventario y quedar listo para PDF e impresión.
+  </div>
+
+  <div class="eir-warn">
+    Este template ya incluye la parte visual interactiva del contenedor.  
+    El guardado real de esos puntos se conecta en el siguiente paso dentro de <strong>routes.py</strong>.
+  </div>
+
+  <form method="post" enctype="multipart/form-data" id="eirForm">
+    <input type="hidden" name="mode" id="mode" value="create">
+    <input type="hidden" name="has_chassis" id="has_chassis" value="1">
+    <input type="hidden" name="has_container" id="has_container" value="1">
+    <input type="hidden" name="is_reefer" id="is_reefer" value="0">
+    <input type="hidden" name="has_genset" id="has_genset" value="0">
+
+    <!-- JSON de daños visuales -->
+    <input type="hidden" name="container_damage_points_json" id="container_damage_points_json" value="[]">
+
+    <!-- =========================
+         1) MODO
+         ========================= -->
+    <div class="eir-card">
+      <h3>1) Tipo de operación del EIR</h3>
+
+      <div class="eir-grid">
+        <div class="field col-4">
+          <label>Modo</label>
+          <select id="mode_select">
+            <option value="create" selected>Crear EIR nuevo</option>
+            <option value="link">Ligar EIR DRAFT existente</option>
+          </select>
+        </div>
+
+        <div class="field col-8 hidden" id="box_link_mode">
+          <label>EIR DRAFT</label>
+          <select id="eir_id_pick">
+            <option value="">— Selecciona un EIR DRAFT —</option>
+            {% for e in eirs_draft %}
+              <option value="{{ e.id }}">
+                #{{ e.id }} · {{ e.terminal_name }} · {{ e.trip_date }} · {{ e.status }}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="field-help">Al elegir uno, se enviará ese ID en el formulario.</div>
+        </div>
+
+        <div class="field col-4 hidden" id="box_link_manual">
+          <label>ID manual EIR</label>
+          <input type="number" name="eir_id" id="eir_id" placeholder="Ej: 1024">
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         2) ENCABEZADO
+         ========================= -->
+    <div class="eir-card">
+      <h3>2) Encabezado del EIR</h3>
+
+      <div class="eir-grid">
+        <div class="field col-4">
+          <label>Terminal</label>
+          <input name="terminal_name" id="terminal_name" value="{{ site_key }}" placeholder="Terminal">
+        </div>
+
+        <div class="field col-4">
+          <label>Fecha de salida</label>
+          <input type="date" name="trip_date" id="trip_date">
+        </div>
+
+        <div class="field col-4">
+          <label>Hora de carga / descarga</label>
+          <input type="time" name="trip_time" id="trip_time">
+        </div>
+
+        <div class="field col-4">
+          <label>Transportista</label>
+          <input value="ATM" disabled>
+          <input type="hidden" name="carrier" value="ATM">
+        </div>
+
+        <div class="field col-4">
+          <label>Origen</label>
+          <input name="origin" id="origin" value="{{ site_key }}" placeholder="Origen">
+        </div>
+
+        <div class="field col-4">
+          <label>Destino</label>
+          <input name="destination" id="destination" placeholder="Destino">
+        </div>
+
+        <div class="field col-4">
+          <label>Tipo de operación</label>
+          <select name="operation_type" id="operation_type">
+            <option value="">— Selecciona —</option>
+            <option value="EXPORTACION">Exportación</option>
+            <option value="IMPORTACION">Importación</option>
+          </select>
+        </div>
+
+        <div class="field col-4">
+          <label>Chofer</label>
+          <input name="driver_name" id="driver_name" placeholder="Nombre del chofer">
+          <div class="field-help">Si queda vacío, se podrá completar manualmente al imprimir.</div>
+        </div>
+
+        <div class="field col-4">
+          <label>Documento del chofer</label>
+          <input name="driver_id_doc" id="driver_id_doc" placeholder="Cédula / identificación">
+        </div>
+
+        <div class="field col-4">
+          <label>Placa del cabezal</label>
+          <input name="truck_plate" id="truck_plate" placeholder="Placa del cabezal">
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         3) EQUIPO
+         ========================= -->
+    <div class="eir-card">
+      <h3>3) Equipo que sale</h3>
+
+      <div class="pill-row" style="margin-bottom:14px;">
+        <label class="equip-pill">
+          <input type="checkbox" id="chk_has_chassis" checked>
+          Chasis
+        </label>
+
+        <label class="equip-pill">
+          <input type="checkbox" id="chk_has_container" checked>
+          Contenedor
+        </label>
+
+        <label class="equip-pill">
+          <input type="checkbox" id="chk_is_reefer">
+          RF / Reefer
+        </label>
+      </div>
+
+      <div class="eir-grid">
+        <div class="field col-6" id="box_chassis_select">
+          <label>Chasis en inventario</label>
+          <select name="chassis_id" id="chassis_id">
+            <option value="">— Selecciona chasis —</option>
+            {% for inv, ch in chassis_rows %}
+              <option
+                value="{{ ch.id }}"
+                data-chassis-number="{{ ch.chassis_number or '' }}"
+                data-plate="{{ ch.plate or '' }}"
+                data-axles="{{ ch.axles or '' }}"
+                data-type-code="{{ ch.type_code or '' }}"
+              >
+                {{ ch.chassis_number }}
+                {% if ch.plate %} · Placa {{ ch.plate }}{% endif %}
+                {% if ch.type_code %} · {{ ch.type_code }}{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="field-help">Solo se muestran chasis activos en inventario del predio actual.</div>
+        </div>
+
+        <div class="field col-6" id="box_container_select">
+          <label>Contenedor en patio</label>
+          <select name="container_id" id="container_id">
+            <option value="">— Selecciona contenedor —</option>
+            {% for c, p, b in containers %}
+              <option
+                value="{{ c.id }}"
+                data-code="{{ c.code }}"
+                data-size="{{ c.size or '' }}"
+                data-bay="{{ b.code }}"
+                data-row="{{ p.depth_row }}"
+                data-tier="{{ p.tier }}"
+              >
+                {{ c.code }} · {{ c.size }} · {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
+              </option>
+            {% endfor %}
+          </select>
+          <div class="field-help">Solo se muestran contenedores activos en patio de este predio.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         4) CHASIS
+         ========================= -->
+    <div class="eir-card" id="section_chassis">
+      <h3>4) Revisión de chasis</h3>
+
+      <div class="eir-grid">
+        <div class="field col-4">
+          <label>Número de chasis</label>
+          <input id="chassis_number_view" placeholder="Se llena al seleccionar chasis" disabled>
+        </div>
+
+        <div class="field col-4">
+          <label>Placa del chasis</label>
+          <input id="chassis_plate_view" placeholder="Se llena automáticamente" disabled>
+        </div>
+
+        <div class="field col-4">
+          <label>Tipo / ejes</label>
+          <input id="chassis_type_view" placeholder="Se llena automáticamente" disabled>
+        </div>
+      </div>
+
+      <div class="subbox">
+        <h4>Inspección estructural del chasis</h4>
+
+        <div class="eir-grid">
+          <div class="field col-6">
+            <label>Luces</label>
+            <select name="chassis_lights_status" class="status-toggle" data-target="chassis_lights_detail_box">
+              <option value="OK">OK</option>
+              <option value="DANO">Daño</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="field col-6 hidden" id="chassis_lights_detail_box">
+            <label>Detalle luces</label>
+            <input name="chassis_lights_detail" placeholder="Describe el hallazgo">
+          </div>
+
+          <div class="field col-6">
+            <label>Twist locks</label>
+            <select name="chassis_twistlocks_status" class="status-toggle" data-target="chassis_twistlocks_detail_box">
+              <option value="OK">OK</option>
+              <option value="DANO">Daño</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="field col-6 hidden" id="chassis_twistlocks_detail_box">
+            <label>Detalle twist locks</label>
+            <input name="chassis_twistlocks_detail" placeholder="Describe el hallazgo">
+          </div>
+
+          <div class="field col-6">
+            <label>Faldones</label>
+            <select name="chassis_mudflaps_status" class="status-toggle" data-target="chassis_mudflaps_detail_box">
+              <option value="OK">OK</option>
+              <option value="DANO">Daño</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="field col-6 hidden" id="chassis_mudflaps_detail_box">
+            <label>Detalle faldones</label>
+            <input name="chassis_mudflaps_detail" placeholder="Describe el hallazgo">
+          </div>
+
+          <div class="field col-6">
+            <label>Patas</label>
+            <select name="chassis_landing_gear_status" class="status-toggle" data-target="chassis_landing_gear_detail_box">
+              <option value="OK">OK</option>
+              <option value="DANO">Daño</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="field col-6 hidden" id="chassis_landing_gear_detail_box">
+            <label>Detalle patas</label>
+            <input name="chassis_landing_gear_detail" placeholder="Describe el hallazgo">
+          </div>
+
+          <div class="field col-6">
+            <label>Estructura</label>
+            <select name="chassis_structure_status" class="status-toggle" data-target="chassis_structure_detail_box">
+              <option value="OK">OK</option>
+              <option value="DANO">Daño</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div class="field col-6 hidden" id="chassis_structure_detail_box">
+            <label>Detalle estructura</label>
+            <input name="chassis_structure_detail" placeholder="Describe el hallazgo">
+          </div>
+        </div>
+      </div>
+
+      <div class="subbox">
+        <h4>Mapa de llantas / marchamos</h4>
+        <div class="tire-map" id="tire_map_preview">
+          <div class="tire-item"><div class="tire-pos">AX1_L_IN</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX1_L_OUT</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX1_R_IN</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX1_R_OUT</div><div class="tire-value">—</div></div>
+
+          <div class="tire-item"><div class="tire-pos">AX2_L_IN</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX2_L_OUT</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX2_R_IN</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX2_R_OUT</div><div class="tire-value">—</div></div>
+
+          <div class="tire-item"><div class="tire-pos">AX3_L_IN</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX3_L_OUT</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX3_R_IN</div><div class="tire-value">—</div></div>
+          <div class="tire-item"><div class="tire-pos">AX3_R_OUT</div><div class="tire-value">—</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         5) CONTENEDOR
+         ========================= -->
+    <div class="eir-card" id="section_container">
+      <h3>5) Revisión de contenedor</h3>
+
+      <div class="eir-grid">
+        <div class="field col-4">
+          <label>Número de contenedor</label>
+          <input id="container_code_view" placeholder="Se llena al seleccionar contenedor" disabled>
+        </div>
+
+        <div class="field col-4">
+          <label>Tamaño</label>
+          <input id="container_size_view" placeholder="Se llena automáticamente" disabled>
+        </div>
+
+        <div class="field col-4">
+          <label>Marchamo</label>
+          <input name="container_seal" id="container_seal" placeholder="Ingresa marchamo del contenedor">
+        </div>
+
+        <div class="field col-6">
+          <label>Naviera</label>
+          <input name="shipping_line" id="shipping_line" placeholder="Luego se jalará del Gate In / clasificación">
+          <div class="field-help">En el siguiente paso lo amarramos a los datos del ingreso.</div>
+        </div>
+
+        <div class="field col-6">
+          <label>Ubicación actual en patio</label>
+          <input id="container_position_view" placeholder="Se llena automáticamente" disabled>
+        </div>
+      </div>
+
+      <div class="subbox">
+        <h4>Daños del contenedor en dibujo</h4>
+        <p class="eir-muted" style="margin-top:0;">
+          Haz clic sobre una vista del contenedor para marcar un daño. Luego selecciona el código.
+          En el dibujo se verá la letra, y al lado queda la leyenda.
+        </p>
+
+        <div class="damage-toolbar">
+          <button type="button" class="btn-soft" id="btn_clear_last_damage">Quitar última marca</button>
+          <button type="button" class="btn-danger-soft" id="btn_clear_all_damage">Limpiar todas las marcas</button>
+        </div>
+
+        <div class="damage-layout">
+          <div class="damage-views">
+            <!-- RIGHT -->
+            <div class="damage-panel">
+              <h5>Costado derecho</h5>
+              <small>Haz clic en la zona del contenedor</small>
+              <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 120">
+                <rect x="30" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+                <rect x="178" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+                <line x1="30" y1="82" x2="25" y2="96" stroke="#334155" stroke-width="2"/>
+                <line x1="175" y1="82" x2="182" y2="96" stroke="#334155" stroke-width="2"/>
+                <line x1="110" y1="82" x2="110" y2="100" stroke="#334155" stroke-width="2"/>
+                <circle cx="60" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <circle cx="88" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <line x1="198" y1="58" x2="224" y2="58" stroke="#334155" stroke-width="2"/>
+                <g class="markers-layer"></g>
+              </svg>
+            </div>
+
+            <!-- LEFT -->
+            <div class="damage-panel">
+              <h5>Costado izquierdo</h5>
+              <small>Haz clic en la zona del contenedor</small>
+              <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 120">
+                <rect x="45" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+                <rect x="20" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
+                <line x1="45" y1="82" x2="38" y2="96" stroke="#334155" stroke-width="2"/>
+                <line x1="190" y1="82" x2="196" y2="96" stroke="#334155" stroke-width="2"/>
+                <line x1="122" y1="82" x2="122" y2="100" stroke="#334155" stroke-width="2"/>
+                <circle cx="145" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <circle cx="173" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <line x1="20" y1="58" x2="5" y2="58" stroke="#334155" stroke-width="2"/>
+                <g class="markers-layer"></g>
+              </svg>
+            </div>
+
+            <!-- INTERIOR -->
+            <div class="damage-panel">
+              <h5>Interior</h5>
+              <small>Haz clic en la zona del contenedor</small>
+              <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 120">
+                <polygon points="30,28 210,28 180,92 60,92" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <polygon points="78,42 162,42 146,78 94,78" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
+                <line x1="60" y1="92" x2="78" y2="42" stroke="#334155" stroke-width="1.2"/>
+                <line x1="180" y1="92" x2="162" y2="42" stroke="#334155" stroke-width="1.2"/>
+                <line x1="120" y1="92" x2="120" y2="42" stroke="#334155" stroke-width="1.2"/>
+                <g class="markers-layer"></g>
+              </svg>
+            </div>
+
+            <!-- FRONT -->
+            <div class="damage-panel">
+              <h5>Frente</h5>
+              <small>Haz clic en la zona del contenedor</small>
+              <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 120">
+                <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
+                <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
+                <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
+                <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
+                <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
+                <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <g class="markers-layer"></g>
+              </svg>
+            </div>
+
+            <!-- REAR -->
+            <div class="damage-panel">
+              <h5>Atrás</h5>
+              <small>Haz clic en la zona del contenedor</small>
+              <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 120">
+                <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
+                <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
+                <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
+                <rect x="84" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
+                <rect x="144" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
+                <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
+                <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
+                <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <g class="markers-layer"></g>
+              </svg>
+            </div>
+
+            <!-- ROOF -->
+            <div class="damage-panel">
+              <h5>Techo</h5>
+              <small>Haz clic en la zona del contenedor</small>
+              <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 120">
+                <rect x="28" y="30" width="184" height="60" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
+                <line x1="44" y1="30" x2="44" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="60" y1="30" x2="60" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="76" y1="30" x2="76" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="92" y1="30" x2="92" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="108" y1="30" x2="108" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="124" y1="30" x2="124" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="140" y1="30" x2="140" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="156" y1="30" x2="156" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="172" y1="30" x2="172" y2="90" stroke="#334155" stroke-width="1"/>
+                <line x1="188" y1="30" x2="188" y2="90" stroke="#334155" stroke-width="1"/>
+                <g class="markers-layer"></g>
+              </svg>
+            </div>
+          </div>
+
+          <div class="legend-card">
+            <h4>Fallas y anomalías</h4>
+
+            <div class="legend-grid">
+              <div class="legend-pill"><span class="legend-code">A</span> Abollado</div>
+              <div class="legend-pill"><span class="legend-code">R</span> Rayado</div>
+              <div class="legend-pill"><span class="legend-code">G</span> Gotera</div>
+              <div class="legend-pill"><span class="legend-code">M</span> Malo</div>
+              <div class="legend-pill"><span class="legend-code">C</span> Costadura</div>
+              <div class="legend-pill"><span class="legend-code">F</span> Falla</div>
+              <div class="legend-pill"><span class="legend-code">H</span> Hueco</div>
+              <div class="legend-pill"><span class="legend-code">Q</span> Quebrado</div>
+            </div>
+
+            <div class="damage-list">
+              <h4 style="margin:0 0 10px 0;">Marcas registradas</h4>
+              <div id="damage_list_box" class="damage-empty">
+                No hay daños marcados todavía.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         6) REEFER
+         ========================= -->
+    <div class="eir-card hidden" id="section_reefer">
+      <h3>6) Sección RF / Reefer</h3>
+
+      <div class="eir-grid">
+        <div class="field col-4">
+          <label>Running / Non-running</label>
+          <select name="rf_running_status">
+            <option value="">— Selecciona —</option>
+            <option value="RUNNING">Running</option>
+            <option value="NON_RUNNING">Non-running</option>
+          </select>
+        </div>
+
+        <div class="field col-4">
+          <label>Temperatura</label>
+          <input name="rf_temperature" placeholder="Ej: -18°C">
+        </div>
+
+        <div class="field col-4">
+          <label>Genset</label>
+          <select name="rf_genset" id="rf_genset">
+            <option value="">— Selecciona —</option>
+            <option value="SI">Sí</option>
+            <option value="NO">No</option>
+          </select>
+        </div>
+
+        <div class="field col-4">
+          <label>Plug</label>
+          <input name="rf_plug" placeholder="Estado plug">
+        </div>
+
+        <div class="field col-4">
+          <label>Cord</label>
+          <input name="rf_cord" placeholder="Estado cord">
+        </div>
+
+        <div class="field col-4">
+          <label>Computer</label>
+          <input name="rf_computer" placeholder="Estado computer">
+        </div>
+
+        <div class="field col-4">
+          <label>Combustible</label>
+          <input name="rf_fuel" placeholder="Nivel combustible">
+        </div>
+
+        <div class="field col-4">
+          <label>Horímetro</label>
+          <input name="rf_hourmeter" placeholder="Lectura horímetro">
+        </div>
+
+        <div class="field col-4">
+          <label>Alternador</label>
+          <input name="rf_alternator" placeholder="Estado alternador">
+        </div>
+
+        <div class="field col-6">
+          <label>Batería</label>
+          <input name="rf_battery" placeholder="Estado batería">
+        </div>
+
+        <div class="field col-6">
+          <label>Observaciones RF</label>
+          <input name="rf_notes" placeholder="Observaciones de reefer">
+        </div>
+      </div>
+    </div>
+
+    <!-- =========================
+         7) OBSERVACIONES
+         ========================= -->
+    <div class="eir-card">
+      <h3>7) Observaciones generales</h3>
+      <div class="field">
+        <label>Notas generales del EIR</label>
+        <textarea name="notes" id="notes" placeholder="Observaciones generales de salida"></textarea>
+      </div>
+    </div>
+
+    <!-- =========================
+         8) RESUMEN
+         ========================= -->
+    <div class="eir-card">
+      <h3>8) Resumen previo</h3>
+
+      <table class="table-preview">
+        <thead>
+          <tr>
+            <th>Campo</th>
+            <th>Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>Predio</td><td>{{ site_key }}</td></tr>
+          <tr><td>Transportista</td><td>ATM</td></tr>
+          <tr><td>Contenedor</td><td id="resume_container">—</td></tr>
+          <tr><td>Chasis</td><td id="resume_chassis">—</td></tr>
+          <tr><td>Operación</td><td id="resume_operation">—</td></tr>
+          <tr><td>RF / Reefer</td><td id="resume_reefer">No</td></tr>
+          <tr><td>Daños marcados</td><td id="resume_damage_count">0</td></tr>
+        </tbody>
+      </table>
+
+      <div class="actions" style="margin-top:16px;">
+        <button type="submit" class="btn-main">Guardar EIR y aplicar Gate Out</button>
+        <button type="button" class="btn-soft" id="btn_fill_now">Poner fecha y hora actual</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+<!-- Modal de daño -->
+<div class="damage-modal-backdrop" id="damageModalBackdrop">
+  <div class="damage-modal">
+    <h4>Registrar daño</h4>
+
+    <div class="eir-grid">
+      <div class="field col-6">
+        <label>Vista</label>
+        <input id="modal_side_text" disabled>
+      </div>
+
+      <div class="field col-6">
+        <label>Código de daño</label>
+        <select id="modal_damage_type">
+          <option value="">— Selecciona —</option>
+          <option value="A">A = Abollado</option>
+          <option value="R">R = Rayado</option>
+          <option value="G">G = Gotera</option>
+          <option value="M">M = Malo</option>
+          <option value="C">C = Costadura</option>
+          <option value="F">F = Falla</option>
+          <option value="H">H = Hueco</option>
+          <option value="Q">Q = Quebrado</option>
+        </select>
+      </div>
+
+      <div class="field col-12">
+        <label>Observación opcional</label>
+        <input id="modal_damage_note" placeholder="Detalle opcional del daño">
+      </div>
+    </div>
+
+    <div class="damage-modal-actions">
+      <button type="button" class="btn-soft" id="btn_cancel_damage">Cancelar</button>
+      <button type="button" class="btn-main" id="btn_save_damage">Guardar marca</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const modeSelect = document.getElementById("mode_select");
+  const modeHidden = document.getElementById("mode");
+  const boxLinkMode = document.getElementById("box_link_mode");
+  const boxLinkManual = document.getElementById("box_link_manual");
+  const eirIdPick = document.getElementById("eir_id_pick");
+  const eirIdInput = document.getElementById("eir_id");
+
+  const chkHasChassis = document.getElementById("chk_has_chassis");
+  const chkHasContainer = document.getElementById("chk_has_container");
+  const chkIsReefer = document.getElementById("chk_is_reefer");
+
+  const hasChassisHidden = document.getElementById("has_chassis");
+  const hasContainerHidden = document.getElementById("has_container");
+  const isReeferHidden = document.getElementById("is_reefer");
+  const hasGensetHidden = document.getElementById("has_genset");
+  const rfGenset = document.getElementById("rf_genset");
+
+  const sectionChassis = document.getElementById("section_chassis");
+  const sectionContainer = document.getElementById("section_container");
+  const sectionReefer = document.getElementById("section_reefer");
+  const boxChassisSelect = document.getElementById("box_chassis_select");
+  const boxContainerSelect = document.getElementById("box_container_select");
+
+  const chassisSelect = document.getElementById("chassis_id");
+  const containerSelect = document.getElementById("container_id");
+
+  const chassisNumberView = document.getElementById("chassis_number_view");
+  const chassisPlateView = document.getElementById("chassis_plate_view");
+  const chassisTypeView = document.getElementById("chassis_type_view");
+
+  const containerCodeView = document.getElementById("container_code_view");
+  const containerSizeView = document.getElementById("container_size_view");
+  const containerPositionView = document.getElementById("container_position_view");
+
+  const operationType = document.getElementById("operation_type");
+  const resumeContainer = document.getElementById("resume_container");
+  const resumeChassis = document.getElementById("resume_chassis");
+  const resumeOperation = document.getElementById("resume_operation");
+  const resumeReefer = document.getElementById("resume_reefer");
+  const resumeDamageCount = document.getElementById("resume_damage_count");
+
+  const btnFillNow = document.getElementById("btn_fill_now");
+  const tripDate = document.getElementById("trip_date");
+  const tripTime = document.getElementById("trip_time");
+
+  const damageSvgs = document.querySelectorAll(".damage-svg");
+  const damageListBox = document.getElementById("damage_list_box");
+  const damageJsonInput = document.getElementById("container_damage_points_json");
+  const btnClearLastDamage = document.getElementById("btn_clear_last_damage");
+  const btnClearAllDamage = document.getElementById("btn_clear_all_damage");
+
+  const damageModalBackdrop = document.getElementById("damageModalBackdrop");
+  const modalSideText = document.getElementById("modal_side_text");
+  const modalDamageType = document.getElementById("modal_damage_type");
+  const modalDamageNote = document.getElementById("modal_damage_note");
+  const btnCancelDamage = document.getElementById("btn_cancel_damage");
+  const btnSaveDamage = document.getElementById("btn_save_damage");
+
+  let damagePoints = [];
+  let pendingDamage = null;
+
+  const sideLabels = {
+    RIGHT: "Costado derecho",
+    LEFT: "Costado izquierdo",
+    INTERIOR: "Interior",
+    FRONT: "Frente",
+    REAR: "Atrás",
+    ROOF: "Techo"
+  };
+
+  const damageLabels = {
+    A: "Abollado",
+    R: "Rayado",
+    G: "Gotera",
+    M: "Malo",
+    C: "Costadura",
+    F: "Falla",
+    H: "Hueco",
+    Q: "Quebrado"
+  };
+
+  function syncMode() {
+    const val = modeSelect.value || "create";
+    modeHidden.value = val;
+
+    if (val === "link") {
+      boxLinkMode.classList.remove("hidden");
+      boxLinkManual.classList.remove("hidden");
+    } else {
+      boxLinkMode.classList.add("hidden");
+      boxLinkManual.classList.add("hidden");
+      eirIdPick.value = "";
+      eirIdInput.value = "";
+    }
+  }
+
+  function syncEirIdSource() {
+    if (eirIdPick.value) {
+      eirIdInput.value = eirIdPick.value;
+    }
+  }
+
+  function syncEquipmentSections() {
+    hasChassisHidden.value = chkHasChassis.checked ? "1" : "0";
+    hasContainerHidden.value = chkHasContainer.checked ? "1" : "0";
+    isReeferHidden.value = chkIsReefer.checked ? "1" : "0";
+    hasGensetHidden.value = (chkIsReefer.checked && rfGenset && rfGenset.value === "SI") ? "1" : "0";
+
+    sectionChassis.classList.toggle("hidden", !chkHasChassis.checked);
+    boxChassisSelect.classList.toggle("hidden", !chkHasChassis.checked);
+
+    sectionContainer.classList.toggle("hidden", !chkHasContainer.checked);
+    boxContainerSelect.classList.toggle("hidden", !chkHasContainer.checked);
+
+    sectionReefer.classList.toggle("hidden", !chkIsReefer.checked);
+
+    if (!chkHasChassis.checked) {
+      chassisSelect.value = "";
+      chassisNumberView.value = "";
+      chassisPlateView.value = "";
+      chassisTypeView.value = "";
+      resumeChassis.textContent = "—";
+    }
+
+    if (!chkHasContainer.checked) {
+      containerSelect.value = "";
+      containerCodeView.value = "";
+      containerSizeView.value = "";
+      containerPositionView.value = "";
+      resumeContainer.textContent = "—";
+    }
+
+    resumeReefer.textContent = chkIsReefer.checked ? "Sí" : "No";
+  }
+
+  function syncChassisInfo() {
+    const opt = chassisSelect.options[chassisSelect.selectedIndex];
+    if (!opt || !opt.value) {
+      chassisNumberView.value = "";
+      chassisPlateView.value = "";
+      chassisTypeView.value = "";
+      resumeChassis.textContent = "—";
+      return;
+    }
+
+    const chassisNumber = opt.dataset.chassisNumber || "";
+    const plate = opt.dataset.plate || "";
+    const axles = opt.dataset.axles || "";
+    const typeCode = opt.dataset.typeCode || "";
+
+    chassisNumberView.value = chassisNumber;
+    chassisPlateView.value = plate;
+    chassisTypeView.value = typeCode ? `${typeCode}${axles ? " · " + axles + " ejes" : ""}` : (axles ? axles + " ejes" : "");
+    resumeChassis.textContent = chassisNumber || "—";
+  }
+
+  function syncContainerInfo() {
+    const opt = containerSelect.options[containerSelect.selectedIndex];
+    if (!opt || !opt.value) {
+      containerCodeView.value = "";
+      containerSizeView.value = "";
+      containerPositionView.value = "";
+      resumeContainer.textContent = "—";
+      return;
+    }
+
+    const code = opt.dataset.code || "";
+    const size = opt.dataset.size || "";
+    const bay = opt.dataset.bay || "";
+    const row = opt.dataset.row || "";
+    const tier = opt.dataset.tier || "";
+
+    containerCodeView.value = code;
+    containerSizeView.value = size;
+    containerPositionView.value = bay ? `${bay} F${String(row).padStart(2, "0")} N${tier}` : "";
+    resumeContainer.textContent = code || "—";
+  }
+
+  function syncOperationResume() {
+    resumeOperation.textContent = operationType.value || "—";
+  }
+
+  function bindStatusToggles() {
+    const toggles = document.querySelectorAll(".status-toggle");
+    toggles.forEach(sel => {
+      sel.addEventListener("change", () => {
+        const targetId = sel.dataset.target;
+        const box = document.getElementById(targetId);
+        if (!box) return;
+        const show = sel.value === "DANO" || sel.value === "OTRO";
+        box.classList.toggle("hidden", !show);
+      });
+    });
+  }
+
+  function setNow() {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mi = String(now.getMinutes()).padStart(2, "0");
+
+    tripDate.value = `${yyyy}-${mm}-${dd}`;
+    tripTime.value = `${hh}:${mi}`;
+  }
+
+  function openDamageModal(side, x, y) {
+    pendingDamage = { side, x, y };
+    modalSideText.value = sideLabels[side] || side;
+    modalDamageType.value = "";
+    modalDamageNote.value = "";
+    damageModalBackdrop.style.display = "flex";
+  }
+
+  function closeDamageModal() {
+    pendingDamage = null;
+    damageModalBackdrop.style.display = "none";
+  }
+
+  function addDamagePoint(side, x, y, damageType, notes) {
+    const item = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      side,
+      x: Number(x.toFixed(3)),
+      y: Number(y.toFixed(3)),
+      damage_type: damageType,
+      notes: notes || ""
+    };
+    damagePoints.push(item);
+    syncDamageUi();
+  }
+
+  function removeLastDamage() {
+    if (!damagePoints.length) return;
+    damagePoints.pop();
+    syncDamageUi();
+  }
+
+  function removeDamageById(id) {
+    damagePoints = damagePoints.filter(item => item.id !== id);
+    syncDamageUi();
+  }
+
+  function clearAllDamage() {
+    damagePoints = [];
+    syncDamageUi();
+  }
+
+  function syncDamageUi() {
+    damageJsonInput.value = JSON.stringify(
+      damagePoints.map(({side, x, y, damage_type, notes}) => ({side, x, y, damage_type, notes}))
+    );
+
+    resumeDamageCount.textContent = String(damagePoints.length);
+
+    renderMarkers();
+    renderDamageList();
+  }
+
+  function renderMarkers() {
+    damageSvgs.forEach(svg => {
+      const layer = svg.querySelector(".markers-layer");
+      if (layer) layer.innerHTML = "";
+
+      const side = svg.dataset.side;
+      const rect = svg.viewBox.baseVal;
+
+      const items = damagePoints.filter(p => p.side === side);
+      items.forEach(item => {
+        const cx = item.x * rect.width;
+        const cy = item.y * rect.height;
+
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", cx);
+        circle.setAttribute("cy", cy);
+        circle.setAttribute("r", 11);
+        circle.setAttribute("class", "marker-dot");
+
+        const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        text.setAttribute("x", cx);
+        text.setAttribute("y", cy + 0.5);
+        text.setAttribute("class", "marker-label");
+        text.textContent = item.damage_type;
+
+        layer.appendChild(circle);
+        layer.appendChild(text);
+      });
+    });
+  }
+
+  function renderDamageList() {
+    if (!damagePoints.length) {
+      damageListBox.innerHTML = `<div class="damage-empty">No hay daños marcados todavía.</div>`;
+      return;
+    }
+
+    damageListBox.innerHTML = damagePoints.map(item => {
+      const sideTxt = sideLabels[item.side] || item.side;
+      const damageTxt = damageLabels[item.damage_type] || item.damage_type;
+      const noteTxt = item.notes ? item.notes : "Sin observación";
+      return `
+        <div class="damage-list-item">
+          <div class="damage-list-head">
+            <span>${item.damage_type} · ${damageTxt}</span>
+            <button type="button" class="btn-danger-soft" onclick="window.removeDamageFromList('${item.id}')">Quitar</button>
+          </div>
+          <div><strong>Vista:</strong> ${sideTxt}</div>
+          <div><strong>Posición:</strong> x=${item.x.toFixed(3)}, y=${item.y.toFixed(3)}</div>
+          <div><strong>Nota:</strong> ${noteTxt}</div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  window.removeDamageFromList = removeDamageById;
+
+  function onSvgClick(event) {
+    const svg = event.currentTarget;
+    const side = svg.dataset.side;
+    const rect = svg.getBoundingClientRect();
+    const viewBox = svg.viewBox.baseVal;
+
+    const x = ((event.clientX - rect.left) / rect.width) * viewBox.width;
+    const y = ((event.clientY - rect.top) / rect.height) * viewBox.height;
+
+    const xn = x / viewBox.width;
+    const yn = y / viewBox.height;
+
+    openDamageModal(side, xn, yn);
+  }
+
+  damageSvgs.forEach(svg => {
+    svg.addEventListener("click", onSvgClick);
+  });
+
+  btnCancelDamage.addEventListener("click", closeDamageModal);
+  damageModalBackdrop.addEventListener("click", (e) => {
+    if (e.target === damageModalBackdrop) closeDamageModal();
+  });
+
+  btnSaveDamage.addEventListener("click", () => {
+    if (!pendingDamage) return;
+    if (!modalDamageType.value) {
+      alert("Selecciona un código de daño.");
+      return;
+    }
+
+    addDamagePoint(
+      pendingDamage.side,
+      pendingDamage.x,
+      pendingDamage.y,
+      modalDamageType.value,
+      modalDamageNote.value.trim()
+    );
+
+    closeDamageModal();
+  });
+
+  btnClearLastDamage.addEventListener("click", removeLastDamage);
+  btnClearAllDamage.addEventListener("click", () => {
+    if (!damagePoints.length) return;
+    if (confirm("¿Deseas eliminar todas las marcas de daño del contenedor?")) {
+      clearAllDamage();
+    }
+  });
+
+  modeSelect.addEventListener("change", syncMode);
+  eirIdPick.addEventListener("change", syncEirIdSource);
+
+  chkHasChassis.addEventListener("change", syncEquipmentSections);
+  chkHasContainer.addEventListener("change", syncEquipmentSections);
+  chkIsReefer.addEventListener("change", syncEquipmentSections);
+  if (rfGenset) rfGenset.addEventListener("change", syncEquipmentSections);
+
+  chassisSelect.addEventListener("change", syncChassisInfo);
+  containerSelect.addEventListener("change", syncContainerInfo);
+  operationType.addEventListener("change", syncOperationResume);
+  btnFillNow.addEventListener("click", setNow);
+
+  bindStatusToggles();
+  syncMode();
+  syncEquipmentSections();
+  syncChassisInfo();
+  syncContainerInfo();
+  syncOperationResume();
+  syncDamageUi();
+</script>
+{% endblock %}
