@@ -1119,6 +1119,7 @@ def gate_in_post():
         ticket_alert_lines = []
         ticket_tire_rows = []
         any_tire_issue = False
+        grouped_tire_readings = {}
 
         tire_state_labels = {
             "GASTADA": "REGULAR",
@@ -1175,20 +1176,37 @@ def gate_in_post():
             marchamo_config = row.marchamo
             tire_number_config = row.tire.tire_number if row.tire else None
 
-            _save_tire_reading(
-                site_id=site_id,
-                chassis_id=selected_chassis.id,
-                pos=pos,
-                ingreso_marchamo=None,
-                check=seal_status,
-                tire_state=tire_state,
-                user_id=current_user.id,
-                estrias_mm=estrias_mm,
-                is_flat=is_flat,
-                event_type="GATE_IN",
-                pressure_psi=pressure_psi,
-                event_id=mv.id,
-            )
+            master_pos = _normalize_position_for_tire_master(pos)
+            if master_pos:
+                grp = grouped_tire_readings.setdefault(master_pos, {
+                    "states": [],
+                    "pressures": [],
+                    "comments": [],
+                    "seal_issue": False,
+                    "seal_2": None,
+                })
+
+                grp["states"].append(tire_state)
+
+                if pressure_psi not in (None, ""):
+                    grp["pressures"].append(pressure_psi)
+
+                if seal_status != "OK":
+                    grp["seal_issue"] = True
+
+                detail_parts = [
+                    f"{pos}",
+                    f"SEAL={seal_status}",
+                    f"STATE={tire_state}",
+                ]
+                if estrias_mm not in (None, ""):
+                    detail_parts.append(f"MM={estrias_mm}")
+                if is_flat:
+                    detail_parts.append("FLAT=SI")
+                if pressure_psi not in (None, ""):
+                    detail_parts.append(f"PSI={pressure_psi}")
+
+                grp["comments"].append(" | ".join(detail_parts))
 
             row.estrias_mm = estrias_mm
             row.is_flat = is_flat
@@ -1227,6 +1245,16 @@ def gate_in_post():
                 "tire_state": tire_state,
                 "pressure_psi": pressure_psi,
             })
+
+        _save_grouped_tire_readings(
+            site_id=site_id,
+            chassis_id=selected_chassis.id,
+            axles=axles,
+            grouped_readings=grouped_tire_readings,
+            user_id=current_user.id,
+            event_type="GATE_IN",
+            event_id=mv.id,
+        )
 
         structure_lines = []
 
@@ -2586,6 +2614,192 @@ def allowed_positions_for(axles: int):
         ]
     return []
 
+def _normalize_position_for_tire_master(pos: str) -> str | None:
+    """
+    Convierte posiciones detalladas del frontend/chassis_tires a la posición
+    maestra que existe en yard_gate_alamo.tire_positions.
+
+    Ejemplos:
+    AX1_L_IN  -> A1_IN
+    AX1_R_IN  -> A1_IN
+    AX2_L_OUT -> A2_OUT
+    AX3_R_OUT -> A3_OUT
+
+    También acepta ya-normalizadas:
+    A1_IN, A1_OUT, A2_IN, A2_OUT, etc.
+    """
+    value = (pos or "").strip().upper()
+
+    m_simple = re.match(r"^A([1-3])_(IN|OUT)$", value)
+    if m_simple:
+        return value
+
+    m = re.match(r"^AX([1-3])_(L|R)_(IN|OUT)$", value)
+    if not m:
+        return None
+
+    axle = m.group(1)
+    inout = m.group(3)
+    return f"A{axle}_{inout}"
+
+
+def _resolve_tire_position_id(axles: int, pos: str) -> int:
+    """
+    Busca el id real en yard_gate_alamo.tire_positions usando:
+    - axle_count (2 o 3)
+    - position_code normalizado (A1_IN, A1_OUT, etc.)
+    """
+    master_pos = _normalize_position_for_tire_master(pos)
+    if not master_pos:
+        raise ValueError(f"Posición inválida para tire_positions: {pos}")
+
+    sql = text("""
+        SELECT id
+        FROM yard_gate_alamo.tire_positions
+        WHERE axle_count = :axles
+          AND position_code = :position_code
+        LIMIT 1
+    """)
+    row = db.session.execute(sql, {
+        "axles": int(axles),
+        "position_code": master_pos,
+    }).mappings().first()
+
+    if not row:
+        raise ValueError(
+            f"No existe tire_positions para axle_count={axles}, position_code={master_pos}"
+        )
+
+    return int(row["id"])
+
+
+def _condition_from_tire_states(states: list[str]) -> str:
+    """
+    Mapea varios estados internos de llanta al valor permitido por
+    tire_readings.condition:
+    - OK
+    - DESGASTADA
+    - REPARABLE
+    """
+    normalized = {(x or "").strip().upper() for x in states if x}
+
+    if normalized & {"PINCHADA", "CAMBIAR", "NO_APTA"}:
+        return "REPARABLE"
+    if "GASTADA" in normalized:
+        return "DESGASTADA"
+    return "OK"
+
+
+def _pick_valid_pressure(values: list) -> float | None:
+    """
+    Devuelve la primera presión válida (> 0). Si ninguna sirve, None.
+    """
+    for v in values:
+        try:
+            num = float(v)
+            if num > 0:
+                return num
+        except Exception:
+            continue
+    return None
+
+
+def _insert_tire_reading_row(
+    *,
+    site_id: int,
+    chassis_id: int,
+    axles: int,
+    pos: str,
+    event_type: str,
+    event_id,
+    seal_1,
+    seal_2,
+    pressure_psi,
+    condition: str | None,
+    comments: str | None,
+    user_id: int,
+):
+    """
+    Inserta una fila REAL en yard_gate_alamo.tire_readings usando tire_positions.id.
+    """
+    allowed_event_types = {"GATE_IN", "EIR_OUT", "EIR_IN"}
+    resolved_event_type = event_type if event_type in allowed_event_types else "GATE_IN"
+
+    tire_position_id = _resolve_tire_position_id(axles, pos)
+
+    resolved_pressure = pressure_psi
+    try:
+        if resolved_pressure not in (None, ""):
+            resolved_pressure = float(resolved_pressure)
+        else:
+            resolved_pressure = None
+    except Exception:
+        resolved_pressure = None
+
+    # Constraint real:
+    # ck_pressure_gate_in -> si event_type='GATE_IN', pressure_psi > 0
+    if resolved_event_type == "GATE_IN" and (resolved_pressure is None or resolved_pressure <= 0):
+        resolved_pressure = 1.0
+
+    payload = {
+        "site_id": site_id,
+        "chassis_id": chassis_id,
+        "event_type": resolved_event_type,
+        "event_id": event_id,
+        "tire_position_id": tire_position_id,
+        "seal_1": seal_1,
+        "seal_2": seal_2,
+        "pressure_psi": resolved_pressure,
+        "condition": condition,
+        "comments": comments,
+        "recorded_at": datetime.utcnow(),
+        "recorded_by_user_id": user_id,
+    }
+
+    _insert_dynamic("yard_gate_alamo", "tire_readings", payload)
+
+
+def _save_grouped_tire_readings(
+    *,
+    site_id: int,
+    chassis_id: int,
+    axles: int,
+    grouped_readings: dict,
+    user_id: int,
+    event_type: str,
+    event_id=None,
+):
+    """
+    Guarda lecturas agrupadas por posición maestra de tire_positions.
+    Ejemplo:
+      AX1_L_IN + AX1_R_IN -> A1_IN
+      AX1_L_OUT + AX1_R_OUT -> A1_OUT
+    """
+    for master_pos, group in grouped_readings.items():
+        states = group.get("states", [])
+        pressures = group.get("pressures", [])
+        comments_list = group.get("comments", [])
+        seal_issue = bool(group.get("seal_issue"))
+        second_seal = group.get("seal_2")
+
+        condition = _condition_from_tire_states(states)
+        pressure = _pick_valid_pressure(pressures)
+
+        _insert_tire_reading_row(
+            site_id=site_id,
+            chassis_id=chassis_id,
+            axles=axles,
+            pos=master_pos,
+            event_type=event_type,
+            event_id=event_id,
+            seal_1="DISTINTO" if seal_issue else None,
+            seal_2=second_seal,
+            pressure_psi=pressure,
+            condition=condition,
+            comments=" || ".join(comments_list) if comments_list else None,
+            user_id=user_id,
+        )
+
 # =========================
 # Chassis classification helpers (sin modelos nuevos)
 # =========================
@@ -2714,103 +2928,34 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
                        is_flat=False, event_type: str = "GATE_IN", pressure_psi=None,
                        event_id=None, second_seal=None):
     """
-    Guarda lectura/hallazgo en yard_gate_alamo.tire_readings usando la estructura REAL
-    de la tabla.
-
-    Tabla real:
-    - id
-    - site_id
-    - chassis_id
-    - event_type
-    - event_id
-    - tire_position_id
-    - seal_1
-    - seal_2
-    - pressure_psi
-    - condition
-    - comments
-    - recorded_at
-    - recorded_by_user_id
+    Función legacy. Se mantiene temporalmente para no romper imports o referencias viejas,
+    pero el flujo correcto ahora usa:
+    - _normalize_position_for_tire_master
+    - _insert_tire_reading_row
+    - _save_grouped_tire_readings
     """
-    cols = _get_table_columns("yard_gate_alamo", "tire_readings")
-    if not cols:
+    master_pos = _normalize_position_for_tire_master(pos)
+    if not master_pos:
         return
 
-    pos = (pos or "").strip().upper()
-
-    allowed_event_types = {"GATE_IN", "EIR_OUT", "EIR_IN"}
-    resolved_event_type = event_type if event_type in allowed_event_types else "GATE_IN"
-
-    # Resolver tire_position_id
-    tire_pos_row = ChassisTire.query.filter_by(
+    _insert_tire_reading_row(
+        site_id=site_id,
         chassis_id=chassis_id,
-        position_code=pos
-    ).first()
-
-    if not tire_pos_row:
-        tire_pos_row = ChassisTire(
-            chassis_id=chassis_id,
-            position_code=pos,
-            updated_at=datetime.utcnow(),
-        )
-        db.session.add(tire_pos_row)
-        db.session.flush()
-
-    # Presión
-    resolved_pressure = pressure_psi
-    try:
-        if resolved_pressure not in (None, ""):
-            resolved_pressure = float(resolved_pressure)
-        else:
-            resolved_pressure = None
-    except Exception:
-        resolved_pressure = None
-
-    # Regla de DB:
-    # si event_type = GATE_IN => pressure_psi NOT NULL y > 0
-    if resolved_event_type == "GATE_IN":
-        if resolved_pressure is None or resolved_pressure <= 0:
-            resolved_pressure = 1
-
-    # condition real de la tabla
-    # Guardamos el estado calculado de llanta ahí.
-    # condition real permitido por la BD:
-    # OK / DESGASTADA / REPARABLE
-    resolved_condition = _map_tire_condition_for_db(tire_state)
-
-    # comments real de la tabla
-    comments_parts = [
-        f"POS {pos}",
-        f"CHECK_MARCHAMO {check}",
-        f"ESTADO {resolved_condition}",
-    ]
-    if estrias_mm not in (None, ""):
-        comments_parts.append(f"MM {estrias_mm}")
-    if is_flat:
-        comments_parts.append("PINCHADA SI")
-    if ingreso_marchamo:
-        comments_parts.append(f"SEAL_INGRESO {ingreso_marchamo}")
-    if second_seal:
-        comments_parts.append(f"SEAL_2 {second_seal}")
-    if resolved_pressure is not None:
-        comments_parts.append(f"PSI {resolved_pressure}")
-
-    payload = {
-        "site_id": site_id,
-        "chassis_id": chassis_id,
-        "event_type": resolved_event_type,
-        "event_id": event_id,
-        "tire_position_id": tire_pos_row.id,
-        "seal_1": ingreso_marchamo or (check if check != "OK" else None),
-        "seal_2": second_seal,
-        "pressure_psi": resolved_pressure,
-        "condition": resolved_condition,
-        "comments": " | ".join(comments_parts),
-        "recorded_at": datetime.utcnow(),
-        "recorded_by_user_id": user_id,
-    }
-
-    _insert_dynamic("yard_gate_alamo", "tire_readings", payload)
+        axles=2 if "AX3" not in (pos or "").upper() else 3,
+        pos=master_pos,
+        event_type=event_type,
+        event_id=event_id,
+        seal_1=ingreso_marchamo or (check if check != "OK" else None),
+        seal_2=second_seal,
+        pressure_psi=pressure_psi,
+        condition=_condition_from_tire_states([tire_state]),
+        comments=(
+            f"POS {pos} | CHECK_MARCHAMO {check}"
+            + (f" | MM {estrias_mm}" if estrias_mm not in (None, "") else "")
+            + (" | PINCHADA SI" if is_flat else "")
+        ),
+        user_id=user_id,
+    )
 
 # =========================
 # Chassis pages
@@ -3290,6 +3435,7 @@ def api_chassis_classify(chassis_id: int):
 
     tire_lines = []
     any_tire_issue = False
+    grouped_tire_readings = {}
 
     for t in tires:
         pos = (t.get("position_code") or "").strip().upper()
@@ -3315,18 +3461,34 @@ def api_chassis_classify(chassis_id: int):
         if tire_state not in TIRE_STATES:
             tire_state = "OK"
 
-        # Guardar lectura en tire_readings
-        _save_tire_reading(
-            site_id=site_id,
-            chassis_id=ch.id,
-            pos=pos,
-            ingreso_marchamo=(ingreso_marchamo or None),
-            check=marchamo_check,
-            tire_state=tire_state,
-            user_id=current_user.id,
-            estrias_mm=estrias_mm,
-            is_flat=is_flat,
-        )
+        master_pos = _normalize_position_for_tire_master(pos)
+        if master_pos:
+            grp = grouped_tire_readings.setdefault(master_pos, {
+                "states": [],
+                "pressures": [],
+                "comments": [],
+                "seal_issue": False,
+                "seal_2": None,
+            })
+
+            grp["states"].append(tire_state)
+
+            if marchamo_check != "OK":
+                grp["seal_issue"] = True
+
+            detail_parts = [
+                f"{pos}",
+                f"MARCHAMO={marchamo_check}",
+                f"STATE={tire_state}",
+            ]
+            if ingreso_marchamo:
+                detail_parts.append(f"INGRESO={ingreso_marchamo}")
+            if estrias_mm not in (None, ""):
+                detail_parts.append(f"MM={estrias_mm}")
+            if is_flat:
+                detail_parts.append("FLAT=SI")
+
+            grp["comments"].append(" | ".join(detail_parts))
 
         # Actualizar estado configurado de la llanta del chasis
         row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
@@ -3352,6 +3514,16 @@ def api_chassis_classify(chassis_id: int):
         elif tire_state != "OK":
             any_tire_issue = True
             tire_lines.append(f"{pos}: ESTADO {tire_state} (MM={estrias_mm if estrias_mm is not None else '—'})")
+
+    _save_grouped_tire_readings(
+        site_id=site_id,
+        chassis_id=ch.id,
+        axles=axles,
+        grouped_readings=grouped_tire_readings,
+        user_id=current_user.id,
+        event_type="EIR_IN",
+        event_id=None,
+    )
 
     # --------
     # 3) Determinar si requiere taller
