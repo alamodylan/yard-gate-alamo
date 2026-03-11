@@ -1919,14 +1919,11 @@ def gate_out_post():
         flash(
             f"EIR #{eir.id} guardado correctamente. "
             f"{'Contenedor ' + c.code + ' ' if c else ''}"
-            f"{'y chasis ' + ch.chassis_number if ch else ''}salieron de inventario.",
+            f"{'y chasis ' + ch.chassis_number if ch else ''} salieron de inventario.",
             "success",
         )
 
-        if mv:
-            return redirect(url_for("yard.ticket_view", movement_id=mv.id))
-
-        return redirect(url_for("yard.gate_out_view"))
+        return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
     # ==========================================================
     # 🔹 MAERSK: flujo viejo intacto
