@@ -1556,15 +1556,18 @@ def gate_out_post():
         # -------------------------
         # Validaciones mínimas
         # -------------------------
-        if not terminal_name or not trip_date_raw or not origin:
-            flash("Completa Terminal, Fecha de salida y Origen.", "danger")
-            return redirect(url_for("yard.gate_out_view"))
+        terminal_name = terminal_name or (active_site.name if active_site else site_code or "")
+        origin = origin or (active_site.name if active_site else site_code or "")
+        carrier = carrier or "ATM"
 
-        try:
-            trip_date = datetime.strptime(trip_date_raw, "%Y-%m-%d").date()
-        except Exception:
-            flash("Fecha inválida. Usa el selector de fecha.", "danger")
-            return redirect(url_for("yard.gate_out_view"))
+        if trip_date_raw:
+            try:
+                trip_date = datetime.strptime(trip_date_raw, "%Y-%m-%d").date()
+            except Exception:
+                flash("Fecha inválida. Usa el selector de fecha.", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+        else:
+            trip_date = datetime.utcnow().date()
 
         trip_time = None
         if trip_time_raw:
@@ -1795,6 +1798,18 @@ def gate_out_post():
             eir = EIR(
                 site_id=site_id,
                 created_by_user_id=current_user.id,
+                terminal_name=terminal_name or "",
+                trip_date=trip_date,
+                carrier=carrier or "ATM",
+                origin=origin or "",
+                destination=destination or "",
+                has_chassis=bool(has_chassis and ch),
+                chassis_id=ch.id if ch else None,
+                has_container=bool(has_container and c),
+                container_id=c.id if c else None,
+                is_reefer=bool(is_reefer),
+                has_genset=bool(has_genset),
+                status="DRAFT",
             )
             db.session.add(eir)
             db.session.flush()
@@ -1802,12 +1817,12 @@ def gate_out_post():
         # -------------------------
         # Completar / actualizar EIR
         # -------------------------
-        eir.terminal_name = terminal_name
+        eir.terminal_name = terminal_name or ""
         eir.trip_date = trip_date
         eir.trip_time = trip_time
         eir.carrier = carrier or "ATM"
-        eir.origin = origin
-        eir.destination = destination or None
+        eir.origin = origin or ""
+        eir.destination = destination or ""
         eir.operation_type = operation_type or None
 
         eir.driver_name = driver_name or None
