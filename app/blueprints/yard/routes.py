@@ -1102,13 +1102,21 @@ def gate_in_post():
         axles = int(getattr(selected_chassis, "axles", 2) or 2)
         allowed = set(allowed_positions_for(axles))
 
-        structure_status = _norm_enum(chassis_inspection.get("structure_status"))
-        twistlocks_status = _norm_enum(chassis_inspection.get("twistlocks_status"))
-        landing_gear_status = _norm_enum(chassis_inspection.get("landing_gear_status"))
+        structure_status = _normalize_structure_status_for_db(
+            _norm_enum(chassis_inspection.get("structure_status"))
+        )
+        twistlocks_status = _normalize_twistlocks_status_for_db(
+            _norm_enum(chassis_inspection.get("twistlocks_status"))
+        )
+        landing_gear_status = _normalize_landing_gear_status_for_db(
+            _norm_enum(chassis_inspection.get("landing_gear_status"))
+        )
         lights_status = _normalize_lights_status_for_db(
             _norm_enum(chassis_inspection.get("lights_status"))
         )
-        mudflap_status = _norm_enum(chassis_inspection.get("mudflap_status"))
+        mudflap_status = _normalize_mudflap_status_for_db(
+            _norm_enum(chassis_inspection.get("mudflap_status"))
+        )
 
         plate_text = (chassis_inspection.get("plate_text") or "").strip()
         plate_validation_status = _norm_enum(chassis_inspection.get("plate_validation_status"))
@@ -1260,19 +1268,19 @@ def gate_in_post():
 
         structure_lines = []
 
-        if structure_status in {"DANO_LEVE", "DANO_GRAVE", "DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}:
+        if structure_status in {"GOLPE", "DOBLADO", "SOLDADURA"}:
             structure_lines.append(f"Estructura: {structure_status}")
 
-        if twistlocks_status in {"DANO_LEVE", "DANO_GRAVE", "DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}:
+        if twistlocks_status in {"DANADOS"}:
             structure_lines.append(f"Twistlocks: {twistlocks_status}")
 
-        if landing_gear_status in {"DANO_LEVE", "DANO_GRAVE", "DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}:
+        if landing_gear_status in {"DANADAS"}:
             structure_lines.append(f"Patas: {landing_gear_status}")
 
-        if lights_status in {"UNA_DANADA", "AMBAS_DANADAS", "DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}:
+        if lights_status in {"IZQ_DANADA", "DER_DANADA"}:
             structure_lines.append(f"Luces: {lights_status}")
 
-        if mudflap_status in {"DANADO", "DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}:
+        if mudflap_status in {"NO_TRAE"}:
             structure_lines.append(f"Faldones: {mudflap_status}")
 
         if plate_validation_status in {"DISTINTA", "NO_TRAE"}:
@@ -2622,6 +2630,108 @@ def _build_chassis_gate_in_ticket_text(
     lines.append("--------------------------------")
     return "\n".join(lines).strip()
 
+def _normalize_structure_status_for_db(value: str | None) -> str | None:
+    v = (value or "").strip().upper()
+
+    mapping = {
+        "OK": "OK",
+
+        "DANO_LEVE": "GOLPE",
+        "DAÑO_LEVE": "GOLPE",
+        "DANO_GRAVE": "DOBLADO",
+        "DAÑO_GRAVE": "DOBLADO",
+
+        "GOLPE": "GOLPE",
+        "DOBLADO": "DOBLADO",
+        "SOLDADURA": "SOLDADURA",
+
+        "DAÑADO": "DOBLADO",
+        "DANADO": "DOBLADO",
+        "FUERA_DE_SERVICIO": "DOBLADO",
+        "ATADO": "SOLDADURA",
+    }
+
+    return mapping.get(v, "OK" if v else None)
+
+
+def _normalize_twistlocks_status_for_db(value: str | None) -> str | None:
+    v = (value or "").strip().upper()
+
+    mapping = {
+        "OK": "BIEN",
+        "BIEN": "BIEN",
+
+        "DANO_LEVE": "DANADOS",
+        "DAÑO_LEVE": "DANADOS",
+        "DANO_GRAVE": "DANADOS",
+        "DAÑO_GRAVE": "DANADOS",
+        "DAÑADO": "DANADOS",
+        "DANADO": "DANADOS",
+        "FUERA_DE_SERVICIO": "DANADOS",
+        "ATADO": "DANADOS",
+
+        "DANADOS": "DANADOS",
+        "DAÑADOS": "DANADOS",
+    }
+
+    return mapping.get(v, "BIEN" if v else None)
+
+
+def _normalize_landing_gear_status_for_db(value: str | None) -> str | None:
+    v = (value or "").strip().upper()
+
+    mapping = {
+        "OK": "OK",
+        "DANADAS": "DANADAS",
+        "DAÑADAS": "DANADAS",
+
+        "DANO_LEVE": "DANADAS",
+        "DAÑO_LEVE": "DANADAS",
+        "DANO_GRAVE": "DANADAS",
+        "DAÑO_GRAVE": "DANADAS",
+        "DAÑADO": "DANADAS",
+        "DANADO": "DANADAS",
+        "FUERA_DE_SERVICIO": "DANADAS",
+        "ATADO": "DANADAS",
+    }
+
+    return mapping.get(v, "OK" if v else None)
+
+
+def _normalize_lights_status_for_db(value: str | None) -> str | None:
+    v = (value or "").strip().upper()
+
+    mapping = {
+        "OK": "OK",
+
+        "UNA_DANADA": "IZQ_DANADA",
+        "UNA_DAÑADA": "IZQ_DANADA",
+        "AMBAS_DANADAS": "IZQ_DANADA",
+        "AMBAS_DAÑADAS": "IZQ_DANADA",
+
+        "IZQ_DANADA": "IZQ_DANADA",
+        "IZQ_DAÑADA": "IZQ_DANADA",
+        "DER_DANADA": "DER_DANADA",
+        "DER_DAÑADA": "DER_DANADA",
+    }
+
+    return mapping.get(v, "OK" if v else None)
+
+
+def _normalize_mudflap_status_for_db(value: str | None) -> str | None:
+    v = (value or "").strip().upper()
+
+    mapping = {
+        "OK": "OK",
+        "NO_TRAE": "NO_TRAE",
+
+        "DANADO": "NO_TRAE",
+        "DAÑADO": "NO_TRAE",
+        "FUERA_DE_SERVICIO": "NO_TRAE",
+        "ATADO": "NO_TRAE",
+    }
+
+    return mapping.get(v, "OK" if v else None)
 
 def allowed_positions_for(axles: int):
     if axles == 2:
@@ -3440,11 +3550,21 @@ def api_chassis_classify(chassis_id: int):
     # --------
     # 1) Estructura
     # --------
-    structure_status = _norm_enum(data.get("structure_status"))
-    twistlocks_status = _norm_enum(data.get("twistlocks_status"))
-    landing_gear_status = _norm_enum(data.get("landing_gear_status"))
-    lights_status = _norm_enum(data.get("lights_status"))
-    mudflap_status = _norm_enum(data.get("mudflap_status"))
+    structure_status = _normalize_structure_status_for_db(
+        _norm_enum(data.get("structure_status"))
+    )
+    twistlocks_status = _normalize_twistlocks_status_for_db(
+        _norm_enum(data.get("twistlocks_status"))
+    )
+    landing_gear_status = _normalize_landing_gear_status_for_db(
+        _norm_enum(data.get("landing_gear_status"))
+    )
+    lights_status = _normalize_lights_status_for_db(
+        _norm_enum(data.get("lights_status"))
+    )
+    mudflap_status = _normalize_mudflap_status_for_db(
+        _norm_enum(data.get("mudflap_status"))
+    )
     plate_text = (data.get("plate_text") or "").strip()
     comments = (data.get("comments") or "").strip()
     damage_summary = (data.get("damage_summary") or "").strip()
@@ -3552,17 +3672,21 @@ def api_chassis_classify(chassis_id: int):
     # 3) Determinar si requiere taller
     # --------
     structure_lines = []
-    flagged = {"DAÑADO", "FUERA_DE_SERVICIO", "ATADO"}
 
-    def add_if_flag(label: str, val: str):
-        if val in flagged:
-            structure_lines.append(f"{label}: {val}")
+    if structure_status in {"GOLPE", "DOBLADO", "SOLDADURA"}:
+        structure_lines.append(f"Estructura: {structure_status}")
 
-    add_if_flag("Estructura", structure_status)
-    add_if_flag("Twistlocks", twistlocks_status)
-    add_if_flag(LABELS_ES["landing_gear"], landing_gear_status)
-    add_if_flag("Luces", lights_status)
-    add_if_flag(LABELS_ES["mudflap"], mudflap_status)
+    if twistlocks_status in {"DANADOS"}:
+        structure_lines.append(f"Twistlocks: {twistlocks_status}")
+
+    if landing_gear_status in {"DANADAS"}:
+        structure_lines.append(f"{LABELS_ES['landing_gear']}: {landing_gear_status}")
+
+    if lights_status in {"IZQ_DANADA", "DER_DANADA"}:
+        structure_lines.append(f"Luces: {lights_status}")
+
+    if mudflap_status in {"NO_TRAE"}:
+        structure_lines.append(f"{LABELS_ES['mudflap']}: {mudflap_status}")
 
     if damage_summary:
         structure_lines.append(f"Resumen: {damage_summary}")
