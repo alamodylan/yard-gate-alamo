@@ -2700,7 +2700,8 @@ def _build_workshop_ticket_text(
     return "\n".join(out).strip()
 
 def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo: str | None,
-                       check: str, tire_state: str, user_id: int, estrias_mm=None, is_flat=False):
+                       check: str, tire_state: str, user_id: int, estrias_mm=None,
+                       is_flat=False, event_type: str = "GATE_IN"):
     """
     Guarda lectura/hallazgo por llanta en tire_readings si existe, sin requerir modelo.
     Se adapta a columnas reales de la tabla y llena event_type si es obligatorio.
@@ -2802,12 +2803,10 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
     if "created_at" in cols:
         payload["created_at"] = now
 
-    # event_type obligatorio
+    # Event type
     if "event_type" in cols:
-        if check != "OK" or tire_state != "OK" or bool(is_flat):
-            payload["event_type"] = "ISSUE"
-        else:
-            payload["event_type"] = "INSPECTION"
+        allowed_event_types = {"GATE_IN", "EIR_OUT", "EIR_IN"}
+        payload["event_type"] = event_type if event_type in allowed_event_types else "GATE_IN"
 
     # Notas automáticas si la tabla las soporta
     if "notes" in cols and "notes" not in payload:
