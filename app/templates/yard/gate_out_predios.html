@@ -601,17 +601,21 @@
           <label>Contenedor en patio</label>
           <select name="container_id" id="container_id">
             <option value="">— Selecciona contenedor —</option>
-            {% for c, p, b in containers %}
-              <option
-                value="{{ c.id }}"
-                data-code="{{ c.code }}"
-                data-size="{{ c.size or '' }}"
-                data-bay="{{ b.code }}"
-                data-row="{{ p.depth_row }}"
-                data-tier="{{ p.tier }}"
-              >
-                {{ c.code }} · {{ c.size }} · {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
-              </option>
+            {% for row in containers %}
+                {% set c = row.container %}
+                {% set p = row.position %}
+                {% set b = row.bay %}
+                <option
+                    value="{{ c.id }}"
+                    data-code="{{ c.code }}"
+                    data-size="{{ c.size or '' }}"
+                    data-bay="{{ b.code }}"
+                    data-row="{{ p.depth_row }}"
+                    data-tier="{{ p.tier }}"
+                    data-shipping-line="{{ row.shipping_line or '' }}"
+                >
+                    {{ c.code }} · {{ c.size }} · {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
+                </option>
             {% endfor %}
           </select>
           <div class="field-help">Solo se muestran contenedores activos en patio de este predio.</div>
@@ -713,26 +717,28 @@
         </div>
       </div>
 
-      <div class="subbox">
-        <h4>Mapa de llantas / marchamos</h4>
-        <div class="tire-map" id="tire_map_preview">
-          <div class="tire-item"><div class="tire-pos">AX1_L_IN</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX1_L_OUT</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX1_R_IN</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX1_R_OUT</div><div class="tire-value">—</div></div>
-
-          <div class="tire-item"><div class="tire-pos">AX2_L_IN</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX2_L_OUT</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX2_R_IN</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX2_R_OUT</div><div class="tire-value">—</div></div>
-
-          <div class="tire-item"><div class="tire-pos">AX3_L_IN</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX3_L_OUT</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX3_R_IN</div><div class="tire-value">—</div></div>
-          <div class="tire-item"><div class="tire-pos">AX3_R_OUT</div><div class="tire-value">—</div></div>
+      <div class="tire-map" id="tire_map_preview">
+        {% for pos, label in [
+            ('AX1_L_IN', 'Eje 1 izq int'),
+            ('AX1_L_OUT', 'Eje 1 izq ext'),
+            ('AX1_R_IN', 'Eje 1 der int'),
+            ('AX1_R_OUT', 'Eje 1 der ext'),
+            ('AX2_L_IN', 'Eje 2 izq int'),
+            ('AX2_L_OUT', 'Eje 2 izq ext'),
+            ('AX2_R_IN', 'Eje 2 der int'),
+            ('AX2_R_OUT', 'Eje 2 der ext'),
+            ('AX3_L_IN', 'Eje 3 izq int'),
+            ('AX3_L_OUT', 'Eje 3 izq ext'),
+            ('AX3_R_IN', 'Eje 3 der int'),
+            ('AX3_R_OUT', 'Eje 3 der ext')
+        ] %}
+        <div class="tire-item" data-pos="{{ pos }}">
+            <div class="tire-pos">{{ pos }}</div>
+            <div class="muted-line" style="font-size:12px; margin-bottom:6px;">{{ label }}</div>
+            <div class="tire-value">Marchamo: —</div>
         </div>
+        {% endfor %}
       </div>
-    </div>
 
     <!-- =========================
          5) CONTENEDOR
@@ -1124,6 +1130,7 @@
   const modalDamageNote = document.getElementById("modal_damage_note");
   const btnCancelDamage = document.getElementById("btn_cancel_damage");
   const btnSaveDamage = document.getElementById("btn_save_damage");
+  const shippingLineInput = document.getElementById("shipping_line");
 
   let damagePoints = [];
   let pendingDamage = null;
@@ -1209,6 +1216,7 @@
       chassisPlateView.value = "";
       chassisTypeView.value = "";
       resumeChassis.textContent = "—";
+      resetTireMap();
       return;
     }
 
@@ -1221,16 +1229,19 @@
     chassisPlateView.value = plate;
     chassisTypeView.value = typeCode ? `${typeCode}${axles ? " · " + axles + " ejes" : ""}` : (axles ? axles + " ejes" : "");
     resumeChassis.textContent = chassisNumber || "—";
+
+    loadChassisTires(opt.value);
   }
 
   function syncContainerInfo() {
     const opt = containerSelect.options[containerSelect.selectedIndex];
     if (!opt || !opt.value) {
-      containerCodeView.value = "";
-      containerSizeView.value = "";
-      containerPositionView.value = "";
-      resumeContainer.textContent = "—";
-      return;
+        containerCodeView.value = "";
+        containerSizeView.value = "";
+        containerPositionView.value = "";
+        if (shippingLineInput) shippingLineInput.value = "";
+        resumeContainer.textContent = "—";
+        return;
     }
 
     const code = opt.dataset.code || "";
@@ -1238,12 +1249,14 @@
     const bay = opt.dataset.bay || "";
     const row = opt.dataset.row || "";
     const tier = opt.dataset.tier || "";
+    const shippingLine = opt.dataset.shippingLine || "";
 
     containerCodeView.value = code;
     containerSizeView.value = size;
     containerPositionView.value = bay ? `${bay} F${String(row).padStart(2, "0")} N${tier}` : "";
+    if (shippingLineInput) shippingLineInput.value = shippingLine;
     resumeContainer.textContent = code || "—";
-  }
+    }
 
   function syncOperationResume() {
     resumeOperation.textContent = operationType.value || "—";
@@ -1446,6 +1459,81 @@
   containerSelect.addEventListener("change", syncContainerInfo);
   operationType.addEventListener("change", syncOperationResume);
   btnFillNow.addEventListener("click", setNow);
+
+  const tireMapPreview = document.getElementById("tire_map_preview");
+
+const tireLabels = {
+  AX1_L_IN: "Eje 1 izq int",
+  AX1_L_OUT: "Eje 1 izq ext",
+  AX1_R_IN: "Eje 1 der int",
+  AX1_R_OUT: "Eje 1 der ext",
+  AX2_L_IN: "Eje 2 izq int",
+  AX2_L_OUT: "Eje 2 izq ext",
+  AX2_R_IN: "Eje 2 der int",
+  AX2_R_OUT: "Eje 2 der ext",
+  AX3_L_IN: "Eje 3 izq int",
+  AX3_L_OUT: "Eje 3 izq ext",
+  AX3_R_IN: "Eje 3 der int",
+  AX3_R_OUT: "Eje 3 der ext",
+};
+
+function resetTireMap() {
+  if (!tireMapPreview) return;
+
+  tireMapPreview.querySelectorAll(".tire-item").forEach((item) => {
+    const pos = item.dataset.pos;
+    const valueEl = item.querySelector(".tire-value");
+    const labelEl = item.querySelector(".muted-line");
+
+    if (labelEl) {
+      labelEl.textContent = tireLabels[pos] || "";
+    }
+    if (valueEl) {
+      valueEl.textContent = "Marchamo: —";
+    }
+
+    item.classList.remove("hidden");
+  });
+}
+
+async function loadChassisTires(chassisId) {
+  resetTireMap();
+
+  if (!chassisId) return;
+
+  try {
+    const resp = await fetch(`/api/chassis/${chassisId}/tires`, {
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+
+    if (!resp.ok) return;
+
+    const data = await resp.json();
+    if (!data.ok || !data.positions) return;
+
+    const axles = Number(data.chassis?.axles || 2);
+
+    tireMapPreview.querySelectorAll(".tire-item").forEach((item) => {
+      const pos = item.dataset.pos;
+      const valueEl = item.querySelector(".tire-value");
+
+      if (axles === 2 && pos.startsWith("AX3_")) {
+        item.classList.add("hidden");
+        return;
+      }
+
+      const row = data.positions[pos];
+      const marchamo = row?.marchamo || "—";
+
+      if (valueEl) {
+        valueEl.textContent = `Marchamo: ${marchamo}`;
+      }
+    });
+
+  } catch (err) {
+    console.error("Error cargando llantas del chasis:", err);
+  }
+}
 
   bindStatusToggles();
   syncMode();

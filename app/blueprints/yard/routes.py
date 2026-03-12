@@ -1490,7 +1490,18 @@ def gate_out_view():
     # ✅ PREDIOS: COYOL / CALDERA / LIMON -> flujo nuevo EIR
     # ==========================================================
     if site_code in {"COYOL", "CALDERA", "LIMON"}:
-        containers = (
+        sql_last_class = text("""
+            SELECT DISTINCT ON (cc.container_id)
+                cc.container_id,
+                cc.shipping_line
+            FROM yard_gate_alamo.container_classifications cc
+            WHERE cc.site_id = :site_id
+            ORDER BY cc.container_id, cc.classified_at DESC NULLS LAST, cc.id DESC
+        """)
+        class_rows = db.session.execute(sql_last_class, {"site_id": site_id}).mappings().all()
+        shipping_line_map = {int(r["container_id"]): (r["shipping_line"] or "").strip().upper() for r in class_rows}
+
+        containers_raw = (
             db.session.query(Container, ContainerPosition, YardBay)
             .join(ContainerPosition, ContainerPosition.container_id == Container.id)
             .join(YardBay, YardBay.id == ContainerPosition.bay_id)
@@ -1498,6 +1509,15 @@ def gate_out_view():
             .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
             .all()
         )
+
+        containers = []
+        for c, p, b in containers_raw:
+            containers.append({
+                "container": c,
+                "position": p,
+                "bay": b,
+                "shipping_line": shipping_line_map.get(c.id, ""),
+            })
 
         chassis_rows = (
             Chassis.query
