@@ -2222,7 +2222,11 @@ def eir_revert_view(eir_id: int):
         flash("Solo se puede revertir un EIR en estado CONFIRMADO.", "danger")
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
-    now_utc = datetime.utcnow()
+    now_utc = datetime.now(UTC_TZ)
+
+    editable_until = eir.editable_until
+    if editable_until and editable_until.tzinfo is None:
+        editable_until = UTC_TZ.localize(editable_until)
 
     # Validar ventana de 24 horas
     if not eir.editable_until or now_utc > eir.editable_until:
