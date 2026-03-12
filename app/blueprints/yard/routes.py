@@ -1880,8 +1880,9 @@ def gate_out_post():
                 container_id=c.id if c else None,
                 is_reefer=bool(is_reefer),
                 has_genset=bool(has_genset),
-                status="DRAFT",
+                status="PENDING",
             )
+            
             db.session.add(eir)
             db.session.flush()
 
@@ -1921,7 +1922,7 @@ def gate_out_post():
 
         # Finalizar
         now_utc = datetime.utcnow()
-        eir.status = "FINAL"
+        eir.status = "PENDING"
         eir.finalized_at = now_utc
         eir.updated_at = now_utc
         eir.pdf_generated_at = now_utc   # por ahora lo dejamos marcado al guardar
