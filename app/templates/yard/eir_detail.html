@@ -280,6 +280,30 @@
 {% set reefer_snapshot = eir.reefer_snapshot_json or {} %}
 {% set damages = eir.damages or [] %}
 
+{% set side_labels = {
+  'RIGHT': 'Costado derecho',
+  'LEFT': 'Costado izquierdo',
+  'FRONT': 'Frente',
+  'REAR': 'Atrás',
+  'ROOF': 'Techo',
+  'INTERIOR': 'Interior'
+} %}
+
+{% set tire_labels = {
+  'AX1_L_IN': 'Eje 1 izq int',
+  'AX1_L_OUT': 'Eje 1 izq ext',
+  'AX1_R_IN': 'Eje 1 der int',
+  'AX1_R_OUT': 'Eje 1 der ext',
+  'AX2_L_IN': 'Eje 2 izq int',
+  'AX2_L_OUT': 'Eje 2 izq ext',
+  'AX2_R_IN': 'Eje 2 der int',
+  'AX2_R_OUT': 'Eje 2 der ext',
+  'AX3_L_IN': 'Eje 3 izq int',
+  'AX3_L_OUT': 'Eje 3 izq ext',
+  'AX3_R_IN': 'Eje 3 der int',
+  'AX3_R_OUT': 'Eje 3 der ext'
+} %}
+
 <div class="eir-wrap">
   <div class="eir-head">
     <div>
@@ -292,8 +316,10 @@
     <div class="badge-row">
       <span class="badge">{{ eir.site.name if eir.site else 'Sin predio' }}</span>
 
-      {% if eir.status == 'FINAL' %}
-        <span class="badge ok">FINAL</span>
+      {% if eir.status == 'CONFIRMED' %}
+        <span class="badge ok">CONFIRMADO</span>
+      {% elif eir.status == 'PENDING' %}
+        <span class="badge warn">PENDIENTE</span>
       {% elif eir.status == 'EDITING' %}
         <span class="badge warn">EDITING</span>
       {% elif eir.status == 'REVERTED' %}
@@ -317,13 +343,23 @@
         <a class="btn btn-dark" href="{{ url_for('yard.eir_pdf_view', eir_id=eir.id) }}" target="_blank">Ver PDF / Imprimir</a>
         <a class="btn btn-soft" href="{{ url_for('yard.eir_list_view') }}">Volver al listado</a>
 
-        {% if eir.status == 'FINAL' and eir.editable_until %}
+        {% if eir.status == 'PENDING' %}
+        <form method="post" action="{{ url_for('yard.eir_confirm_view', eir_id=eir.id) }}"
+            onsubmit="return confirm('¿Deseas confirmar este EIR y sacar el equipo de inventario?');"
+            style="margin:0;">
+        <button type="submit" class="btn btn-dark">
+            Confirmar EIR
+        </button>
+        </form>
+        {% endif %}
+
+        {% if eir.status == 'CONFIRMED' and eir.editable_until %}
         <form method="post" action="{{ url_for('yard.eir_revert_view', eir_id=eir.id) }}"
-                onsubmit="return confirm('¿Deseas revertir este EIR y devolver el equipo a inventario?');"
-                style="margin:0;">
-            <button type="submit" class="btn btn-soft" style="background:#fee2e2;color:#991b1b;">
+            onsubmit="return confirm('¿Deseas revertir este EIR y devolver el equipo a inventario?');"
+            style="margin:0;">
+        <button type="submit" class="btn btn-soft" style="background:#fee2e2;color:#991b1b;">
             Revertir EIR
-            </button>
+        </button>
         </form>
         {% endif %}
     </div>
@@ -484,7 +520,12 @@
         <tbody>
           {% for tire in chassis_snapshot.get('tires', []) %}
           <tr>
-            <td>{{ tire.get('position_code') or '—' }}</td>
+            <td>
+              {{ tire.get('position_code') or '—' }}
+              {% if tire.get('position_code') %}
+                <br><span class="muted">{{ tire_labels.get(tire.get('position_code'), '') }}</span>
+              {% endif %}
+            </td>
             <td>{{ tire.get('marchamo') or '—' }}</td>
             <td>{{ tire.get('tire_number') or '—' }}</td>
             <td>{{ tire.get('brand') or '—' }}</td>
@@ -511,92 +552,94 @@
       <div class="damage-views">
         <div class="damage-panel">
           <h5>Costado derecho</h5>
-          <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 120">
-            <rect x="30" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-            <rect x="178" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-            <line x1="30" y1="82" x2="25" y2="96" stroke="#334155" stroke-width="2"/>
-            <line x1="175" y1="82" x2="182" y2="96" stroke="#334155" stroke-width="2"/>
-            <line x1="110" y1="82" x2="110" y2="100" stroke="#334155" stroke-width="2"/>
-            <circle cx="60" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <circle cx="88" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <line x1="198" y1="58" x2="224" y2="58" stroke="#334155" stroke-width="2"/>
+          <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 110">
+            <rect x="30" y="30" width="145" height="48" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <rect x="178" y="38" width="20" height="28" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="30" y1="78" x2="24" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="175" y1="78" x2="182" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="106" y1="78" x2="106" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="60" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="88" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="198" y1="52" x2="222" y2="52" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
         <div class="damage-panel">
           <h5>Costado izquierdo</h5>
-          <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 120">
-            <rect x="45" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-            <rect x="20" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-            <line x1="45" y1="82" x2="38" y2="96" stroke="#334155" stroke-width="2"/>
-            <line x1="190" y1="82" x2="196" y2="96" stroke="#334155" stroke-width="2"/>
-            <line x1="122" y1="82" x2="122" y2="100" stroke="#334155" stroke-width="2"/>
-            <circle cx="145" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <circle cx="173" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <line x1="20" y1="58" x2="5" y2="58" stroke="#334155" stroke-width="2"/>
+          <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 110">
+            <rect x="45" y="30" width="145" height="48" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <rect x="20" y="38" width="20" height="28" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="45" y1="78" x2="38" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="190" y1="78" x2="196" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="122" y1="78" x2="122" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="145" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="173" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="20" y1="52" x2="4" y2="52" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
         <div class="damage-panel">
           <h5>Interior</h5>
-          <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 120">
-            <polygon points="30,28 210,28 180,92 60,92" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <polygon points="78,42 162,42 146,78 94,78" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
-            <line x1="60" y1="92" x2="78" y2="42" stroke="#334155" stroke-width="1.2"/>
-            <line x1="180" y1="92" x2="162" y2="42" stroke="#334155" stroke-width="1.2"/>
-            <line x1="120" y1="92" x2="120" y2="42" stroke="#334155" stroke-width="1.2"/>
+          <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 110">
+            <polygon points="10,28 40,38 40,94 10,104" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <polygon points="230,28 200,38 200,94 230,104" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <rect x="40" y="28" width="160" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <polygon points="70,46 170,46 150,64 90,64" fill="none" stroke="#111827" stroke-width="2"/>
+            <polygon points="70,46 90,64 90,90 70,94" fill="none" stroke="#111827" stroke-width="2"/>
+            <polygon points="170,46 150,64 150,90 170,94" fill="none" stroke="#111827" stroke-width="2"/>
+            <rect x="90" y="64" width="60" height="26" fill="none" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
         <div class="damage-panel">
           <h5>Frente</h5>
-          <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 120">
-            <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
-            <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
-            <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
-            <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
-            <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
-            <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+          <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 110">
+            <rect x="72" y="18" width="96" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="120" y1="18" x2="120" y2="84" stroke="#111827" stroke-width="1.5"/>
+            <line x1="72" y1="40" x2="168" y2="40" stroke="#111827" stroke-width="1.2"/>
+            <line x1="72" y1="62" x2="168" y2="62" stroke="#111827" stroke-width="1.2"/>
+            <line x1="90" y1="84" x2="88" y2="94" stroke="#111827" stroke-width="2"/>
+            <line x1="150" y1="84" x2="152" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="95" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="145" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
         <div class="damage-panel">
           <h5>Atrás</h5>
-          <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 120">
-            <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
-            <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
-            <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
-            <rect x="84" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
-            <rect x="144" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
-            <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
-            <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
-            <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
+          <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 110">
+            <rect x="72" y="18" width="96" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="120" y1="18" x2="120" y2="84" stroke="#111827" stroke-width="1.5"/>
+            <line x1="72" y1="40" x2="168" y2="40" stroke="#111827" stroke-width="1.2"/>
+            <line x1="72" y1="62" x2="168" y2="62" stroke="#111827" stroke-width="1.2"/>
+            <rect x="84" y="45" width="12" height="16" fill="#fff" stroke="#111827" stroke-width="1.5"/>
+            <rect x="144" y="45" width="12" height="16" fill="#fff" stroke="#111827" stroke-width="1.5"/>
+            <line x1="90" y1="84" x2="88" y2="94" stroke="#111827" stroke-width="2"/>
+            <line x1="150" y1="84" x2="152" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="95" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="145" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
         <div class="damage-panel">
           <h5>Techo</h5>
-          <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 120">
-            <rect x="28" y="30" width="184" height="60" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
-            <line x1="44" y1="30" x2="44" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="60" y1="30" x2="60" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="76" y1="30" x2="76" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="92" y1="30" x2="92" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="108" y1="30" x2="108" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="124" y1="30" x2="124" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="140" y1="30" x2="140" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="156" y1="30" x2="156" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="172" y1="30" x2="172" y2="90" stroke="#334155" stroke-width="1"/>
-            <line x1="188" y1="30" x2="188" y2="90" stroke="#334155" stroke-width="1"/>
+          <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 110">
+            <rect x="28" y="28" width="184" height="54" rx="5" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="44" y1="28" x2="44" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="60" y1="28" x2="60" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="76" y1="28" x2="76" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="92" y1="28" x2="92" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="108" y1="28" x2="108" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="124" y1="28" x2="124" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="140" y1="28" x2="140" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="156" y1="28" x2="156" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="172" y1="28" x2="172" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="188" y1="28" x2="188" y2="82" stroke="#111827" stroke-width="1"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
@@ -628,7 +671,7 @@
             <tbody>
               {% for d in damages %}
               <tr>
-                <td>{{ d.side }}</td>
+                <td>{{ side_labels.get(d.side, d.side) }}</td>
                 <td>{{ d.damage_type }}</td>
                 <td>{{ d.notes or '—' }}</td>
               </tr>

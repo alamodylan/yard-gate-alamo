@@ -2122,6 +2122,8 @@ def _query_report_rows(site_id, movement_type, d1, d2):
     return q.order_by(Movement.occurred_at.asc()).all()
 
 
+
+
 # =========================
 # EIR - Listado / Detalle / PDF
 # =========================
@@ -2130,7 +2132,7 @@ def _query_report_rows(site_id, movement_type, d1, d2):
 def eir_list_view():
     site_id = _ensure_active_site()
 
-    q_text = (request.args.get("q") or "").strip().upper()
+    q = (request.args.get("q") or "").strip().upper()
     date_from = (request.args.get("date_from") or "").strip()
     date_to = (request.args.get("date_to") or "").strip()
     status = (request.args.get("status") or "").strip().upper()
@@ -2138,46 +2140,43 @@ def eir_list_view():
     query = (
         EIR.query
         .filter(EIR.site_id == site_id)
+        .outerjoin(Container, Container.id == EIR.container_id)
+        .outerjoin(Chassis, Chassis.id == EIR.chassis_id)
     )
 
-    if status:
-        query = query.filter(EIR.status == status)
-
-    if q_text:
-        # Buscar por contenedor o chasis
-        query = (
-            query.outerjoin(Container, Container.id == EIR.container_id)
-                 .outerjoin(Chassis, Chassis.id == EIR.chassis_id)
-                 .filter(
-                     or_(
-                         Container.code.ilike(f"%{q_text}%"),
-                         Chassis.chassis_number.ilike(f"%{q_text}%")
-                     )
-                 )
+    if q:
+        query = query.filter(
+            or_(
+                Container.code.ilike(f"%{q}%"),
+                Chassis.chassis_number.ilike(f"%{q}%")
+            )
         )
 
     if date_from:
         try:
-            d1 = datetime.strptime(date_from, "%Y-%m-%d").date()
-            query = query.filter(EIR.trip_date >= d1)
+            d_from = datetime.strptime(date_from, "%Y-%m-%d").date()
+            query = query.filter(EIR.trip_date >= d_from)
         except Exception:
             flash("Fecha desde inválida.", "danger")
             return redirect(url_for("yard.eir_list_view"))
 
     if date_to:
         try:
-            d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
-            query = query.filter(EIR.trip_date <= d2)
+            d_to = datetime.strptime(date_to, "%Y-%m-%d").date()
+            query = query.filter(EIR.trip_date <= d_to)
         except Exception:
             flash("Fecha hasta inválida.", "danger")
             return redirect(url_for("yard.eir_list_view"))
 
-    rows = query.order_by(EIR.id.desc()).limit(500).all()
+    if status:
+        query = query.filter(EIR.status == status)
+
+    rows = query.order_by(EIR.id.desc()).all()
 
     return render_template(
         "yard/eir_list.html",
         rows=rows,
-        q=q_text,
+        q=q,
         date_from=date_from,
         date_to=date_to,
         status=status,
@@ -2219,8 +2218,8 @@ def eir_revert_view(eir_id: int):
         abort(403)
 
     # Solo EIR FINAL puede revertirse
-    if eir.status != "FINAL":
-        flash("Solo se puede revertir un EIR en estado FINAL.", "danger")
+    if eir.status != "CONFIRMED":
+        flash("Solo se puede revertir un EIR en estado CONFIRMADO.", "danger")
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
     now_utc = datetime.utcnow()
@@ -2318,6 +2317,105 @@ def eir_revert_view(eir_id: int):
 
     db.session.commit()
     flash(f"EIR #{eir.id} revertido correctamente. El equipo volvió a inventario.", "success")
+    return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
+
+@yard_bp.post("/eir/<int:eir_id>/confirm")
+@login_required
+def eir_confirm_view(eir_id: int):
+    site_id = _ensure_active_site()
+
+    eir = EIR.query.get_or_404(eir_id)
+    if eir.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    if eir.status != "PENDING":
+        flash("Solo se puede confirmar un EIR en estado PENDIENTE.", "danger")
+        return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
+
+    c = None
+    bay_code = depth_row = tier = None
+
+    if eir.has_container and eir.container_id:
+        c = Container.query.get(eir.container_id)
+        if not c or c.site_id != site_id or not c.is_in_yard:
+            flash("El contenedor ya no está disponible en inventario para confirmar este EIR.", "danger")
+            return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
+
+        pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+        if pos:
+            bay = YardBay.query.get(pos.bay_id)
+            bay_code = bay.code if bay else None
+            depth_row = pos.depth_row
+            tier = pos.tier
+
+    ch = None
+    if eir.has_chassis and eir.chassis_id:
+        ch = Chassis.query.get(eir.chassis_id)
+        if not ch or ch.site_id != site_id or not ch.is_in_yard:
+            flash("El chasis ya no está disponible en inventario para confirmar este EIR.", "danger")
+            return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
+
+    if not c and not ch:
+        flash("Este EIR no tiene equipo válido para confirmar.", "danger")
+        return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
+
+    if not c:
+        flash("Por ahora el movimiento GATE_OUT requiere contenedor asociado.", "danger")
+        return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
+
+    mv = Movement(
+        site_id=site_id,
+        container_id=c.id,
+        movement_type="GATE_OUT",
+        occurred_at=datetime.utcnow(),
+        bay_code=bay_code,
+        depth_row=depth_row,
+        tier=tier,
+        driver_name=eir.driver_name or None,
+        driver_id_doc=eir.driver_id_doc or None,
+        truck_plate=eir.truck_plate or None,
+        notes=eir.general_notes or None,
+        created_by_user_id=current_user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(mv)
+    db.session.flush()
+
+    if c:
+        ContainerPosition.query.filter_by(container_id=c.id).delete()
+        c.is_in_yard = False
+        db.session.add(c)
+
+    if ch:
+        ch.is_in_yard = False
+        db.session.add(ch)
+
+    now_utc = datetime.utcnow()
+    eir.gate_out_movement_id = mv.id
+    eir.status = "CONFIRMED"
+    eir.finalized_at = now_utc
+    eir.inventory_out_at = now_utc
+    eir.editable_until = now_utc + timedelta(hours=24)
+    eir.updated_at = now_utc
+    eir.last_edited_at = now_utc
+    eir.last_edited_by_user_id = current_user.id
+
+    audit_log(
+        current_user.id,
+        "EIR_CONFIRMED",
+        "eir",
+        eir.id,
+        {
+            "site_id": site_id,
+            "eir_id": eir.id,
+            "movement_id": mv.id,
+            "container_id": eir.container_id,
+            "chassis_id": eir.chassis_id,
+        },
+    )
+
+    db.session.commit()
+    flash(f"EIR #{eir.id} confirmado correctamente. Se aplicó el Gate Out.", "success")
     return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
 @yard_bp.get("/reports")

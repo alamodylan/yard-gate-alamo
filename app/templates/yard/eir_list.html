@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Listado de EIR - Yard Gate Álamo{% endblock %}
+{% block title %}EIR - Yard Gate Álamo{% endblock %}
 
 {% block content %}
 <style>
@@ -131,12 +131,15 @@
 
 <div class="eir-wrap">
   <div class="eir-card">
-    <h2 style="margin-top:0;">Listado de EIR</h2>
+    <h2 style="margin-top:0;">Consulta de EIR</h2>
+    <p style="color:#64748b;margin-top:6px;">
+      Consulta los EIR creados, filtra por contenedor, chasis, fecha o estado, y confirma si están pendientes.
+    </p>
 
     <form method="get" class="grid" style="margin-top:12px;">
       <div class="field col-4">
-        <label>Buscar por contenedor o chasis</label>
-        <input name="q" value="{{ q or '' }}" placeholder="Ej: MSCU1234567 o 20123">
+        <label>Contenedor o chasis</label>
+        <input name="q" value="{{ q or '' }}" placeholder="Ej: CSNU1236547 o 40117">
       </div>
 
       <div class="field col-2">
@@ -153,15 +156,16 @@
         <label>Estado</label>
         <select name="status">
           <option value="">Todos</option>
-          <option value="DRAFT" {{ 'selected' if status == 'DRAFT' else '' }}>DRAFT</option>
-          <option value="FINAL" {{ 'selected' if status == 'FINAL' else '' }}>FINAL</option>
-          <option value="EDITING" {{ 'selected' if status == 'EDITING' else '' }}>EDITING</option>
-          <option value="REVERTED" {{ 'selected' if status == 'REVERTED' else '' }}>REVERTED</option>
+          <option value="PENDING" {{ 'selected' if status == 'PENDING' else '' }}>Pendiente</option>
+          <option value="CONFIRMED" {{ 'selected' if status == 'CONFIRMED' else '' }}>Confirmado</option>
+          <option value="EDITING" {{ 'selected' if status == 'EDITING' else '' }}>Editing</option>
+          <option value="REVERTED" {{ 'selected' if status == 'REVERTED' else '' }}>Revertido</option>
+          <option value="CANCELED" {{ 'selected' if status == 'CANCELED' else '' }}>Cancelado</option>
         </select>
       </div>
 
       <div class="actions col-2" style="align-self:end;">
-        <button type="submit" class="btn btn-dark">Buscar</button>
+        <button type="submit" class="btn btn-dark">Filtrar</button>
         <a href="{{ url_for('yard.eir_list_view') }}" class="btn btn-soft">Limpiar</a>
       </div>
     </form>
@@ -176,7 +180,7 @@
           <th>Predio</th>
           <th>Contenedor</th>
           <th>Chasis</th>
-          <th>Usuario</th>
+          <th>Usuario creador</th>
           <th>Estado</th>
           <th>Acciones</th>
         </tr>
@@ -198,26 +202,36 @@
             {{ e.created_by.name if e.created_by and e.created_by.name else (e.created_by.username if e.created_by and e.created_by.username else (e.created_by.email if e.created_by else '—')) }}
           </td>
           <td>
-            {% if e.status == 'FINAL' %}
-              <span class="badge ok">FINAL</span>
+            {% if e.status == 'CONFIRMED' %}
+              <span class="badge ok">CONFIRMADO</span>
+            {% elif e.status == 'PENDING' %}
+              <span class="badge warn">PENDIENTE</span>
             {% elif e.status == 'EDITING' %}
               <span class="badge warn">EDITING</span>
             {% elif e.status == 'REVERTED' %}
-              <span class="badge danger">REVERTED</span>
+              <span class="badge danger">REVERTIDO</span>
             {% else %}
-              <span class="badge">{{ e.status or 'DRAFT' }}</span>
+              <span class="badge">{{ e.status or '—' }}</span>
             {% endif %}
           </td>
           <td>
             <div class="actions">
-              <a class="btn btn-soft" href="{{ url_for('yard.eir_detail_view', eir_id=e.id) }}">Ver</a>
+              {% if e.status == 'PENDING' %}
+              <form method="post" action="{{ url_for('yard.eir_confirm_view', eir_id=e.id) }}"
+                    onsubmit="return confirm('¿Deseas confirmar este EIR y aplicar el Gate Out?');"
+                    style="margin:0;">
+                <button type="submit" class="btn btn-dark">Confirmar</button>
+              </form>
+              {% endif %}
+
+              <a class="btn btn-soft" href="{{ url_for('yard.eir_detail_view', eir_id=e.id) }}">Detalle</a>
               <a class="btn btn-dark" href="{{ url_for('yard.eir_pdf_view', eir_id=e.id) }}" target="_blank">PDF</a>
             </div>
           </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="8">No hay EIRs para los filtros seleccionados.</td>
+          <td colspan="8">No hay EIR registrados con esos filtros.</td>
         </tr>
         {% endfor %}
       </tbody>

@@ -6,13 +6,13 @@
   <style>
     @page{
       size:A4 portrait;
-      margin:10mm;
+      margin:7mm;
     }
 
     body{
-      font-family:Arial, Helvetica, sans-serif;
-      color:#0f172a;
-      font-size:11px;
+      font-family: Arial, Helvetica, sans-serif;
+      color:#111827;
+      font-size:10px;
       margin:0;
       padding:0;
     }
@@ -23,76 +23,86 @@
 
     .title{
       text-align:center;
-      font-size:18px;
+      font-size:16px;
       font-weight:800;
-      margin-bottom:4px;
+      margin-bottom:2px;
+      letter-spacing:.02em;
     }
 
     .subtitle{
       text-align:center;
-      font-size:11px;
-      margin-bottom:10px;
+      font-size:9px;
+      margin-bottom:6px;
     }
 
     .header-band{
       width:100%;
-      border:1px solid #0f172a;
+      border:1px solid #111827;
       border-collapse:collapse;
-      margin-bottom:8px;
+      margin-bottom:6px;
+      table-layout:fixed;
     }
 
     .header-band td,
     .header-band th{
-      border:1px solid #0f172a;
-      padding:5px 6px;
+      border:1px solid #111827;
+      padding:3px 4px;
       vertical-align:top;
     }
 
     .label{
-      font-size:9px;
+      font-size:8px;
       font-weight:700;
-      color:#334155;
+      color:#374151;
       text-transform:uppercase;
+      line-height:1.1;
     }
 
     .value{
-      font-size:11px;
+      font-size:10px;
       font-weight:700;
-      min-height:14px;
+      min-height:11px;
+      line-height:1.15;
+      word-break:break-word;
     }
 
     .section-title{
-      background:#e2e8f0;
+      background:#e5e7eb;
       font-weight:800;
-      padding:5px 6px;
-      border:1px solid #0f172a;
+      padding:4px 5px;
+      border:1px solid #111827;
       border-bottom:none;
-      margin-top:8px;
+      margin-top:5px;
+      font-size:10px;
     }
 
     .table{
       width:100%;
       border-collapse:collapse;
-      margin-bottom:8px;
+      margin-bottom:5px;
+      table-layout:fixed;
     }
 
     .table th,
     .table td{
-      border:1px solid #0f172a;
-      padding:5px 6px;
+      border:1px solid #111827;
+      padding:3px 4px;
       vertical-align:top;
+      font-size:9px;
+      line-height:1.15;
     }
 
     .table th{
-      background:#f1f5f9;
-      font-size:10px;
+      background:#f3f4f6;
+      font-size:8px;
+      font-weight:800;
     }
 
     .damage-layout{
       display:table;
       width:100%;
       table-layout:fixed;
-      margin-top:6px;
+      margin-top:4px;
     }
 
     .damage-left,
@@ -102,29 +112,31 @@
     }
 
     .damage-left{
-      width:72%;
-      padding-right:8px;
+      width:73%;
+      padding-right:6px;
     }
 
     .damage-right{
-      width:28%;
+      width:27%;
     }
 
     .damage-grid{
       display:grid;
       grid-template-columns:repeat(3, 1fr);
-      gap:8px;
+      gap:5px;
     }
 
     .damage-panel{
-      border:1px solid #0f172a;
-      padding:5px;
+      border:1px solid #111827;
+      padding:3px;
       page-break-inside:avoid;
+      min-height:94px;
     }
 
     .damage-panel h5{
-      margin:0 0 4px 0;
-      font-size:10px;
+      margin:0 0 2px 0;
+      font-size:8px;
+      font-weight:800;
     }
 
     .damage-svg{
@@ -136,24 +148,26 @@
     .legend-table{
       width:100%;
       border-collapse:collapse;
-      margin-bottom:8px;
+      margin-bottom:5px;
+      table-layout:fixed;
     }
 
     .legend-table td{
-      border:1px solid #0f172a;
-      padding:4px 5px;
-      font-size:10px;
+      border:1px solid #111827;
+      padding:3px 4px;
+      font-size:8px;
+      line-height:1.1;
     }
 
     .code-cell{
-      width:20px;
+      width:16px;
       text-align:center;
       font-weight:800;
     }
 
     .marker-label{
       font-weight:900;
-      font-size:14px;
+      font-size:13px;
       fill:#b91c1c;
       text-anchor:middle;
       dominant-baseline:middle;
@@ -166,25 +180,34 @@
     }
 
     .note-box{
-      border:1px solid #0f172a;
-      min-height:55px;
-      padding:6px;
+      border:1px solid #111827;
+      min-height:42px;
+      max-height:42px;
+      padding:5px;
       white-space:pre-wrap;
+      overflow:hidden;
+      line-height:1.15;
+      font-size:9px;
     }
 
     .footer-sign{
       width:100%;
       border-collapse:collapse;
-      margin-top:10px;
+      margin-top:8px;
+      table-layout:fixed;
     }
 
     .footer-sign td{
-      border-top:1px solid #0f172a;
+      border-top:1px solid #111827;
       text-align:center;
-      padding-top:20px;
+      padding-top:16px;
       width:33.33%;
-      font-size:10px;
+      font-size:9px;
       font-weight:700;
+    }
+
+    .tight{
+      margin-bottom:4px;
     }
   </style>
 </head>
@@ -194,49 +217,68 @@
 {% set reefer_snapshot = eir.reefer_snapshot_json or {} %}
 {% set damages = eir.damages or [] %}
 
+{% set side_labels = {
+  'RIGHT': 'Costado derecho',
+  'LEFT': 'Costado izquierdo',
+  'FRONT': 'Frente',
+  'REAR': 'Atrás',
+  'ROOF': 'Techo',
+  'INTERIOR': 'Interior'
+} %}
+
+{% set tire_labels = {
+  'AX1_L_IN': 'Eje 1 izq int',
+  'AX1_L_OUT': 'Eje 1 izq ext',
+  'AX1_R_IN': 'Eje 1 der int',
+  'AX1_R_OUT': 'Eje 1 der ext',
+  'AX2_L_IN': 'Eje 2 izq int',
+  'AX2_L_OUT': 'Eje 2 izq ext',
+  'AX2_R_IN': 'Eje 2 der int',
+  'AX2_R_OUT': 'Eje 2 der ext',
+  'AX3_L_IN': 'Eje 3 izq int',
+  'AX3_L_OUT': 'Eje 3 izq ext',
+  'AX3_R_IN': 'Eje 3 der int',
+  'AX3_R_OUT': 'Eje 3 der ext'
+} %}
+
 <div class="page">
-  <div class="title">EIR - CONDICIÓN DE EQUIPO</div>
-  <div class="subtitle">Yard Gate Álamo · EIR #{{ eir.id }}</div>
+  <div class="topbar">
+    <img class="topbar-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo Álamo">
+    <div class="topbar-title">
+      <div class="title">EIR - CONDICIÓN DE EQUIPO</div>
+      <div class="subtitle">Yard Gate Álamo · EIR #{{ eir.id }}</div>
+    </div>
+  </div>
 
   <table class="header-band">
     <tr>
-      <td width="16%">
+      <td width="13%">
         <div class="label">Terminal</div>
         <div class="value">{{ eir.terminal_name or '' }}</div>
       </td>
-      <td width="14%">
+      <td width="12%">
         <div class="label">Fecha</div>
         <div class="value">{{ eir.trip_date or '' }}</div>
       </td>
-      <td width="12%">
+      <td width="10%">
         <div class="label">Hora</div>
         <div class="value">{{ eir.trip_time.strftime('%H:%M') if eir.trip_time else '' }}</div>
       </td>
-      <td width="18%">
+      <td width="17%">
         <div class="label">Transportista</div>
         <div class="value">{{ eir.carrier or 'ATM' }}</div>
       </td>
-      <td width="20%">
+      <td width="16%">
         <div class="label">Origen</div>
         <div class="value">{{ eir.origin or '' }}</div>
       </td>
-      <td width="20%">
+      <td width="18%">
         <div class="label">Destino</div>
         <div class="value">{{ eir.destination or '' }}</div>
       </td>
-    </tr>
-    <tr>
-      <td colspan="2">
+      <td width="14%">
         <div class="label">Chofer</div>
         <div class="value">{{ eir.driver_name or '' }}</div>
-      </td>
-      <td colspan="2">
-        <div class="label">Documento</div>
-        <div class="value">{{ eir.driver_id_doc or '' }}</div>
-      </td>
-      <td colspan="2">
-        <div class="label">Placa cabezal</div>
-        <div class="value">{{ eir.truck_plate or '' }}</div>
       </td>
     </tr>
     <tr>
@@ -256,6 +298,10 @@
         <div class="label">Marchamo</div>
         <div class="value">{{ eir.container_seal or container_snapshot.get('seal') or '' }}</div>
       </td>
+      <td>
+        <div class="label">Documento / placa</div>
+        <div class="value">{{ eir.driver_id_doc or eir.truck_plate or '' }}</div>
+      </td>
     </tr>
     <tr>
       <td colspan="2">
@@ -266,7 +312,7 @@
         <div class="label">Chasis</div>
         <div class="value">{{ eir.chassis.chassis_number if eir.chassis else (chassis_snapshot.get('chassis_number') or '') }}</div>
       </td>
-      <td colspan="2">
+      <td colspan="3">
         <div class="label">Placa chasis</div>
         <div class="value">{{ eir.chassis_plate or chassis_snapshot.get('plate') or '' }}</div>
       </td>
@@ -279,94 +325,102 @@
   <div class="damage-layout">
     <div class="damage-left">
       <div class="damage-grid">
+        <!-- Costado derecho -->
         <div class="damage-panel">
           <h5>Costado derecho</h5>
-          <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 120">
-            <rect x="30" y="32" width="145" height="50" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
-            <rect x="178" y="40" width="20" height="30" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="30" y1="82" x2="25" y2="96" stroke="#0f172a" stroke-width="2"/>
-            <line x1="175" y1="82" x2="182" y2="96" stroke="#0f172a" stroke-width="2"/>
-            <line x1="110" y1="82" x2="110" y2="100" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="60" cy="100" r="10" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="88" cy="100" r="10" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="198" y1="58" x2="224" y2="58" stroke="#0f172a" stroke-width="2"/>
+          <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 110">
+            <rect x="30" y="30" width="145" height="48" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <rect x="178" y="38" width="20" height="28" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="30" y1="78" x2="24" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="175" y1="78" x2="182" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="106" y1="78" x2="106" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="60" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="88" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="198" y1="52" x2="222" y2="52" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
+        <!-- Costado izquierdo -->
         <div class="damage-panel">
           <h5>Costado izquierdo</h5>
-          <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 120">
-            <rect x="45" y="32" width="145" height="50" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
-            <rect x="20" y="40" width="20" height="30" fill="#ffffff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="45" y1="82" x2="38" y2="96" stroke="#0f172a" stroke-width="2"/>
-            <line x1="190" y1="82" x2="196" y2="96" stroke="#0f172a" stroke-width="2"/>
-            <line x1="122" y1="82" x2="122" y2="100" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="145" cy="100" r="10" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="173" cy="100" r="10" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="20" y1="58" x2="5" y2="58" stroke="#0f172a" stroke-width="2"/>
+          <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 110">
+            <rect x="45" y="30" width="145" height="48" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <rect x="20" y="38" width="20" height="28" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="45" y1="78" x2="38" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="190" y1="78" x2="196" y2="90" stroke="#111827" stroke-width="2"/>
+            <line x1="122" y1="78" x2="122" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="145" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="173" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="20" y1="52" x2="4" y2="52" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
+        <!-- Interior -->
         <div class="damage-panel">
           <h5>Interior</h5>
-          <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 120">
-            <polygon points="30,28 210,28 180,92 60,92" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <polygon points="78,42 162,42 146,78 94,78" fill="#f8fafc" stroke="#0f172a" stroke-width="1.5"/>
-            <line x1="60" y1="92" x2="78" y2="42" stroke="#0f172a" stroke-width="1.2"/>
-            <line x1="180" y1="92" x2="162" y2="42" stroke="#0f172a" stroke-width="1.2"/>
-            <line x1="120" y1="92" x2="120" y2="42" stroke="#0f172a" stroke-width="1.2"/>
+          <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 110">
+            <polygon points="10,28 40,38 40,94 10,104" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <polygon points="230,28 200,38 200,94 230,104" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <rect x="40" y="28" width="160" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <polygon points="70,46 170,46 150,64 90,64" fill="none" stroke="#111827" stroke-width="2"/>
+            <polygon points="70,46 90,64 90,90 70,94" fill="none" stroke="#111827" stroke-width="2"/>
+            <polygon points="170,46 150,64 150,90 170,94" fill="none" stroke="#111827" stroke-width="2"/>
+            <rect x="90" y="64" width="60" height="26" fill="none" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
+        <!-- Frente -->
         <div class="damage-panel">
           <h5>Frente</h5>
-          <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 120">
-            <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="120" y1="20" x2="120" y2="90" stroke="#0f172a" stroke-width="1.5"/>
-            <line x1="72" y1="42" x2="168" y2="42" stroke="#0f172a" stroke-width="1.2"/>
-            <line x1="72" y1="66" x2="168" y2="66" stroke="#0f172a" stroke-width="1.2"/>
-            <line x1="90" y1="90" x2="88" y2="100" stroke="#0f172a" stroke-width="2"/>
-            <line x1="150" y1="90" x2="152" y2="100" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="95" cy="104" r="8" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="145" cy="104" r="8" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+          <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 110">
+            <rect x="72" y="18" width="96" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="120" y1="18" x2="120" y2="84" stroke="#111827" stroke-width="1.5"/>
+            <line x1="72" y1="40" x2="168" y2="40" stroke="#111827" stroke-width="1.2"/>
+            <line x1="72" y1="62" x2="168" y2="62" stroke="#111827" stroke-width="1.2"/>
+            <line x1="90" y1="84" x2="88" y2="94" stroke="#111827" stroke-width="2"/>
+            <line x1="150" y1="84" x2="152" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="95" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="145" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
+        <!-- Atrás -->
         <div class="damage-panel">
           <h5>Atrás</h5>
-          <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 120">
-            <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="120" y1="20" x2="120" y2="90" stroke="#0f172a" stroke-width="1.5"/>
-            <line x1="72" y1="42" x2="168" y2="42" stroke="#0f172a" stroke-width="1.2"/>
-            <line x1="72" y1="66" x2="168" y2="66" stroke="#0f172a" stroke-width="1.2"/>
-            <rect x="84" y="48" width="12" height="18" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
-            <rect x="144" y="48" width="12" height="18" fill="#fff" stroke="#0f172a" stroke-width="1.5"/>
-            <line x1="90" y1="90" x2="88" y2="100" stroke="#0f172a" stroke-width="2"/>
-            <line x1="150" y1="90" x2="152" y2="100" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="95" cy="104" r="8" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <circle cx="145" cy="104" r="8" fill="#fff" stroke="#0f172a" stroke-width="2"/>
+          <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 110">
+            <rect x="72" y="18" width="96" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="120" y1="18" x2="120" y2="84" stroke="#111827" stroke-width="1.5"/>
+            <line x1="72" y1="40" x2="168" y2="40" stroke="#111827" stroke-width="1.2"/>
+            <line x1="72" y1="62" x2="168" y2="62" stroke="#111827" stroke-width="1.2"/>
+            <rect x="84" y="45" width="12" height="16" fill="#fff" stroke="#111827" stroke-width="1.5"/>
+            <rect x="144" y="45" width="12" height="16" fill="#fff" stroke="#111827" stroke-width="1.5"/>
+            <line x1="90" y1="84" x2="88" y2="94" stroke="#111827" stroke-width="2"/>
+            <line x1="150" y1="84" x2="152" y2="94" stroke="#111827" stroke-width="2"/>
+            <circle cx="95" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <circle cx="145" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
 
+        <!-- Techo -->
         <div class="damage-panel">
           <h5>Techo</h5>
-          <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 120">
-            <rect x="28" y="30" width="184" height="60" rx="6" fill="#fff" stroke="#0f172a" stroke-width="2"/>
-            <line x1="44" y1="30" x2="44" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="60" y1="30" x2="60" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="76" y1="30" x2="76" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="92" y1="30" x2="92" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="108" y1="30" x2="108" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="124" y1="30" x2="124" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="140" y1="30" x2="140" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="156" y1="30" x2="156" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="172" y1="30" x2="172" y2="90" stroke="#0f172a" stroke-width="1"/>
-            <line x1="188" y1="30" x2="188" y2="90" stroke="#0f172a" stroke-width="1"/>
+          <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 110">
+            <rect x="28" y="28" width="184" height="54" rx="5" fill="#fff" stroke="#111827" stroke-width="2"/>
+            <line x1="44" y1="28" x2="44" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="60" y1="28" x2="60" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="76" y1="28" x2="76" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="92" y1="28" x2="92" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="108" y1="28" x2="108" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="124" y1="28" x2="124" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="140" y1="28" x2="140" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="156" y1="28" x2="156" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="172" y1="28" x2="172" y2="82" stroke="#111827" stroke-width="1"/>
+            <line x1="188" y1="28" x2="188" y2="82" stroke="#111827" stroke-width="1"/>
             <g class="markers-layer"></g>
           </svg>
         </div>
@@ -388,15 +442,15 @@
       <table class="table">
         <thead>
           <tr>
-            <th>Vista</th>
-            <th>Código</th>
-            <th>Nota</th>
+            <th style="width:42%;">Vista</th>
+            <th style="width:18%;">Código</th>
+            <th style="width:40%;">Nota</th>
           </tr>
         </thead>
         <tbody>
           {% for d in damages %}
           <tr>
-            <td>{{ d.side }}</td>
+            <td>{{ side_labels.get(d.side, d.side) }}</td>
             <td>{{ d.damage_type }}</td>
             <td>{{ d.notes or '' }}</td>
           </tr>
@@ -415,7 +469,7 @@
   <div class="section-title">REVISIÓN DE CHASIS</div>
 
   {% set insp = chassis_snapshot.get('inspection', {}) %}
-  <table class="table">
+  <table class="table tight">
     <thead>
       <tr>
         <th>Elemento</th>
@@ -455,19 +509,24 @@
   <table class="table">
     <thead>
       <tr>
-        <th>Posición</th>
-        <th>Marchamo</th>
-        <th>Número llanta</th>
-        <th>Marca</th>
-        <th>Estado</th>
-        <th>Estrías</th>
-        <th>Pinchada</th>
+        <th style="width:22%;">Posición</th>
+        <th style="width:11%;">Marchamo</th>
+        <th style="width:14%;">Número llanta</th>
+        <th style="width:12%;">Marca</th>
+        <th style="width:10%;">Estado</th>
+        <th style="width:8%;">Estrías</th>
+        <th style="width:8%;">Pinchada</th>
       </tr>
     </thead>
     <tbody>
       {% for tire in chassis_snapshot.get('tires', []) %}
       <tr>
-        <td>{{ tire.get('position_code') or '' }}</td>
+        <td>
+          {{ tire.get('position_code') or '' }}
+          {% if tire.get('position_code') %}
+            - {{ tire_labels.get(tire.get('position_code'), tire.get('position_code')) }}
+          {% endif %}
+        </td>
         <td>{{ tire.get('marchamo') or '' }}</td>
         <td>{{ tire.get('tire_number') or '' }}</td>
         <td>{{ tire.get('brand') or '' }}</td>
@@ -486,7 +545,7 @@
 
   {% if eir.is_reefer %}
   <div class="section-title">EQUIPO REFRIGERADO</div>
-  <table class="table">
+  <table class="table tight">
     <thead>
       <tr>
         <th>Running</th>
@@ -509,7 +568,7 @@
     </tbody>
   </table>
 
-  <table class="table">
+  <table class="table tight">
     <thead>
       <tr>
         <th>Combustible</th>
@@ -586,7 +645,7 @@
         const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
         circle.setAttribute("cx", cx);
         circle.setAttribute("cy", cy);
-        circle.setAttribute("r", 11);
+        circle.setAttribute("r", 10);
         circle.setAttribute("class", "marker-dot");
 
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
