@@ -209,6 +209,18 @@
     .tight{
       margin-bottom:4px;
     }
+    .topbar-logo{
+    position:absolute;
+    top:0;
+    left:0;
+    width:34px;
+    height:auto;
+    }
+    .topbar{
+    position:relative;
+    min-height:18px;
+    margin-bottom:3px;
+    }
   </style>
 </head>
 <body>
@@ -522,10 +534,7 @@
       {% for tire in chassis_snapshot.get('tires', []) %}
       <tr>
         <td>
-          {{ tire.get('position_code') or '' }}
-          {% if tire.get('position_code') %}
-            - {{ tire_labels.get(tire.get('position_code'), tire.get('position_code')) }}
-          {% endif %}
+            {{ tire_labels.get(tire.get('position_code'), tire.get('position_code') or '') }}
         </td>
         <td>{{ tire.get('marchamo') or '' }}</td>
         <td>{{ tire.get('tire_number') or '' }}</td>

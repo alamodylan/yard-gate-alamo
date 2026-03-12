@@ -521,10 +521,7 @@
           {% for tire in chassis_snapshot.get('tires', []) %}
           <tr>
             <td>
-              {{ tire.get('position_code') or '—' }}
-              {% if tire.get('position_code') %}
-                <br><span class="muted">{{ tire_labels.get(tire.get('position_code'), '') }}</span>
-              {% endif %}
+                {{ tire_labels.get(tire.get('position_code'), tire.get('position_code') or '—') }}
             </td>
             <td>{{ tire.get('marchamo') or '—' }}</td>
             <td>{{ tire.get('tire_number') or '—' }}</td>
