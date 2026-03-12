@@ -71,6 +71,8 @@ class ChassisInventory(db.Model):
         index=True,
     )
 
+    chassis_code = db.Column(db.String(30), nullable=False)
+
     is_in_yard = db.Column(db.Boolean, nullable=False, default=True)
     status_notes = db.Column(db.Text, nullable=True)
 

@@ -1325,8 +1325,14 @@ def gate_in_post():
 
         inv = ChassisInventory.query.filter_by(site_id=site_id, chassis_id=selected_chassis.id).first()
         if not inv:
-            inv = ChassisInventory(site_id=site_id, chassis_id=selected_chassis.id, is_in_yard=True)
+            inv = ChassisInventory(
+                site_id=site_id,
+                chassis_id=selected_chassis.id,
+                chassis_code=selected_chassis.chassis_number,
+                is_in_yard=True,
+            )
         else:
+            inv.chassis_code = selected_chassis.chassis_number
             inv.is_in_yard = True
         db.session.add(inv)
 
@@ -3725,8 +3731,14 @@ def api_chassis_classify(chassis_id: int):
 
     inv = ChassisInventory.query.filter_by(site_id=site_id, chassis_id=ch.id).first()
     if not inv:
-        inv = ChassisInventory(site_id=site_id, chassis_id=ch.id, is_in_yard=True)
+        inv = ChassisInventory(
+            site_id=site_id,
+            chassis_id=ch.id,
+            chassis_code=ch.chassis_number,
+            is_in_yard=True,
+        )
     else:
+        inv.chassis_code = ch.chassis_number
         inv.is_in_yard = True
     db.session.add(inv)
 
