@@ -1301,7 +1301,7 @@ def gate_in_post():
         chassis_needs_workshop_manual = bool(chassis_inspection.get("needs_workshop"))
         needs_workshop_chassis = bool(structure_lines) or bool(any_tire_issue) or chassis_needs_workshop_manual
 
-        _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
+        inspection_id = _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
             "site_id": site_id,
             "chassis_id": selected_chassis.id,
             "inspected_at": datetime.utcnow(),
@@ -1371,15 +1371,13 @@ def gate_in_post():
             workshop_ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
                 "site_id": site_id,
                 "chassis_id": selected_chassis.id,
+                "inspection_id": inspection_id,
                 "created_at": datetime.utcnow(),
                 "created_by_user_id": current_user.id,
                 "status": "OPEN",
-                "title": f"Ingreso Chasis {selected_chassis.chassis_number} - Taller",
-                "body": body,
-                "notes": body,
-                "description": body,
-                "axles": axles,
+                "ticket_type": "CHASSIS_DAMAGE",
                 "movement_id": mv.id,
+                "notes": body,
             })
 
             audit_log(
@@ -3702,7 +3700,7 @@ def api_chassis_classify(chassis_id: int):
     # --------
     # 5) Guardar inspección
     # --------
-    _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
+    inspection_id = _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
         "site_id": site_id,
         "chassis_id": ch.id,
         "inspected_at": datetime.utcnow(),
@@ -3747,14 +3745,12 @@ def api_chassis_classify(chassis_id: int):
         ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
             "site_id": site_id,
             "chassis_id": ch.id,
+            "inspection_id": inspection_id,
             "created_at": datetime.utcnow(),
             "created_by_user_id": current_user.id,
             "status": "OPEN",
-            "title": f"Ingreso Chasis {ch.chassis_number} - Taller",
-            "body": body,
+            "ticket_type": "CHASSIS_DAMAGE",
             "notes": body,
-            "description": body,
-            "axles": axles,
         })
 
         audit_log(
