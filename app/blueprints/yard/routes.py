@@ -1323,7 +1323,7 @@ def gate_in_post():
         selected_chassis.is_in_yard = True
         db.session.add(selected_chassis)
 
-        inv = ChassisInventory.query.filter_by(site_id=site_id, chassis_id=selected_chassis.id).first()
+        inv = ChassisInventory.query.filter_by(chassis_id=selected_chassis.id).first()
         if not inv:
             inv = ChassisInventory(
                 site_id=site_id,
@@ -1332,8 +1332,10 @@ def gate_in_post():
                 is_in_yard=True,
             )
         else:
+            inv.site_id = site_id
             inv.chassis_code = selected_chassis.chassis_number
             inv.is_in_yard = True
+            inv.updated_at = datetime.utcnow()
         db.session.add(inv)
 
         username = (
@@ -1463,8 +1465,17 @@ def gate_in_post():
     )
 
     db.session.commit()
+
+    if workshop_ticket_id:
+        flash(
+            f"Gate In registrado: {c.code} en {bay.code} F{depth_row:02d} N{tier}. "
+            f"Se generó ticket de taller para el chasis {selected_chassis.chassis_number}.",
+            "success",
+        )
+        return redirect(url_for("yard.gate_in_view"))
+
     flash(f"Gate In registrado: {c.code} en {bay.code} F{depth_row:02d} N{tier}.", "success")
-    return redirect(url_for("yard.ticket_view", movement_id=mv.id))
+    return redirect(url_for("yard.gate_in_view"))
 
 
 @yard_bp.get("/gate-out")
