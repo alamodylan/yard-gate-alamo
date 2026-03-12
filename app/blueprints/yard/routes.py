@@ -1377,6 +1377,7 @@ def gate_in_post():
                 "status": "OPEN",
                 "ticket_type": "CHASSIS_DAMAGE",
                 "movement_id": mv.id,
+                "payload_text": body,
                 "notes": body,
             })
 
@@ -3750,6 +3751,7 @@ def api_chassis_classify(chassis_id: int):
             "created_by_user_id": current_user.id,
             "status": "OPEN",
             "ticket_type": "CHASSIS_DAMAGE",
+            "payload_text": body,
             "notes": body,
         })
 
