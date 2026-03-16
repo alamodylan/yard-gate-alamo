@@ -1,4 +1,5 @@
 # app/blueprints/inventory/routes.py
+
 import os
 from io import BytesIO
 
@@ -19,13 +20,16 @@ from app.models.movement import Movement, MovementPhoto
 from app.models.site import Site, UserSite
 
 
+# =========================================================
+# Utilidades
+# =========================================================
+
 def _normalize_public_url(raw: str) -> str | None:
     if not raw:
         return None
 
     raw = str(raw).strip()
 
-    # Si es texto de error u otro string que no es URL, no sirve
     if not (raw.startswith("http://") or raw.startswith("https://")):
         return None
 
@@ -41,9 +45,10 @@ def _normalize_public_url(raw: str) -> str | None:
     return raw
 
 
-# =========================
-# Multi-predio helpers (site) - versión inventory (sin depender de yard)
-# =========================
+# =========================================================
+# Multi-predio helpers
+# =========================================================
+
 def _allowed_sites_for_user(user):
     if getattr(user, "role", None) == "admin":
         return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
@@ -67,6 +72,7 @@ def _set_active_site_id(site_id: int):
 
 def _ensure_active_site():
     allowed = _allowed_sites_for_user(current_user)
+
     if not allowed:
         abort(403)
 
@@ -80,7 +86,15 @@ def _ensure_active_site():
     return active_id
 
 
+# =========================================================
+# Query principal de inventario
+# =========================================================
+
 def _inventory_query(site_id: int, in_yard: str | None, qtext: str):
+
+    # Inventario por defecto = solo lo que está en patio
+    in_yard = (in_yard or "1").strip()
+
     q = (
         db.session.query(Container, ContainerPosition, YardBay)
         .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -90,6 +104,7 @@ def _inventory_query(site_id: int, in_yard: str | None, qtext: str):
 
     if in_yard == "1":
         q = q.filter(Container.is_in_yard == True)  # noqa: E712
+
     elif in_yard == "0":
         q = q.filter(Container.is_in_yard == False)  # noqa: E712
 
@@ -99,11 +114,12 @@ def _inventory_query(site_id: int, in_yard: str | None, qtext: str):
     return q.order_by(Container.updated_at.desc())
 
 
+# =========================================================
+# Clasificación más reciente por contenedor
+# =========================================================
+
 def _last_classification_by_container_ids(container_ids: list[int]) -> dict[int, dict]:
-    """
-    Trae la última clasificación por contenedor (DISTINCT ON).
-    Retorna: {container_id: {shipping_line, max_gross_kg, manufacture_year, summary_text, classified_at}}
-    """
+
     if not container_ids:
         return {}
 
@@ -126,14 +142,16 @@ def _last_classification_by_container_ids(container_ids: list[int]) -> dict[int,
     )
 
     rows = db.session.execute(sql, {"ids": container_ids}).mappings().all()
+
     return {int(r["container_id"]): dict(r) for r in rows}
 
 
+# =========================================================
+# Último EIR por contenedor
+# =========================================================
+
 def _last_eir_trip_date_by_container_ids(container_ids: list[int]) -> dict[int, dict]:
-    """
-    Fecha de salida = trip_date del EIR (si existe).
-    Retorna: {container_id: {trip_date}}
-    """
+
     if not container_ids:
         return {}
 
@@ -153,25 +171,36 @@ def _last_eir_trip_date_by_container_ids(container_ids: list[int]) -> dict[int, 
     )
 
     rows = db.session.execute(sql, {"ids": container_ids}).mappings().all()
+
     return {int(r["container_id"]): dict(r) for r in rows}
 
+
+# =========================================================
+# Pantalla principal inventario
+# =========================================================
 
 @inventory_bp.get("/inventory")
 @login_required
 def inventory_index():
+
     site_id = _ensure_active_site()
 
-    in_yard = request.args.get("in_yard")  # "1" / "0" / "" / None
+    # Inventario por defecto = solo en patio
+    in_yard = (request.args.get("in_yard") or "1").strip()
+
     qtext = (request.args.get("q") or "").strip().upper()
 
     rows = _inventory_query(site_id, in_yard, qtext).all()
+
     container_ids = [c.id for c, _, _ in rows]
 
     cls_by_container = _last_classification_by_container_ids(container_ids)
     eir_by_container = _last_eir_trip_date_by_container_ids(container_ids)
 
     items = []
+
     for c, pos, bay in rows:
+
         cls = cls_by_container.get(c.id)
         eir = eir_by_container.get(c.id)
 
@@ -180,13 +209,11 @@ def inventory_index():
                 "id": c.id,
                 "code": c.code,
                 "size": c.size,
-                # preferimos año/clasificación si existe
                 "year": (cls.get("manufacture_year") if cls else c.year),
                 "shipping_line": (cls.get("shipping_line") if cls else ""),
                 "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
                 "eir_trip_date": (eir.get("trip_date") if eir else None),
                 "is_in_yard": bool(c.is_in_yard),
-                # preferimos summary_text (formato copiable) si existe
                 "status_notes": (cls.get("summary_text") if cls else (c.status_notes or "")),
                 "position": None
                 if not pos
@@ -206,15 +233,22 @@ def inventory_index():
     )
 
 
+# =========================================================
+# Exportar inventario
+# =========================================================
+
 @inventory_bp.get("/inventory/export")
 @login_required
 def inventory_export():
+
     site_id = _ensure_active_site()
 
-    in_yard = request.args.get("in_yard")
+    in_yard = (request.args.get("in_yard") or "1").strip()
+
     qtext = (request.args.get("q") or "").strip().upper()
 
     rows = _inventory_query(site_id, in_yard, qtext).all()
+
     container_ids = [c.id for c, _, _ in rows]
 
     cls_by_container = _last_classification_by_container_ids(container_ids)
@@ -238,6 +272,7 @@ def inventory_export():
         "NIVEL",
         "NOTAS",
     ]
+
     ws.append(headers)
 
     for col_idx in range(1, len(headers) + 1):
@@ -246,12 +281,14 @@ def inventory_export():
         cell.alignment = Alignment(horizontal="center")
 
     for c, pos, bay in rows:
+
         cls = cls_by_container.get(c.id)
         eir = eir_by_container.get(c.id)
 
         naviera = (cls.get("shipping_line") if cls else "") or ""
         year = (cls.get("manufacture_year") if cls else c.year) or ""
         max_gross = (cls.get("max_gross_kg") if cls else "") or ""
+
         trip_date = eir.get("trip_date") if eir else None
         trip_date_str = trip_date.strftime("%Y-%m-%d") if trip_date else ""
 
@@ -275,12 +312,15 @@ def inventory_export():
         )
 
     for col_idx in range(1, len(headers) + 1):
+
         col_letter = get_column_letter(col_idx)
         max_len = 0
+
         for cell in ws[col_letter]:
             v = "" if cell.value is None else str(cell.value)
             if len(v) > max_len:
                 max_len = len(v)
+
         ws.column_dimensions[col_letter].width = min(max_len + 2, 45)
 
     bio = BytesIO()
@@ -288,6 +328,7 @@ def inventory_export():
     bio.seek(0)
 
     tag = "ALL"
+
     if in_yard == "1":
         tag = "EN_PATIO"
     elif in_yard == "0":
@@ -303,14 +344,18 @@ def inventory_export():
     )
 
 
+# =========================================================
+# Detalle contenedor
+# =========================================================
+
 @inventory_bp.get("/inventory/<int:container_id>")
 @login_required
 def inventory_detail(container_id: int):
+
     site_id = _ensure_active_site()
 
     c = Container.query.get_or_404(container_id)
 
-    # Seguridad multi-predio: no permitir ver contenedor de otro predio (excepto admin)
     if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
         abort(403)
 
@@ -322,8 +367,10 @@ def inventory_detail(container_id: int):
     )
 
     current_pos = None
+
     if pos:
         p, bay = pos
+
         current_pos = {
             "bay_code": bay.code if bay else None,
             "depth_row": p.depth_row,
@@ -338,9 +385,11 @@ def inventory_detail(container_id: int):
     )
 
     mv_ids = [m.id for m in movements]
+
     photos_by_mv: dict[int, list[dict]] = {mid: [] for mid in mv_ids}
 
     if mv_ids:
+
         photos = (
             MovementPhoto.query
             .filter(MovementPhoto.movement_id.in_(mv_ids))
@@ -349,10 +398,12 @@ def inventory_detail(container_id: int):
         )
 
         for ph in photos:
+
             if (ph.photo_type or "").upper() == "UPLOAD_ERROR":
                 continue
 
             url_ok = _normalize_public_url(ph.url)
+
             if not url_ok:
                 continue
 

@@ -228,11 +228,12 @@
     <div>
       <label>Número de contenedor (AAAA-000000-0)</label>
       <input id="container_code" name="container_code" placeholder="MSKU-123456-7" required>
+      <div id="containerPrefillHint" class="hint" style="margin-top:6px;"></div>
     </div>
 
     <div>
       <label>Año fabricación</label>
-      <input name="year" inputmode="numeric" placeholder="Ej: 2020">
+      <input id="year_input" name="year" inputmode="numeric" placeholder="Ej: 2020">
       <div class="hint" style="margin-top:6px;">(Opcional)</div>
     </div>
   </div>
@@ -240,7 +241,7 @@
   <label style="margin-top:12px;">Tamaño / Tipo</label>
   <div class="card" style="padding:12px; border-radius:16px;">
     <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;">
-      {% for t in (sizes or ["20ST","40ST","40HC","45ST"]) %}
+      {% for t in (sizes or ["40HC","40ST","40RF","40OT","20ST","20OT","20RF","20TQ","45HC"]) %}
         <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
           <input type="radio" name="size" value="{{ t }}" {% if loop.first %}checked{% endif %}>
           <span style="font-weight:800;">{{ t }}</span>
@@ -288,11 +289,11 @@
   <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
     <div>
       <label>Tare (KG) (opcional)</label>
-      <input name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
+      <input id="tare_kg_input" name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
     </div>
     <div>
       <label>Comentarios generales del contenedor (opcional)</label>
-      <input name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
+      <input id="classification_notes_input" name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
     </div>
   </div>
 
@@ -772,7 +773,7 @@
 
   <h3 style="margin-top:18px;">Notas rápidas</h3>
   <label>Estado / Observaciones (compatibilidad con lo actual)</label>
-  <textarea name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
+  <textarea id="status_notes_textarea" name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
 
   <h3 style="margin-top:18px;">Fotos</h3>
   <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
@@ -884,6 +885,7 @@
 <script>
   const API_BAYS_URL = "{{ url_for('yard.api_bays_by_block') }}";
   const API_CHASSIS_TIRES_URL_TEMPLATE = "{{ url_for('yard.api_chassis_tires_get', chassis_id=999999) }}";
+  const API_CONTAINER_PREFILL_TEMPLATE = "{{ url_for('yard.api_container_prefill', code='CONT_CODE_PLACEHOLDER') }}";
 </script>
 
 <script>
@@ -895,11 +897,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const shipSel = document.getElementById("shipping_line");
   const shipOtherBox = document.getElementById("shipOtherBox");
+  const shipOtherInput = document.getElementById("shipping_line_other");
 
   const mgSel = document.getElementById("max_gross_select");
   const mgOtherBox = document.getElementById("maxGrossOtherBox");
   const mgHidden = document.getElementById("max_gross_kg_hidden");
   const mgOtherInput = document.getElementById("max_gross_kg");
+
+  const containerCodeInput = document.getElementById("container_code");
+  const containerPrefillHint = document.getElementById("containerPrefillHint");
+  const yearInput = document.getElementById("year_input");
+  const tareInput = document.getElementById("tare_kg_input");
+  const classificationNotesInput = document.getElementById("classification_notes_input");
+  const statusNotesTextarea = document.getElementById("status_notes_textarea");
 
   const needsWorkshop = document.getElementById("needs_workshop");
   const workshopBox = document.getElementById("workshopBox");
@@ -965,6 +975,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let chassisChecksCache = {};
   let chassisRowsMaster = [];
   let currentPos = null;
+  let prefillTouched = false;
 
   function esc(s){
     return (s ?? "").toString();
@@ -1113,6 +1124,147 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     buildSummary();
+  }
+
+  function setMaxGrossValue(value){
+    const val = (value ?? "").toString().trim();
+    if (!mgSel || !mgHidden || !mgOtherInput || !mgOtherBox) return;
+
+    if (!val){
+      mgSel.value = "";
+      mgHidden.value = "";
+      mgOtherInput.value = "";
+      mgOtherBox.style.display = "none";
+      return;
+    }
+
+    const known = Array.from(mgSel.options).find(opt => opt.value === val);
+    if (known){
+      mgSel.value = val;
+      mgHidden.value = val;
+      mgOtherInput.value = "";
+      mgOtherBox.style.display = "none";
+    } else {
+      mgSel.value = "OTHER";
+      mgHidden.value = "";
+      mgOtherInput.value = val;
+      mgOtherBox.style.display = "block";
+    }
+  }
+
+  function setShippingLineValue(value){
+    const val = (value || "").toString().trim().toUpperCase();
+    if (!shipSel || !shipOtherBox || !shipOtherInput) return;
+
+    if (!val){
+      shipSel.value = "";
+      shipOtherInput.value = "";
+      shipOtherBox.style.display = "none";
+      return;
+    }
+
+    const known = Array.from(shipSel.options).find(opt => (opt.value || "").toUpperCase() === val && opt.value !== "VASI");
+    if (known){
+      shipSel.value = known.value;
+      shipOtherInput.value = "";
+      shipOtherBox.style.display = "none";
+    } else {
+      shipSel.value = "VASI";
+      shipOtherInput.value = val;
+      shipOtherBox.style.display = "block";
+    }
+  }
+
+  function setSizeValue(value){
+    const val = (value || "").toString().trim().toUpperCase();
+    if (!val) return;
+
+    const radio = document.querySelector(`input[name="size"][value="${val}"]`);
+    if (radio) {
+      radio.checked = true;
+    }
+  }
+
+  function clearContainerPrefillHint(){
+    if (containerPrefillHint){
+      containerPrefillHint.textContent = "";
+    }
+  }
+
+  async function tryPrefillContainer(){
+    if (!containerCodeInput) return;
+
+    const code = (containerCodeInput.value || "").trim().toUpperCase();
+    if (!code) {
+      clearContainerPrefillHint();
+      return;
+    }
+
+    if (!/^[A-Z]{4}-\d{6}-\d$/.test(code)) {
+      clearContainerPrefillHint();
+      return;
+    }
+
+    try{
+      const url = API_CONTAINER_PREFILL_TEMPLATE.replace("CONT_CODE_PLACEHOLDER", encodeURIComponent(code));
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      const data = await r.json();
+
+      if (!r.ok || !data.ok){
+        if (containerPrefillHint) {
+          containerPrefillHint.textContent = "";
+        }
+        return;
+      }
+
+      if (!data.found){
+        if (containerPrefillHint) {
+          containerPrefillHint.textContent = "Contenedor nuevo. Completa la información para el primer registro.";
+        }
+        return;
+      }
+
+      setSizeValue(data.size);
+
+      if (yearInput && data.year) {
+        yearInput.value = data.year;
+      }
+
+      setShippingLineValue(data.shipping_line);
+
+      setMaxGrossValue(data.max_gross_kg);
+
+      if (tareInput && data.tare_kg) {
+        tareInput.value = data.tare_kg;
+      }
+
+      if (classificationNotesInput && data.classification_notes) {
+        classificationNotesInput.value = data.classification_notes;
+      }
+
+      if (summaryHidden && data.summary_text && !summaryHidden.value.trim()) {
+        summaryHidden.value = data.summary_text;
+      }
+
+      if (summaryPreview && data.summary_text && !summaryPreview.value.trim()) {
+        summaryPreview.value = data.summary_text;
+      }
+
+      if (statusNotesTextarea && data.status_notes && !statusNotesTextarea.value.trim()) {
+        statusNotesTextarea.value = data.status_notes;
+      }
+
+      if (containerPrefillHint) {
+        const whereTxt = data.is_in_yard ? " Datos previos cargados automáticamente." : " Contenedor encontrado fuera de patio. Datos previos cargados automáticamente.";
+        containerPrefillHint.textContent = `Contenedor encontrado.${whereTxt}`;
+      }
+
+      prefillTouched = true;
+      buildSummary();
+    }catch(err){
+      console.error("No se pudo autocompletar el contenedor:", err);
+      clearContainerPrefillHint();
+    }
   }
 
   function buildInspectionPayload(){
@@ -1473,6 +1625,10 @@ document.addEventListener("DOMContentLoaded", () => {
       workshopBox.style.display = (needsWorkshop.value === "1") ? "block" : "none";
       buildSummary();
     });
+  }
+
+  if (containerCodeInput) {
+    containerCodeInput.addEventListener("blur", tryPrefillContainer);
   }
 
   document.querySelectorAll('select[name], input[name], textarea[name]').forEach(el => {

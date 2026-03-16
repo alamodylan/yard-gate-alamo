@@ -23,96 +23,94 @@
      Mostrando 0 de 0 chasis
   </div>
 
-  {% if not rows %}
+  {% if not items %}
     <div class="alert alert-info">No hay chasis cargados en este predio.</div>
   {% else %}
 
-<!-- =========================
-     FILTROS (frontend)
-     ========================= -->
-<div class="card" style="padding:12px; margin-bottom:12px;">
-  <div style="display:grid; grid-template-columns: 1.1fr .9fr 1fr .7fr .7fr 1fr 1fr .8fr; gap:10px; align-items:end;">
-    
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">N° Chasis</div>
-      <input id="f_chassis" class="input" placeholder="Ej: 20101" style="width:100%;">
-    </div>
+    <!-- =========================
+         FILTROS (frontend)
+         ========================= -->
+    <div class="card" style="padding:12px; margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns: 1.1fr .9fr 1fr .7fr .7fr 1fr 1fr .8fr; gap:10px; align-items:end;">
 
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Placa</div>
-      <input id="f_plate" class="input" placeholder="Ej: S012345" style="width:100%;">
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">N° Chasis</div>
+          <input id="f_chassis" class="input" placeholder="Ej: 20101" style="width:100%;">
+        </div>
 
-    <!-- NUEVO FILTRO TIPO -->
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Tipo</div>
-      <select id="f_kind" class="input" style="width:100%;">
-        <option value="">Todos</option>
-        <option value="chasis">Chasis</option>
-        <option value="low_boy">Low Boy</option>
-        <option value="tanqueta">Tanqueta</option>
-        <option value="plana">Plana</option>
-        <option value="carreta">Carreta</option>
-      </select>
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Placa</div>
+          <input id="f_plate" class="input" placeholder="Ej: S012345" style="width:100%;">
+        </div>
 
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Largo</div>
-      <select id="f_length" class="input" style="width:100%;">
-        <option value="">Todos</option>
-        <option value="20">20</option>
-        <option value="40">40</option>
-        <option value="45">45</option>
-      </select>
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Tipo</div>
+          <select id="f_kind" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="chasis">Chasis</option>
+            <option value="low_boy">Low Boy</option>
+            <option value="tanqueta">Tanqueta</option>
+            <option value="plana">Plana</option>
+            <option value="carreta">Carreta</option>
+          </select>
+        </div>
 
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Ejes</div>
-      <select id="f_axles" class="input" style="width:100%;">
-        <option value="">Todos</option>
-        <option value="2">2</option>
-        <option value="3">3</option>
-      </select>
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Largo</div>
+          <select id="f_length" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="20">20</option>
+            <option value="40">40</option>
+            <option value="45">45</option>
+          </select>
+        </div>
 
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Predio</div>
-      <select id="f_site" class="input" style="width:100%;">
-        <option value="">Todos</option>
-        {% for s in sites %}
-          <option value="{{ s.name|lower }}">{{ s.name }}</option>
-        {% endfor %}
-        <option value="fuera">Fuera de predio</option>
-      </select>
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Ejes</div>
+          <select id="f_axles" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+          </select>
+        </div>
 
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Status</div>
-      <select id="f_status" class="input" style="width:100%;">
-        <option value="">Todos</option>
-        <option value="BUENO">BUENO</option>
-        <option value="DAÑADO">DAÑADO</option>
-        <option value="FUERA_DE_SERVICIO">FUERA DE SERVICIO</option>
-        <option value="ATADO">ATADO</option>
-      </select>
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Ubicación</div>
+          <select id="f_site" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            {% for s in sites %}
+              <option value="{{ s.name|lower }}">{{ s.name }}</option>
+            {% endfor %}
+            <option value="fuera de patio">Fuera de patio</option>
+          </select>
+        </div>
 
-    <div>
-      <div style="font-size:12px; opacity:.8; margin-bottom:4px;">En patio</div>
-      <select id="f_inyard" class="input" style="width:100%;">
-        <option value="">Todos</option>
-        <option value="SI">Sí</option>
-        <option value="NO">No</option>
-      </select>
-    </div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">Status</div>
+          <select id="f_status" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="BUENO">BUENO</option>
+            <option value="DAÑADO">DAÑADO</option>
+            <option value="FUERA_DE_SERVICIO">FUERA DE SERVICIO</option>
+            <option value="ATADO">ATADO</option>
+          </select>
+        </div>
 
-  </div>
-</div>
+        <div>
+          <div style="font-size:12px; opacity:.8; margin-bottom:4px;">En patio</div>
+          <select id="f_inyard" class="input" style="width:100%;">
+            <option value="">Todos</option>
+            <option value="SI">Sí</option>
+            <option value="NO">No</option>
+          </select>
+        </div>
 
-      <div style="display:flex; gap:10px; margin-top:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
-        <div id="filter_count" style="font-size:12px; opacity:.8;"></div>
-        <button id="btn_clear_filters" class="btn btn-ghost" type="button">Limpiar filtros</button>
       </div>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:10px; align-items:center; justify-content:space-between; flex-wrap:wrap;">
+      <div id="filter_count" style="font-size:12px; opacity:.8;"></div>
+      <button id="btn_clear_filters" class="btn btn-ghost" type="button">Limpiar filtros</button>
     </div>
 
     <div style="overflow:auto;">
@@ -124,41 +122,40 @@
             <th>Tipo</th>
             <th>Largo</th>
             <th>Ejes</th>
-            <th>Predio</th>
+            <th>Ubicación</th>
             <th>Status</th>
             <th>En patio</th>
             <th></th>
           </tr>
         </thead>
         <tbody id="chassis_tbody">
-          {% for ch in rows %}
-            {% set status_raw = (ch.status or "") %}
+          {% for item in items %}
+            {% set status_raw = (item.status or "") %}
             {% set status_label =
                 "FUERA DE SERVICIO" if status_raw == "FUERA_DE_SERVICIO"
                 else (status_raw if status_raw else "-")
             %}
 
             <tr class="ch-row"
-                data-chassis="{{ (ch.chassis_number or '')|lower }}"
-                data-plate="{{ (ch.plate or '')|lower }}"
-                data-kind="{{ (ch.chassis_kind or '')|lower }}"
-                data-length="{{ ch.length_ft or '' }}"
-                data-axles="{{ ch.axles or '' }}"
-                data-site="{{ (ch.site.name if ch.site else '')|lower }}"
+                data-chassis="{{ (item.chassis_number or '')|lower }}"
+                data-plate="{{ (item.plate or '')|lower }}"
+                data-kind="{{ (item.chassis_kind or '')|lower }}"
+                data-length="{{ item.length_ft or '' }}"
+                data-axles="{{ item.axles or '' }}"
+                data-site="{{ (item.ubicacion or '')|lower }}"
                 data-status="{{ status_raw }}"
-                data-inyard="{{ 'SI' if ch.is_in_yard else 'NO' }}"
+                data-inyard="{{ 'SI' if item.is_in_yard else 'NO' }}"
             >
-              <td style="font-weight:800;">{{ ch.chassis_number }}</td>
-              <td>{{ ch.plate or "-" }}</td>
+              <td style="font-weight:800;">{{ item.chassis_number }}</td>
+              <td>{{ item.plate or "-" }}</td>
 
-              <td>{{ ch.chassis_kind or "-" }}</td>
+              <td>{{ item.chassis_kind or "-" }}</td>
 
-              <!-- Largo SOLO número (sin ft) -->
-              <td>{{ ch.length_ft if ch.length_ft else "-" }}</td>
+              <td>{{ item.length_ft if item.length_ft else "-" }}</td>
 
-              <td>{{ ch.axles if ch.axles else "-" }}</td>
+              <td>{{ item.axles if item.axles else "-" }}</td>
 
-              <td>{{ ch.site.name if ch.site else "Fuera de predio" }}</td>
+              <td>{{ item.ubicacion or "Fuera de patio" }}</td>
 
               <td>
                 {% if status_raw == "BUENO" %}
@@ -175,7 +172,7 @@
               </td>
 
               <td>
-                {% if ch.is_in_yard %}
+                {% if item.is_in_yard %}
                   <span class="badge badge-soft">Sí</span>
                 {% else %}
                   <span class="badge">No</span>
@@ -183,7 +180,7 @@
               </td>
 
               <td style="text-align:right;">
-                <a class="btn btn-ghost" href="{{ url_for('yard.chassis_detail', chassis_id=ch.id) }}">
+                <a class="btn btn-ghost" href="{{ url_for('yard.chassis_detail', chassis_id=item.id) }}">
                   Ver / Llantas
                 </a>
               </td>
@@ -195,87 +192,81 @@
 
     <script>
     (function(){
-    const $ = (id) => document.getElementById(id);
+      const $ = (id) => document.getElementById(id);
 
-    const fChassis = $("f_chassis");
-    const fPlate   = $("f_plate");
-    const fKind = $("f_kind");
-    const fLength  = $("f_length");
-    const fAxles   = $("f_axles");
-    const fSite    = $("f_site");
-    const fStatus  = $("f_status");
-    const fInYard  = $("f_inyard");
+      const fChassis = $("f_chassis");
+      const fPlate   = $("f_plate");
+      const fKind    = $("f_kind");
+      const fLength  = $("f_length");
+      const fAxles   = $("f_axles");
+      const fSite    = $("f_site");
+      const fStatus  = $("f_status");
+      const fInYard  = $("f_inyard");
 
-    const rows = Array.from(document.querySelectorAll(".ch-row"));
-    const btnClear = $("btn_clear_filters");
+      const rows = Array.from(document.querySelectorAll(".ch-row"));
+      const btnClear = $("btn_clear_filters");
 
-    function norm(s){ return (s || "").toString().trim().toLowerCase(); }
+      function norm(s){ return (s || "").toString().trim().toLowerCase(); }
 
-    function updateChassisCounter(){
-        const visibleRows = rows.filter(tr => tr.style.display !== "none");
-        const el = document.getElementById("chassisCounter");
-        if (!el) return;
+      function updateChassisCounter(){
+          const visibleRows = rows.filter(tr => tr.style.display !== "none");
+          const el = document.getElementById("chassisCounter");
+          if (!el) return;
 
-        el.textContent = `Mostrando ${visibleRows.length} de ${rows.length} chasis`;
-    }
+          el.textContent = `Mostrando ${visibleRows.length} de ${rows.length} chasis`;
+      }
 
-    function applyFilters(){
+      function applyFilters(){
+          const vChassis = norm(fChassis.value);
+          const vPlate   = norm(fPlate.value);
+          const vKind    = (fKind.value || "").trim().toLowerCase();
+          const vLength  = (fLength.value || "").trim();
+          const vAxles   = (fAxles.value || "").trim();
+          const vSite    = norm(fSite.value);
+          const vStatus  = (fStatus.value || "").trim();
+          const vInYard  = (fInYard.value || "").trim();
 
-        const vChassis = norm(fChassis.value);
-        const vPlate   = norm(fPlate.value);
-        const vKind = (fKind.value || "").trim().toLowerCase();
-        const vLength  = (fLength.value || "").trim();
-        const vAxles   = (fAxles.value || "").trim();
-        const vSite    = norm(fSite.value);
-        const vStatus  = (fStatus.value || "").trim();
-        const vInYard  = (fInYard.value || "").trim();
+          for (const tr of rows){
+            const d = tr.dataset;
+            let ok = true;
 
-        for (const tr of rows){
-        const d = tr.dataset;
+            if (vChassis && !d.chassis.includes(vChassis)) ok = false;
+            if (ok && vPlate && !d.plate.includes(vPlate)) ok = false;
+            if (ok && vKind && d.kind !== vKind) ok = false;
+            if (ok && vLength && d.length !== vLength) ok = false;
+            if (ok && vAxles && d.axles !== vAxles) ok = false;
 
-        let ok = true;
-
-        if (vChassis && !d.chassis.includes(vChassis)) ok = false;
-        if (ok && vPlate && !d.plate.includes(vPlate)) ok = false;
-        if (ok && vKind && d.kind !== vKind) ok = false;
-        if (ok && vLength && d.length !== vLength) ok = false;
-        if (ok && vAxles && d.axles !== vAxles) ok = false;
-
-        if (ok && vSite) {
-            if (vSite === "fuera") {
-            if (d.site !== "") ok = false;
-            } else if (!d.site.includes(vSite)) {
-            ok = false;
+            if (ok && vSite) {
+              if (!d.site.includes(vSite)) ok = false;
             }
-        }
 
-        if (ok && vStatus && d.status !== vStatus) ok = false;
-        if (ok && vInYard && d.inyard !== vInYard) ok = false;
+            if (ok && vStatus && d.status !== vStatus) ok = false;
+            if (ok && vInYard && d.inyard !== vInYard) ok = false;
 
-        tr.style.display = ok ? "" : "none";
-        }
+            tr.style.display = ok ? "" : "none";
+          }
 
-        updateChassisCounter();
-    }
+          updateChassisCounter();
+      }
 
-    [fChassis, fPlate, fLength, fAxles, fSite, fStatus, fInYard, fKind].forEach(el => {
-        el.addEventListener("input", applyFilters);
-        el.addEventListener("change", applyFilters);
-    });
+      [fChassis, fPlate, fLength, fAxles, fSite, fStatus, fInYard, fKind].forEach(el => {
+          el.addEventListener("input", applyFilters);
+          el.addEventListener("change", applyFilters);
+      });
 
-    btnClear.addEventListener("click", () => {
-        fChassis.value = "";
-        fPlate.value = "";
-        fKind.value = "";
-        fLength.value = "";
-        fAxles.value = "";
-        fSite.value = "";
-        fStatus.value = "";
-        fInYard.value = "";
-        applyFilters();
-    });
+      btnClear.addEventListener("click", () => {
+          fChassis.value = "";
+          fPlate.value = "";
+          fKind.value = "";
+          fLength.value = "";
+          fAxles.value = "";
+          fSite.value = "";
+          fStatus.value = "";
+          fInYard.value = "";
+          applyFilters();
+      });
 
-    applyFilters();
+      applyFilters();
     })();
     </script>
 

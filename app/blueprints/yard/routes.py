@@ -9,7 +9,7 @@ from sqlalchemy import or_
 
 import pytz
 import requests
-from sqlalchemy import text  # ✅ para SQL directo (predios EIR/chasis)
+from sqlalchemy import text, bindparam  # ✅ para SQL directo (predios EIR/chasis)
 
 from flask import (
     render_template,
@@ -45,7 +45,17 @@ CR_TZ = pytz.timezone("America/Costa_Rica")
 UTC_TZ = pytz.utc
 
 CONTAINER_RE = re.compile(r"^[A-Z]{4}-\d{6}-\d$")
-SIZES = ["20ST", "40ST", "40HC", "45ST"]
+SIZES = [
+    "40HC",
+    "40ST",
+    "40RF",
+    "40OT",
+    "20ST",
+    "20OT",
+    "20RF",
+    "20TQ",
+    "45HC",
+]
 APP_NAME = "Yard Gate Álamo"
 
 REPORT_TYPES = {"GATE_IN", "GATE_OUT", "MOVE"}
@@ -742,7 +752,72 @@ def api_bay_row_containers(bay_code: str, row_number: int):
 
     return jsonify({"ok": True, "bay_code": bay.code, "depth_row": row_number, "containers": items})
 
+def _get_container_prefill_data(code: str) -> dict:
+    """
+    Busca datos base del contenedor y su última clasificación conocida.
+    Retorna estructura lista para autocompletar Gate In.
+    """
+    normalized_code = (code or "").strip().upper()
+    if not normalized_code:
+        return {"found": False}
 
+    container = (
+        Container.query
+        .filter(Container.code == normalized_code)
+        .order_by(Container.id.desc())
+        .first()
+    )
+
+    last_class = db.session.execute(text("""
+        SELECT
+            cc.container_id,
+            cc.shipping_line,
+            cc.max_gross_kg,
+            cc.tare_kg,
+            cc.manufacture_year,
+            cc.summary_text,
+            cc.notes,
+            cc.classified_at
+        FROM yard_gate_alamo.container_classifications cc
+        JOIN (
+            SELECT container_id, MAX(classified_at) AS max_classified_at
+            FROM yard_gate_alamo.container_classifications
+            WHERE container_id IN (
+                SELECT id FROM yard_gate_alamo.containers WHERE code = :code
+            )
+            GROUP BY container_id
+        ) x
+          ON x.container_id = cc.container_id
+         AND x.max_classified_at = cc.classified_at
+        ORDER BY cc.classified_at DESC
+        LIMIT 1
+    """), {"code": normalized_code}).mappings().first()
+
+    if not container and not last_class:
+        return {"found": False}
+
+    data = {
+        "found": True,
+        "container_id": container.id if container else None,
+        "code": normalized_code,
+        "size": container.size if container else None,
+        "year": container.year if container else None,
+        "status_notes": container.status_notes if container else None,
+        "site_id": container.site_id if container else None,
+        "is_in_yard": bool(container.is_in_yard) if container else False,
+
+        "shipping_line": last_class["shipping_line"] if last_class else None,
+        "max_gross_kg": last_class["max_gross_kg"] if last_class else None,
+        "tare_kg": last_class["tare_kg"] if last_class else None,
+        "manufacture_year": last_class["manufacture_year"] if last_class else None,
+        "summary_text": last_class["summary_text"] if last_class else None,
+        "classification_notes": last_class["notes"] if last_class else None,
+    }
+
+    if not data["year"] and data["manufacture_year"]:
+        data["year"] = data["manufacture_year"]
+
+    return data
 # =========================
 # Gate In / Gate Out
 # =========================
@@ -780,6 +855,26 @@ def gate_in_view():
         chassis_rows=chassis_rows,
     )
 
+@yard_bp.get("/api/container-prefill/<code>")
+@login_required
+def api_container_prefill(code: str):
+    _ensure_active_site()
+
+    normalized_code = (code or "").strip().upper()
+
+    if not CONTAINER_RE.match(normalized_code):
+        return jsonify({
+            "ok": False,
+            "found": False,
+            "error": "INVALID_CONTAINER_CODE"
+        }), 400
+
+    payload = _get_container_prefill_data(normalized_code)
+
+    return jsonify({
+        "ok": True,
+        **payload
+    })
 
 @yard_bp.post("/gate-in")
 @login_required
@@ -971,26 +1066,44 @@ def gate_in_post():
     # =========================
     # Upsert Container
     # =========================
-    if not existing_here:
+    # Buscar primero en este predio
+    if existing_here:
+        c = existing_here
+    else:
+        # Si no existe en este predio, buscamos el contenedor globalmente por código
+        c = (
+            Container.query
+            .filter(Container.code == code)
+            .order_by(Container.id.desc())
+            .first()
+        )
+
+    if not c:
         c = Container(
             code=code,
             size=size,
             year=year,
-            status_notes=final_status_notes,
+            status_notes=final_status_notes or None,
             is_in_yard=True,
             site_id=site_id
         )
         db.session.add(c)
         db.session.flush()
     else:
-        c = existing_here
-        c.size = size
-        c.year = year
-        c.status_notes = final_status_notes
+        # Se mueve al predio actual y entra a patio
+        c.site_id = site_id
         c.is_in_yard = True
+
+        # Solo actualizar si realmente viene valor
+        if size:
+            c.size = size
+        if year is not None:
+            c.year = year
+        if final_status_notes:
+            c.status_notes = final_status_notes
+
         db.session.add(c)
         db.session.flush()
-
     # =========================
     # Guardar clasificación contenedor
     # =========================
@@ -1001,7 +1114,7 @@ def gate_in_post():
         tare_kg is not None,
         year is not None,
         bool(classification_notes),
-        needs_workshop is True,
+        bool(needs_workshop),
     ])
 
     if should_insert_class:
@@ -3154,8 +3267,8 @@ def _fetch_last_final_eir_for_chassis(chassis_id: int):
 
     where_status = ""
     if status_col:
-        # soporta tu flujo actual: FINAL / CERRADO / POR COBRAR etc. (si existen)
-        where_status = f"AND COALESCE(e.{status_col}, '') IN ('FINAL','CERRADO','POR COBRAR','PENDIENTE COBRO','ABIERTO','ASIGNADO')"
+        # soporta tu flujo actual
+        where_status = f"AND COALESCE(e.{status_col}, '') IN ('CONFIRMED','FINAL','CERRADO','POR COBRAR','PENDIENTE COBRO','ABIERTO','ASIGNADO')"
 
     order_by = f"ORDER BY e.{updated_col} DESC NULLS LAST, e.id DESC" if updated_col else "ORDER BY e.id DESC"
 
@@ -3169,6 +3282,37 @@ def _fetch_last_final_eir_for_chassis(chassis_id: int):
     """)
     row = db.session.execute(sql, {"cid": chassis_id}).mappings().first()
     return row  # dict-like o None
+
+def _last_confirmed_eir_destination_by_chassis_ids(chassis_ids: list[int]) -> dict[int, str]:
+    """
+    Trae el último destination de EIR CONFIRMED por chasis.
+    Retorna: {chassis_id: "DESTINO"}
+    """
+    if not chassis_ids:
+        return {}
+
+    sql = (
+        text(
+            """
+            SELECT DISTINCT ON (chassis_id)
+                chassis_id,
+                destination
+            FROM yard_gate_alamo.eirs
+            WHERE chassis_id IN :ids
+              AND status = 'CONFIRMED'
+            ORDER BY chassis_id, id DESC
+            """
+        )
+        .bindparams(bindparam("ids", expanding=True))
+    )
+
+    rows = db.session.execute(sql, {"ids": chassis_ids}).mappings().all()
+
+    out = {}
+    for r in rows:
+        out[int(r["chassis_id"])] = (r["destination"] or "").strip()
+
+    return out
 
 def _build_workshop_ticket_text(
     chassis_number: str,
@@ -3237,16 +3381,42 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
 @login_required
 def chassis_list():
     site_id = _ensure_active_site()
+
     rows = (
         Chassis.query
         .filter_by(site_id=site_id)
         .order_by(Chassis.chassis_number.asc())
         .all()
     )
+
+    chassis_ids = [r.id for r in rows]
+    last_dest_by_chassis = _last_confirmed_eir_destination_by_chassis_ids(chassis_ids)
+
+    items = []
+    for ch in rows:
+        if ch.is_in_yard:
+            ubicacion = ch.site.name if getattr(ch, "site", None) else "Predio"
+        else:
+            ubicacion = last_dest_by_chassis.get(ch.id) or "Fuera de patio"
+
+        items.append({
+            "id": ch.id,
+            "chassis_number": ch.chassis_number,
+            "plate": ch.plate,
+            "chassis_kind": ch.chassis_kind,
+            "length_ft": ch.length_ft,
+            "axles": ch.axles,
+            "status": ch.status,
+            "is_in_yard": bool(ch.is_in_yard),
+            "ubicacion": ubicacion,
+            "site_name": ch.site.name if getattr(ch, "site", None) else "",
+        })
+
     sites = Site.query.order_by(Site.name.asc()).all()
     return render_template(
         "yard/chassis_list.html",
         rows=rows,
+        items=items,
         sites=sites
     )
 
@@ -3299,7 +3469,7 @@ def chassis_import_post():
     errors = []
 
     # -------------------------
-    # 0) Cache de Sites (para resolver predio por nombre, sin pegarle a la DB por fila)
+    # 0) Cache de Sites
     # -------------------------
     sites = Site.query.all()
     sites_by_name = {(s.name or "").strip().upper(): s for s in sites}
@@ -3307,8 +3477,8 @@ def chassis_import_post():
     # -------------------------
     # 1) Leer Excel a memoria
     # -------------------------
-    staged = []   # lista de dicts validados
-    numbers = []  # lista de chassis_number (para consulta IN)
+    staged = []
+    numbers = []
 
     for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         chassis_number = (str(row[0]).strip() if row and row[0] is not None else "")
@@ -3386,14 +3556,13 @@ def chassis_import_post():
         })
         numbers.append(chassis_number)
 
-    # Si todo está malo, salimos sin pegarle duro a la DB
     if not staged:
         flash(f"No se importó nada. Errores: {len(errors)}", "danger")
         session["chassis_import_errors"] = errors[:200]
         return redirect(url_for("yard.chassis_import_view"))
 
-        # -------------------------------------------
-    # 2) Traer existentes en UNA sola consulta IN (global por chassis_number)
+    # -------------------------------------------
+    # 2) Traer existentes en UNA sola consulta IN
     # -------------------------------------------
     existing_rows = (
         Chassis.query
@@ -3403,7 +3572,7 @@ def chassis_import_post():
     existing_map = {c.chassis_number: c for c in existing_rows}
 
     # -------------------------
-    # 3) Upsert en memoria (global)
+    # 3) Upsert en memoria
     # -------------------------
     for item in staged:
         chassis_number = item["chassis_number"]
@@ -3860,6 +4029,7 @@ def api_chassis_classify(chassis_id: int):
     # --------
     # 6) Ingreso automático al predio
     # --------
+    ch.site_id = site_id
     ch.is_in_yard = True
     db.session.add(ch)
 
@@ -3872,6 +4042,7 @@ def api_chassis_classify(chassis_id: int):
             is_in_yard=True,
         )
     else:
+        inv.site_id = site_id
         inv.chassis_code = ch.chassis_number
         inv.is_in_yard = True
     db.session.add(inv)
