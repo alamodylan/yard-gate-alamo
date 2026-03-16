@@ -4207,3 +4207,135 @@ def report_chassis_outside():
         date_to=date_to,
         origin_site_id=origin_site_id,
     )
+@yard_bp.get("/reportes/movimientos-contenedor")
+@login_required
+def report_container_movements():
+    site_id = _ensure_active_site()
+
+    date_from = (request.args.get("date_from") or "").strip()
+    date_to = (request.args.get("date_to") or "").strip()
+    movement_type = (request.args.get("movement_type") or "").strip().upper()
+
+    valid_types = {"", "GATE_IN", "GATE_OUT"}
+    if movement_type not in valid_types:
+        movement_type = ""
+
+    filters = ["mv.site_id = :site_id", "mv.movement_type IN ('GATE_IN', 'GATE_OUT')"]
+    params = {"site_id": site_id}
+
+    if date_from:
+        filters.append("mv.occurred_at::date >= :date_from")
+        params["date_from"] = date_from
+
+    if date_to:
+        filters.append("mv.occurred_at::date <= :date_to")
+        params["date_to"] = date_to
+
+    if movement_type:
+        filters.append("mv.movement_type = :movement_type")
+        params["movement_type"] = movement_type
+
+    where_sql = " AND ".join(filters)
+
+    sql = text(f"""
+        SELECT
+            mv.id AS movement_id,
+            mv.occurred_at,
+            mv.movement_type,
+            c.id AS container_id,
+            c.code AS container_code,
+
+            -- Chasis para GATE_IN
+            ch_in.chassis_number AS chassis_gate_in,
+
+            -- Chasis para GATE_OUT
+            ch_out.chassis_number AS chassis_gate_out,
+
+            -- Origen para GATE_IN = destino del último EIR confirmado anterior
+            prev_eir.destination AS origin_name,
+
+            -- Destino para GATE_OUT
+            eir_out.destination AS destination_name
+
+        FROM yard_gate_alamo.movements mv
+        JOIN yard_gate_alamo.containers c
+          ON c.id = mv.container_id
+
+        -- Chasis del GATE_IN
+        LEFT JOIN LATERAL (
+            SELECT ci.chassis_id
+            FROM yard_gate_alamo.chassis_inspections ci
+            WHERE ci.movement_id = mv.id
+            ORDER BY ci.inspected_at DESC NULLS LAST, ci.id DESC
+            LIMIT 1
+        ) ci_in ON TRUE
+        LEFT JOIN yard_gate_alamo.chassis ch_in
+          ON ch_in.id = ci_in.chassis_id
+
+        -- EIR del GATE_OUT actual
+        LEFT JOIN yard_gate_alamo.eirs eir_out
+          ON eir_out.gate_out_movement_id = mv.id
+         AND eir_out.status = 'CONFIRMED'
+
+        LEFT JOIN yard_gate_alamo.chassis ch_out
+          ON ch_out.id = eir_out.chassis_id
+
+        -- EIR anterior del mismo contenedor para resolver ORIGEN del GATE_IN
+        LEFT JOIN LATERAL (
+            SELECT e_prev.destination
+            FROM yard_gate_alamo.eirs e_prev
+            WHERE e_prev.container_id = mv.container_id
+              AND e_prev.status = 'CONFIRMED'
+              AND COALESCE(e_prev.inventory_out_at, e_prev.finalized_at, e_prev.created_at) < mv.occurred_at
+            ORDER BY
+              COALESCE(e_prev.inventory_out_at, e_prev.finalized_at, e_prev.created_at) DESC,
+              e_prev.id DESC
+            LIMIT 1
+        ) prev_eir ON TRUE
+
+        WHERE {where_sql}
+        ORDER BY mv.occurred_at DESC, mv.id DESC
+    """)
+
+    rows = db.session.execute(sql, params).mappings().all()
+
+    items = []
+    for r in rows:
+        movement_type_row = (r["movement_type"] or "").upper()
+
+        chassis_number = ""
+        origin_name = ""
+        destination_name = ""
+
+        if movement_type_row == "GATE_IN":
+            chassis_number = r["chassis_gate_in"] or ""
+            origin_name = r["origin_name"] or ""
+            destination_name = ""
+        elif movement_type_row == "GATE_OUT":
+            chassis_number = r["chassis_gate_out"] or ""
+            origin_name = ""
+            destination_name = r["destination_name"] or ""
+
+        occurred_at = r["occurred_at"]
+        occurred_at_str = occurred_at.strftime("%d/%m/%Y %I:%M %p") if occurred_at else ""
+
+        items.append({
+            "movement_id": r["movement_id"],
+            "container_id": r["container_id"],
+            "container_code": r["container_code"] or "",
+            "occurred_at": occurred_at,
+            "occurred_at_str": occurred_at_str,
+            "movement_type": movement_type_row,
+            "chassis_number": chassis_number,
+            "origin_name": origin_name,
+            "destination_name": destination_name,
+        })
+
+    return render_template(
+        "yard/report_container_movements.html",
+        items=items,
+        total=len(items),
+        date_from=date_from,
+        date_to=date_to,
+        movement_type=movement_type,
+    )

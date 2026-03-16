@@ -84,12 +84,13 @@
     </div>
   </a>
 
-  <a class="report-card" href="javascript:void(0)" style="opacity:.65; cursor:default;">
-    <div class="report-title">Movimientos de contenedor</div>
-    <div class="report-desc">
-      Próximamente.
-    </div>
-  </a>
+  <a class="report-card" href="{{ url_for('yard.report_container_movements') }}">
+  <div class="report-title">Movimientos de contenedor</div>
+  <div class="report-desc">
+    Muestra ingresos y salidas de contenedores del predio activo, con fecha,
+    contenedor, chasis relacionado, origen en Gate In y destino en Gate Out.
+  </div>
+</a>
 
   <a class="report-card" href="javascript:void(0)" style="opacity:.65; cursor:default;">
     <div class="report-title">Movimientos de chasis</div>
