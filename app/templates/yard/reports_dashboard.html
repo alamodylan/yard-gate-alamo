@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Reportes - Yard Gate Álamo{% endblock %}
+{% block content %}
+
+<style>
+  .reports-grid{
+    display:grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap:16px;
+    margin-top:18px;
+  }
+
+  .report-card{
+    display:block;
+    text-decoration:none;
+    color:inherit;
+    padding:18px;
+    border-radius:18px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.04);
+    transition:.18s ease;
+    min-height:150px;
+  }
+
+  .report-card:hover{
+    transform:translateY(-2px);
+    border-color:rgba(255,255,255,.18);
+    background:rgba(255,255,255,.07);
+  }
+
+  .report-title{
+    font-size:18px;
+    font-weight:800;
+    margin-bottom:8px;
+  }
+
+  .report-desc{
+    opacity:.85;
+    line-height:1.45;
+    font-size:14px;
+  }
+
+  .page-top{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    flex-wrap:wrap;
+    margin-bottom:12px;
+  }
+
+  .mini-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.05);
+    font-size:12px;
+    font-weight:800;
+  }
+</style>
+
+<div class="page-top">
+  <div>
+    <h2 style="margin:0;">Dashboard de Reportes</h2>
+    <div style="opacity:.8; margin-top:4px;">
+      Accesos rápidos a reportes operativos de Yard Gate Álamo.
+    </div>
+  </div>
+
+  <div class="mini-pill">
+    Predio activo: {{ active_site.name if active_site else "N/D" }}
+  </div>
+</div>
+
+<div class="reports-grid">
+  <a class="report-card" href="{{ url_for('yard.report_chassis_outside') }}">
+    <div class="report-title">Chasis fuera de Álamo</div>
+    <div class="report-desc">
+      Muestra los chasis que actualmente no están en patio, indicando largo, ejes,
+      origen, destino, fecha de salida, días fuera y estado actual.
+    </div>
+  </a>
+
+  <a class="report-card" href="javascript:void(0)" style="opacity:.65; cursor:default;">
+    <div class="report-title">Movimientos de contenedor</div>
+    <div class="report-desc">
+      Próximamente.
+    </div>
+  </a>
+
+  <a class="report-card" href="javascript:void(0)" style="opacity:.65; cursor:default;">
+    <div class="report-title">Movimientos de chasis</div>
+    <div class="report-desc">
+      Próximamente.
+    </div>
+  </a>
+
+  <a class="report-card" href="javascript:void(0)" style="opacity:.65; cursor:default;">
+    <div class="report-title">Recauche</div>
+    <div class="report-desc">
+      Próximamente.
+    </div>
+  </a>
+
+  <a class="report-card" href="javascript:void(0)" style="opacity:.65; cursor:default;">
+    <div class="report-title">Cambios de llantas</div>
+    <div class="report-desc">
+      Próximamente.
+    </div>
+  </a>
+</div>
+
+{% endblock %}

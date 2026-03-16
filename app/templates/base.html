@@ -44,7 +44,11 @@
 
         <a class="navlink" href="{{ url_for('yard.eir_list_view') }}">EIR</a>
 
-        <a class="navlink" href="{{ url_for('yard.reports_view') }}">Reportes</a>
+        {% if active_site_key in ['COYOL', 'CALDERA', 'LIMON'] %}
+          <a class="navlink" href="{{ url_for('yard.reports_dashboard') }}">Reportes</a>
+        {% else %}
+          <a class="navlink" href="{{ url_for('yard.reports_view') }}">Reportes</a>
+        {% endif %}
 
         {# ✅ Admin menu (solo admin) #}
         {% if current_user.is_authenticated and (current_user.role|lower == 'admin') %}

@@ -2,7 +2,7 @@
 import re
 import os
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from io import BytesIO
 import json
 from sqlalchemy import or_
@@ -3366,20 +3366,16 @@ def chassis_list():
 
     rows = (
         Chassis.query
-        .filter_by(site_id=site_id)
+        .filter(
+            Chassis.site_id == site_id,
+            Chassis.is_in_yard.is_(True),
+        )
         .order_by(Chassis.chassis_number.asc())
         .all()
     )
-
-    chassis_ids = [r.id for r in rows]
-    last_dest_by_chassis = _last_confirmed_eir_destination_by_chassis_ids(chassis_ids)
-
     items = []
     for ch in rows:
-        if ch.is_in_yard:
-            ubicacion = ch.site.name if getattr(ch, "site", None) else "Predio"
-        else:
-            ubicacion = last_dest_by_chassis.get(ch.id) or "Fuera de patio"
+        ubicacion = ch.site.name if getattr(ch, "site", None) else "Predio"
 
         items.append({
             "id": ch.id,
@@ -3407,7 +3403,10 @@ def chassis_list():
 @login_required
 def chassis_dashboard():
     site_id = _ensure_active_site()
-    base = Chassis.query.filter_by(site_id=site_id)
+    base = Chassis.query.filter(
+        Chassis.site_id == site_id,
+        Chassis.is_in_yard.is_(True),
+    )
 
     counts = {
         "40FT_2AX": base.filter(Chassis.type_code == "40FT_2AX").count(),
@@ -3625,7 +3624,10 @@ def chassis_export():
     # Trae lo que ya existe en este predio
     rows = (
         Chassis.query
-        .filter_by(site_id=site_id)
+        .filter(
+            Chassis.site_id == site_id,
+            Chassis.is_in_yard.is_(True),
+        )
         .order_by(Chassis.chassis_number.asc())
         .all()
     )
@@ -4072,3 +4074,136 @@ def api_chassis_classify(chassis_id: int):
 
     db.session.commit()
     return jsonify({"ok": True, "needs_workshop": needs_workshop, "ticket_id": ticket_id, "eir_prev_id": eir_prev_id})
+
+# =========================
+# Reportes
+# =========================
+
+@yard_bp.get("/reportes")
+@login_required
+def reports_dashboard():
+    site_id = _ensure_active_site()
+    active_site = Site.query.get(site_id)
+
+    return render_template(
+        "yard/reports_dashboard.html",
+        active_site=active_site,
+    )
+
+
+@yard_bp.get("/reportes/chasis-fuera")
+@login_required
+def report_chassis_outside():
+    _ensure_active_site()
+
+    date_from = (request.args.get("date_from") or "").strip()
+    date_to = (request.args.get("date_to") or "").strip()
+    origin_site_id = (request.args.get("origin_site_id") or "").strip()
+
+    filters = []
+    params = {}
+
+    if date_from:
+        filters.append("""
+            COALESCE(e.inventory_out_at::date, e.finalized_at::date, e.trip_date) >= :date_from
+        """)
+        params["date_from"] = date_from
+
+    if date_to:
+        filters.append("""
+            COALESCE(e.inventory_out_at::date, e.finalized_at::date, e.trip_date) <= :date_to
+        """)
+        params["date_to"] = date_to
+
+    if origin_site_id:
+        try:
+            origin_site_id_int = int(origin_site_id)
+            filters.append("e.site_id = :origin_site_id")
+            params["origin_site_id"] = origin_site_id_int
+        except Exception:
+            origin_site_id = ""
+
+    extra_where = ""
+    if filters:
+        extra_where = " AND " + " AND ".join(filters)
+
+    sql = text(f"""
+        SELECT
+            c.id,
+            c.chassis_number,
+            c.plate,
+            c.length_ft,
+            c.axles,
+            s.name AS origin_name,
+            e.destination,
+            COALESCE(e.inventory_out_at, e.finalized_at, e.trip_date) AS departure_at,
+            CURRENT_DATE - COALESCE(e.inventory_out_at::date, e.finalized_at::date, e.trip_date) AS days_out,
+            c.status
+        FROM yard_gate_alamo.chassis c
+        LEFT JOIN LATERAL (
+            SELECT *
+            FROM yard_gate_alamo.eirs e
+            WHERE e.chassis_id = c.id
+              AND e.status = 'CONFIRMED'
+            ORDER BY
+                e.inventory_out_at DESC NULLS LAST,
+                e.finalized_at DESC NULLS LAST,
+                e.trip_date DESC,
+                e.id DESC
+            LIMIT 1
+        ) e ON TRUE
+        LEFT JOIN yard_gate_alamo.sites s
+            ON s.id = e.site_id
+        WHERE c.is_in_yard = false
+          {extra_where}
+        ORDER BY
+            days_out DESC NULLS LAST,
+            departure_at DESC NULLS LAST,
+            c.chassis_number ASC
+    """)
+
+    rows = db.session.execute(sql, params).mappings().all()
+
+    items = []
+    total = 0
+    for r in rows:
+        total += 1
+
+        departure_at = r["departure_at"]
+        days_out = r["days_out"]
+
+        if departure_at and hasattr(departure_at, "strftime"):
+            departure_at_str = departure_at.strftime("%d/%m/%Y %I:%M %p") if hasattr(departure_at, "hour") else departure_at.strftime("%d/%m/%Y")
+        else:
+            departure_at_str = ""
+
+        items.append({
+            "id": r["id"],
+            "chassis_number": r["chassis_number"],
+            "plate": r["plate"] or "",
+            "length_ft": r["length_ft"] or "",
+            "axles": r["axles"] or "",
+            "origin_name": r["origin_name"] or "",
+            "destination": r["destination"] or "Fuera de patio",
+            "departure_at": departure_at,
+            "departure_at_str": departure_at_str,
+            "days_out": int(days_out) if days_out is not None else 0,
+            "status": r["status"] or "",
+        })
+
+    sites = (
+        Site.query
+        .filter(Site.id.in_([2, 3, 4]))
+        .order_by(Site.name.asc())
+        .all()
+    )
+
+    return render_template(
+        "yard/report_chassis_outside.html",
+        items=items,
+        total=total,
+        sites=sites,
+        date_from=date_from,
+        date_to=date_to,
+        origin_site_id=origin_site_id,
+    )

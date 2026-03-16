@@ -1,0 +1,217 @@
+{% extends "base.html" %}
+{% block title %}Reporte - Chasis fuera de Álamo{% endblock %}
+{% block content %}
+
+<style>
+  .toolbar-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+    margin-bottom:14px;
+  }
+
+  .table-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+  }
+
+  .stats-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    margin:12px 0 16px;
+  }
+
+  .mini-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.05);
+    font-size:12px;
+    font-weight:800;
+  }
+
+  .filters-grid{
+    display:grid;
+    grid-template-columns: 1fr 1fr 1fr auto auto;
+    gap:10px;
+    align-items:end;
+  }
+
+  @media (max-width: 1000px){
+    .filters-grid{
+      grid-template-columns:1fr;
+    }
+  }
+
+  .table-wrap{
+    overflow:auto;
+  }
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:980px;
+  }
+
+  th, td{
+    padding:10px 12px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    text-align:left;
+    white-space:nowrap;
+  }
+
+  th{
+    font-size:12px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    opacity:.8;
+  }
+
+  .days-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width:38px;
+    padding:5px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    font-weight:800;
+  }
+
+  .empty-state{
+    padding:28px 16px;
+    text-align:center;
+    opacity:.8;
+  }
+
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    text-decoration:none;
+    cursor:pointer;
+  }
+
+  .btn:hover{
+    background:rgba(255,255,255,.09);
+  }
+
+  .input, .select{
+    width:100%;
+    min-height:40px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    padding:0 12px;
+  }
+</style>
+
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:8px;">
+  <div>
+    <h2 style="margin:0;">Chasis fuera de Álamo</h2>
+    <div style="opacity:.8; margin-top:4px;">
+      Chasis que actualmente no están en patio.
+    </div>
+  </div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('yard.reports_dashboard') }}">← Volver a reportes</a>
+    <a class="btn" href="{{ url_for('yard.chassis_list') }}">Ver chasis en predio</a>
+  </div>
+</div>
+
+<div class="stats-row">
+  <div class="mini-pill">Total fuera de Álamo: {{ total }}</div>
+</div>
+
+<form method="get" class="toolbar-card">
+  <div class="filters-grid">
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Fecha salida desde</div>
+      <input class="input" type="date" name="date_from" value="{{ date_from }}">
+    </div>
+
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Fecha salida hasta</div>
+      <input class="input" type="date" name="date_to" value="{{ date_to }}">
+    </div>
+
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Origen</div>
+      <select class="select" name="origin_site_id">
+        <option value="">Todos</option>
+        {% for s in sites %}
+          <option value="{{ s.id }}" {% if origin_site_id == (s.id|string) %}selected{% endif %}>
+            {{ s.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="btn">Filtrar</button>
+    <a class="btn" href="{{ url_for('yard.report_chassis_outside') }}">Limpiar</a>
+  </div>
+</form>
+
+<div class="table-card">
+  {% if items %}
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Chasis</th>
+            <th>Placa</th>
+            <th>Largo</th>
+            <th>Ejes</th>
+            <th>Origen</th>
+            <th>Destino</th>
+            <th>Fecha salida</th>
+            <th>Días fuera</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in items %}
+            <tr>
+              <td>
+                <a href="{{ url_for('yard.chassis_detail', chassis_id=row.id) }}">
+                  {{ row.chassis_number }}
+                </a>
+              </td>
+              <td>{{ row.plate or "—" }}</td>
+              <td>{{ row.length_ft or "—" }}</td>
+              <td>{{ row.axles or "—" }}</td>
+              <td>{{ row.origin_name or "—" }}</td>
+              <td>{{ row.destination or "Fuera de patio" }}</td>
+              <td>{{ row.departure_at_str or "—" }}</td>
+              <td><span class="days-badge">{{ row.days_out }}</span></td>
+              <td>{{ row.status or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      No hay chasis fuera de Álamo con los filtros seleccionados.
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

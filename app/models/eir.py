@@ -226,8 +226,8 @@ class EIR(db.Model):
     status = db.Column(
         db.String(20),
         nullable=False,
-        default="DRAFT"
-    )  # DRAFT | FINAL | EDITING | REVERTED
+        default="PENDING"
+    )  # PENDING | FINAL | EDITING | REVERTED
 
     # =========================
     # Observaciones / auditoría
@@ -311,11 +311,11 @@ class EIR(db.Model):
 
     @property
     def can_be_reverted(self) -> bool:
-        return self.status in {"FINAL", "EDITING"} and self.is_editable_window_open
+        return self.status in {"CONFIRMED", "EDITING"} and self.is_editable_window_open
 
     @property
     def can_be_edited(self) -> bool:
-        return self.status == "FINAL" and self.is_editable_window_open
+        return self.status == "CONFIRMED" and self.is_editable_window_open
 
 
 class EIRContainerDamage(db.Model):
