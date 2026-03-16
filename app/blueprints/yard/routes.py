@@ -2452,13 +2452,9 @@ def eir_confirm_view(eir_id: int):
         flash("Este EIR no tiene equipo válido para confirmar.", "danger")
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
-    if not c:
-        flash("Por ahora el movimiento GATE_OUT requiere contenedor asociado.", "danger")
-        return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
-
     mv = Movement(
         site_id=site_id,
-        container_id=c.id,
+        container_id=c.id if c else None,
         movement_type="GATE_OUT",
         occurred_at=datetime.utcnow(),
         bay_code=bay_code,
@@ -2514,6 +2510,7 @@ def eir_confirm_view(eir_id: int):
             "movement_id": mv.id,
             "container_id": eir.container_id,
             "chassis_id": eir.chassis_id,
+            "chassis_only": bool(ch and not c),
         },
     )
 

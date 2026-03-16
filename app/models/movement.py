@@ -27,7 +27,7 @@ class Movement(db.Model):
     container_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.containers.id"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
