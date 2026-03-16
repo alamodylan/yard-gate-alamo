@@ -1936,25 +1936,11 @@ def gate_out_post():
         # -------------------------
         # Crear Movement si hay contenedor
         # -------------------------
+        # -------------------------
+        # En predios NO se crea Movement todavía
+        # El Movement real se crea hasta CONFIRMAR el EIR
+        # -------------------------
         mv = None
-        if c:
-            mv = Movement(
-                site_id=site_id,
-                container_id=c.id,
-                movement_type="GATE_OUT",
-                occurred_at=datetime.utcnow(),
-                bay_code=bay_code,
-                depth_row=depth_row,
-                tier=tier,
-                driver_name=driver_name or None,
-                driver_id_doc=driver_id_doc or None,
-                truck_plate=truck_plate or None,
-                notes=general_notes or None,
-                created_by_user_id=current_user.id,
-                created_at=datetime.utcnow(),
-            )
-            db.session.add(mv)
-            db.session.flush()
 
         # -------------------------
         # Crear o ligar EIR
@@ -1962,7 +1948,7 @@ def gate_out_post():
         if mode == "link":
             if not eir_id_raw or not str(eir_id_raw).isdigit():
                 db.session.rollback()
-                flash("Selecciona un EIR DRAFT válido para ligar.", "danger")
+                flash("Selecciona un EIR PENDING válido para ligar.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
             eir = EIR.query.get(int(eir_id_raw))
@@ -1971,9 +1957,9 @@ def gate_out_post():
                 flash("Ese EIR no corresponde a este predio.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
-            if eir.status not in {"DRAFT", "EDITING"}:
+            if eir.status not in {"PENDING", "EDITING"}:
                 db.session.rollback()
-                flash("Solo puedes ligar EIRs en estado DRAFT o EDITING.", "danger")
+                flash("Solo puedes ligar EIRs en estado PENDING o EDITING.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
             # Limpiar daños viejos para reescribir
@@ -2031,16 +2017,16 @@ def gate_out_post():
         eir.chassis_snapshot_json = chassis_snapshot
         eir.container_snapshot_json = container_snapshot
         eir.reefer_snapshot_json = reefer_snapshot
-        eir.gate_out_movement_id = mv.id if mv else None
+        eir.gate_out_movement_id = None
 
-        # Finalizar
+        # Guardado inicial del EIR en estado PENDING
         now_utc = datetime.utcnow()
         eir.status = "PENDING"
-        eir.finalized_at = now_utc
         eir.updated_at = now_utc
-        eir.pdf_generated_at = now_utc   # por ahora lo dejamos marcado al guardar
-        eir.inventory_out_at = now_utc
-        eir.editable_until = now_utc + timedelta(hours=24)
+        eir.pdf_generated_at = now_utc
+        eir.finalized_at = None
+        eir.inventory_out_at = None
+        eir.editable_until = None
 
         # -------------------------
         # Guardar daños visuales
@@ -2072,20 +2058,10 @@ def gate_out_post():
             )
             db.session.add(dmg)
 
-        # -------------------------
-        # Sacar de inventario
-        # -------------------------
-        if c:
-            ContainerPosition.query.filter_by(container_id=c.id).delete()
-            c.is_in_yard = False
-
-        if ch:
-            ch.is_in_yard = False
-            db.session.add(ch)
 
         audit_log(
             current_user.id,
-            "GATE_OUT_PREDIO_EIR_FINALIZED",
+            "EIR_PENDING_SAVED",
             "eir",
             eir.id,
             {
@@ -2102,9 +2078,8 @@ def gate_out_post():
         db.session.commit()
 
         flash(
-            f"EIR #{eir.id} guardado correctamente. "
-            f"{'Contenedor ' + c.code + ' ' if c else ''}"
-            f"{'y chasis ' + ch.chassis_number if ch else ''} salieron de inventario.",
+            f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
+            f"Debes confirmarlo para aplicar la salida de inventario.",
             "success",
         )
 
@@ -2507,6 +2482,16 @@ def eir_confirm_view(eir_id: int):
     if ch:
         ch.is_in_yard = False
         db.session.add(ch)
+
+        inv = ChassisInventory.query.filter_by(
+            chassis_id=ch.id,
+            site_id=site_id
+        ).first()
+
+        if inv:
+            inv.is_in_yard = False
+            inv.updated_at = datetime.utcnow()
+            db.session.add(inv)
 
     now_utc = datetime.utcnow()
     eir.gate_out_movement_id = mv.id
