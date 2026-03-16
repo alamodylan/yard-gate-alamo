@@ -727,16 +727,6 @@
     </div>
   </div>
 
-  <h3 style="margin-top:18px;">Chofer que entrega</h3>
-  <label>Nombre completo</label>
-  <input name="driver_name" placeholder="Nombre y apellidos">
-
-  <label>Documento de identidad</label>
-  <input name="driver_id_doc" placeholder="Cédula / Pasaporte">
-
-  <label>Placa del cabezal</label>
-  <input name="truck_plate" placeholder="ABC-123">
-
   <h3 style="margin-top:18px;">Ubicación en predio</h3>
 
   <label>Bloque</label>
@@ -776,18 +766,13 @@
   <textarea id="status_notes_textarea" name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
 
   <h3 style="margin-top:18px;">Fotos</h3>
-  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-    <div>
-      <label>Fotos del contenedor (Gate In)</label>
-      <input type="file" name="photos" accept="image/*" multiple capture="environment">
-      <div class="hint" style="margin-top:6px;">En Android abre cámara o galería según el navegador.</div>
-    </div>
-    <div>
-      <label>Fotos de clasificación (daños / evidencias) (opcional)</label>
-      <input type="file" name="classification_photos" accept="image/*" multiple capture="environment">
-      <div class="hint" style="margin-top:6px;">Tu backend actual no las procesa aún (no rompe nada).</div>
-    </div>
+<div class="card" style="padding:12px; border-radius:16px;">
+  <label>Fotos del contenedor (Gate In)</label>
+  <input type="file" name="photos" accept="image/*" multiple capture="environment">
+  <div class="hint" style="margin-top:6px;">
+    Estas fotos se verán luego desde el inventario / detalle del contenedor.
   </div>
+</div>
 
   <h3 style="margin-top:18px;">Resumen (copiable)</h3>
   <div class="card" style="padding:12px; border-radius:16px;">
