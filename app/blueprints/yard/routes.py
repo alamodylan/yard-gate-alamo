@@ -4261,16 +4261,18 @@ def report_container_movements():
         JOIN yard_gate_alamo.containers c
           ON c.id = mv.container_id
 
-        -- Chasis del GATE_IN
+        -- Chasis del GATE_IN (vía tire_readings)
         LEFT JOIN LATERAL (
-            SELECT ci.chassis_id
-            FROM yard_gate_alamo.chassis_inspections ci
-            WHERE ci.movement_id = mv.id
-            ORDER BY ci.inspected_at DESC NULLS LAST, ci.id DESC
+            SELECT tr.chassis_id
+            FROM yard_gate_alamo.tire_readings tr
+            WHERE tr.event_type = 'GATE_IN'
+              AND tr.event_id = mv.id
+              AND tr.chassis_id IS NOT NULL
+            ORDER BY tr.recorded_at DESC NULLS LAST, tr.id DESC
             LIMIT 1
-        ) ci_in ON TRUE
+        ) tr_in ON TRUE
         LEFT JOIN yard_gate_alamo.chassis ch_in
-          ON ch_in.id = ci_in.chassis_id
+          ON ch_in.id = tr_in.chassis_id
 
         -- EIR del GATE_OUT actual
         LEFT JOIN yard_gate_alamo.eirs eir_out
