@@ -3729,8 +3729,13 @@ def api_chassis_tires_get(chassis_id: int):
         positions[p] = {
             "marchamo": None,
             "tire_state": "OK",
+            "tire_id": None,
             "tire_number": None,
             "brand": None,
+            "model": None,
+            "size": None,
+            "notes": None,
+            "status": None,
             "estrias_mm": None,
             "is_flat": False,
         }
@@ -3743,8 +3748,13 @@ def api_chassis_tires_get(chassis_id: int):
         positions[pos] = {
             "marchamo": r.marchamo,
             "tire_state": (r.tire_state or "OK").upper(),
+            "tire_id": r.tire.id if r.tire else None,
             "tire_number": r.tire.tire_number if r.tire else None,
             "brand": r.tire.brand if r.tire else None,
+            "model": r.tire.model if r.tire else None,
+            "size": r.tire.size if r.tire else None,
+            "notes": r.tire.notes if r.tire else None,
+            "status": r.tire.status if r.tire else None,
             "estrias_mm": getattr(r, "estrias_mm", None),
             "is_flat": bool(getattr(r, "is_flat", False)),
         }
@@ -3762,6 +3772,62 @@ def api_chassis_tires_get(chassis_id: int):
         },
         "positions": positions
     })
+@yard_bp.get("/api/llantas/disponibles")
+@login_required
+def api_tires_available():
+    _ensure_active_site()
+
+    q = (request.args.get("q") or "").strip().upper()
+
+    filters = ["t.status = 'EN_TALLER_BODEGA'"]
+    params = {}
+
+    if q:
+        filters.append("""
+            (
+                t.tire_number ILIKE :q
+                OR COALESCE(t.brand, '') ILIKE :q
+                OR COALESCE(t.model, '') ILIKE :q
+                OR COALESCE(t.size, '') ILIKE :q
+            )
+        """)
+        params["q"] = f"%{q}%"
+
+    sql = text(f"""
+        SELECT
+            t.id,
+            t.tire_number,
+            t.brand,
+            t.model,
+            t.size,
+            t.notes,
+            t.status
+        FROM yard_gate_alamo.tires t
+        LEFT JOIN yard_gate_alamo.chassis_tires ct
+          ON ct.tire_id = t.id
+        WHERE {" AND ".join(filters)}
+        ORDER BY t.tire_number ASC
+        LIMIT 100
+    """)
+
+    rows = db.session.execute(sql, params).mappings().all()
+
+    items = []
+    for r in rows:
+        items.append({
+            "id": r["id"],
+            "tire_number": r["tire_number"] or "",
+            "brand": r["brand"] or "",
+            "model": r["model"] or "",
+            "size": r["size"] or "",
+            "notes": r["notes"] or "",
+            "status": r["status"] or "EN_TALLER_BODEGA",
+        })
+
+    return jsonify({
+        "ok": True,
+        "items": items
+    })
 
 
 @yard_bp.post("/api/chassis/<int:chassis_id>/tires")
@@ -3777,13 +3843,232 @@ def api_chassis_tires_set(chassis_id: int):
     allowed = set(allowed_positions_for(axles))
 
     data = request.get_json(silent=True) or {}
+    action = (data.get("action") or "legacy_update").strip().lower()
+
     pos = (data.get("position_code") or "").strip().upper()
     if pos not in allowed:
         return jsonify({"ok": False, "error": "INVALID_POSITION"}), 400
 
+    confirm_replace = bool(data.get("confirm_replace"))
+
+    row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
+
+    # =========================
+    # ACTION: unassign
+    # =========================
+    if action == "unassign":
+        if not row:
+            return jsonify({"ok": False, "error": "POSITION_EMPTY"}), 400
+
+        tire = Tire.query.get(row.tire_id) if row.tire_id else None
+        if tire:
+            tire.status = "EN_TALLER_BODEGA"
+            db.session.add(tire)
+
+        db.session.delete(row)
+        db.session.commit()
+
+        return jsonify({"ok": True, "action": "unassign"})
+
+    # =========================
+    # ACTION: assign_existing
+    # =========================
+    if action == "assign_existing":
+        tire_id = data.get("tire_id")
+        marchamo = (data.get("marchamo") or "").strip()
+
+        estrias_mm_raw = data.get("estrias_mm")
+        is_flat = bool(data.get("is_flat"))
+
+        if not tire_id:
+            return jsonify({"ok": False, "error": "TIRE_ID_REQUIRED"}), 400
+
+        tire = Tire.query.get(tire_id)
+        if not tire:
+            return jsonify({"ok": False, "error": "TIRE_NOT_FOUND"}), 404
+
+        if tire.status != "EN_TALLER_BODEGA":
+            return jsonify({
+                "ok": False,
+                "error": "TIRE_STATUS_NOT_ALLOWED",
+                "detail": f"La llanta está en estado {tire.status}"
+            }), 400
+
+        existing_mount = ChassisTire.query.filter_by(tire_id=tire.id).first()
+        if existing_mount and (
+            existing_mount.chassis_id != ch.id or existing_mount.position_code != pos
+        ):
+            return jsonify({
+                "ok": False,
+                "error": "TIRE_ALREADY_ASSIGNED",
+                "detail": (
+                    f"La llanta ya está asignada al chasis "
+                    f"{existing_mount.chassis.chassis_number if existing_mount.chassis else existing_mount.chassis_id} "
+                    f"en la posición {existing_mount.position_code}"
+                )
+            }), 400
+
+        estrias_mm = None
+        if estrias_mm_raw not in (None, "",):
+            try:
+                estrias_mm = int(estrias_mm_raw)
+            except Exception:
+                return jsonify({"ok": False, "error": "INVALID_ESTRIAS_MM"}), 400
+
+            if estrias_mm < 1 or estrias_mm > 12:
+                return jsonify({"ok": False, "error": "ESTRIAS_OUT_OF_RANGE"}), 400
+
+        if row and row.tire_id != tire.id:
+            old_tire = Tire.query.get(row.tire_id) if row.tire_id else None
+
+            if not confirm_replace:
+                return jsonify({
+                    "ok": False,
+                    "error": "POSITION_OCCUPIED",
+                    "detail": (
+                        f"La posición {_translate_tire_position(pos)} ya está ocupada"
+                    )
+                }), 409
+
+            if old_tire:
+                old_tire.status = "EN_TALLER_BODEGA"
+                db.session.add(old_tire)
+
+            db.session.delete(row)
+            db.session.flush()
+            row = None
+
+        tire_state = _calc_tire_state_from_mm(estrias_mm, is_flat)
+
+        if not row:
+            row = ChassisTire(
+                chassis_id=ch.id,
+                position_code=pos,
+                tire_id=tire.id,
+                installed_at=datetime.utcnow(),
+            )
+
+        row.chassis_id = ch.id
+        row.position_code = pos
+        row.tire_id = tire.id
+        row.marchamo = marchamo or None
+        row.estrias_mm = estrias_mm
+        row.is_flat = is_flat
+        row.tire_state = tire_state
+        row.updated_at = datetime.utcnow()
+
+        tire.status = "ASIGNADA"
+
+        db.session.add(row)
+        db.session.add(tire)
+        db.session.commit()
+
+        return jsonify({
+            "ok": True,
+            "action": "assign_existing",
+            "tire_state": tire_state
+        })
+
+    # =========================
+    # ACTION: create_and_assign
+    # =========================
+    if action == "create_and_assign":
+        tire_number = (data.get("tire_number") or "").strip().upper()
+        brand = (data.get("brand") or "").strip().upper()
+        model = (data.get("model") or "").strip().upper()
+        size = (data.get("size") or "").strip().upper()
+        notes = (data.get("notes") or "").strip()
+        marchamo = (data.get("marchamo") or "").strip()
+
+        estrias_mm_raw = data.get("estrias_mm")
+        is_flat = bool(data.get("is_flat"))
+
+        if not tire_number:
+            return jsonify({"ok": False, "error": "TIRE_NUMBER_REQUIRED"}), 400
+
+        existing_tire = Tire.query.filter_by(tire_number=tire_number).first()
+        if existing_tire:
+            return jsonify({
+                "ok": False,
+                "error": "TIRE_NUMBER_ALREADY_EXISTS"
+            }), 409
+
+        estrias_mm = None
+        if estrias_mm_raw not in (None, "",):
+            try:
+                estrias_mm = int(estrias_mm_raw)
+            except Exception:
+                return jsonify({"ok": False, "error": "INVALID_ESTRIAS_MM"}), 400
+
+            if estrias_mm < 1 or estrias_mm > 12:
+                return jsonify({"ok": False, "error": "ESTRIAS_OUT_OF_RANGE"}), 400
+
+        if row and row.tire_id:
+            old_tire = Tire.query.get(row.tire_id)
+
+            if not confirm_replace:
+                return jsonify({
+                    "ok": False,
+                    "error": "POSITION_OCCUPIED",
+                    "detail": (
+                        f"La posición {_translate_tire_position(pos)} ya está ocupada"
+                    )
+                }), 409
+
+            if old_tire:
+                old_tire.status = "EN_TALLER_BODEGA"
+                db.session.add(old_tire)
+
+            db.session.delete(row)
+            db.session.flush()
+            row = None
+
+        tire = Tire(
+            tire_number=tire_number,
+            brand=brand or None,
+            model=model or None,
+            size=size or None,
+            notes=notes or None,
+            status="ASIGNADA",
+        )
+        db.session.add(tire)
+        db.session.flush()
+
+        tire_state = _calc_tire_state_from_mm(estrias_mm, is_flat)
+
+        if not row:
+            row = ChassisTire(
+                chassis_id=ch.id,
+                position_code=pos,
+                tire_id=tire.id,
+                installed_at=datetime.utcnow(),
+            )
+
+        row.chassis_id = ch.id
+        row.position_code = pos
+        row.tire_id = tire.id
+        row.marchamo = marchamo or None
+        row.estrias_mm = estrias_mm
+        row.is_flat = is_flat
+        row.tire_state = tire_state
+        row.updated_at = datetime.utcnow()
+
+        db.session.add(row)
+        db.session.commit()
+
+        return jsonify({
+            "ok": True,
+            "action": "create_and_assign",
+            "tire_state": tire_state,
+            "tire_id": tire.id
+        })
+
+    # =========================
+    # LEGACY UPDATE
+    # =========================
     marchamo = (data.get("marchamo") or "").strip()
-    tire_number = (data.get("tire_number") or "").strip()
-    brand = (data.get("brand") or "").strip()
+    tire_number = (data.get("tire_number") or "").strip().upper()
+    brand = (data.get("brand") or "").strip().upper()
 
     estrias_mm_raw = data.get("estrias_mm")
     is_flat = bool(data.get("is_flat"))
@@ -3804,15 +4089,20 @@ def api_chassis_tires_set(chassis_id: int):
     if tire_number:
         tire = Tire.query.filter_by(tire_number=tire_number).first()
         if not tire:
-            tire = Tire(tire_number=tire_number, brand=brand or None)
+            tire = Tire(
+                tire_number=tire_number,
+                brand=brand or None,
+                status="ASIGNADA"
+            )
             db.session.add(tire)
             db.session.flush()
         else:
             if brand and (tire.brand != brand):
                 tire.brand = brand
-                db.session.add(tire)
+            if tire.status == "EN_TALLER_BODEGA":
+                tire.status = "ASIGNADA"
+            db.session.add(tire)
 
-    row = ChassisTire.query.filter_by(chassis_id=ch.id, position_code=pos).first()
     if not row:
         row = ChassisTire(chassis_id=ch.id, position_code=pos)
 
@@ -3825,7 +4115,8 @@ def api_chassis_tires_set(chassis_id: int):
 
     db.session.add(row)
     db.session.commit()
-    return jsonify({"ok": True, "tire_state": tire_state})
+
+    return jsonify({"ok": True, "action": "legacy_update", "tire_state": tire_state})
 
 
 @yard_bp.post("/api/chassis/<int:chassis_id>/classify")
