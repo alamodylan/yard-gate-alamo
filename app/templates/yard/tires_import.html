@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Importar llantas - Yard Gate Álamo{% endblock %}
+{% block content %}
+
+<div class="card card-pad" style="max-width:760px;">
+  <h2 style="margin-top:0;">Importar llantas</h2>
+
+  <p style="opacity:.85;">
+    Descarga la plantilla actual, edítala en Excel y vuelve a subirla.
+    Si una llanta ya existe, se actualiza. Si no existe, se crea.
+  </p>
+
+  <div style="display:flex; gap:10px; flex-wrap:wrap; margin:14px 0 18px;">
+    <a class="btn" href="{{ url_for('yard.tires_export') }}">Descargar plantilla Excel</a>
+    <a class="btn btn-ghost" href="{{ url_for('yard.tires_list') }}">Volver a llantas</a>
+  </div>
+
+  <form method="post" action="{{ url_for('yard.tires_import_post') }}" enctype="multipart/form-data" class="card" style="padding:14px;">
+    <div style="margin-bottom:12px; font-weight:700;">Archivo Excel</div>
+    <input type="file" name="file" accept=".xlsx" required>
+
+    <div style="margin-top:14px;">
+      <button class="btn" type="submit">Subir e importar</button>
+    </div>
+  </form>
+
+  {% set errs = session.get("tires_import_errors", []) %}
+  {% if errs %}
+    <div class="card" style="margin-top:18px; padding:14px;">
+      <div style="font-weight:800; margin-bottom:10px;">Errores detectados</div>
+      <ul style="margin:0; padding-left:18px;">
+        {% for e in errs %}
+          <li>{{ e }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}

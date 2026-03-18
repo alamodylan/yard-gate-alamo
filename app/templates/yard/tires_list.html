@@ -91,6 +91,12 @@
     </div>
   </div>
 
+<div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
+  <a class="btn" href="{{ url_for('yard.tire_create_view') }}">Nueva llanta</a>
+  <a class="btn btn-ghost" href="{{ url_for('yard.tires_export') }}">Descargar Excel</a>
+  <a class="btn btn-ghost" href="{{ url_for('yard.tires_import_view') }}">Carga masiva</a>
+</div>
+
   <a class="btn" href="{{ url_for('yard.tire_create_view') }}">+ Nueva llanta</a>
 </div>
 

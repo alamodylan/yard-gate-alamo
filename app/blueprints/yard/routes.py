@@ -5199,3 +5199,203 @@ def tire_edit_post(tire_id: int):
     )
     return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
 
+@yard_bp.get("/llantas/import")
+@login_required
+def tires_import_view():
+    return render_template("yard/tires_import.html")
+
+@yard_bp.get("/llantas/export")
+@login_required
+def tires_export():
+    _ensure_active_site()
+
+    try:
+        from openpyxl import Workbook
+    except Exception:
+        flash("Falta openpyxl en requirements.txt", "danger")
+        return redirect(url_for("yard.tires_list"))
+
+    rows = (
+        Tire.query
+        .order_by(Tire.tire_number.asc())
+        .all()
+    )
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Llantas"
+
+    headers = [
+        "id (no borrar si vas a actualizar)",
+        "tire_number (número de llanta)",
+        "brand (marca) [opcional]",
+        "model (modelo) [opcional]",
+        "size (tamaño) [opcional]",
+        "status (ASIGNADA/EN_TALLER_BODEGA/RECAUCHE/DESECHADA)",
+        "notes (notas) [opcional]",
+    ]
+    ws.append(headers)
+    ws.freeze_panes = "A2"
+
+    for t in rows:
+        ws.append([
+            t.id,
+            t.tire_number or "",
+            t.brand or "",
+            t.model or "",
+            t.size or "",
+            t.status or "EN_TALLER_BODEGA",
+            t.notes or "",
+        ])
+
+    ws.column_dimensions["A"].width = 24
+    ws.column_dimensions["B"].width = 28
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 22
+    ws.column_dimensions["E"].width = 18
+    ws.column_dimensions["F"].width = 28
+    ws.column_dimensions["G"].width = 40
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name="llantas_import_template.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+@yard_bp.post("/llantas/import")
+@login_required
+def tires_import_post():
+    _ensure_active_site()
+
+    f = request.files.get("file")
+    if not f or not f.filename:
+        flash("Sube un archivo Excel.", "danger")
+        return redirect(url_for("yard.tires_import_view"))
+
+    try:
+        from openpyxl import load_workbook
+    except Exception:
+        flash("Falta openpyxl en requirements.txt", "danger")
+        return redirect(url_for("yard.tires_import_view"))
+
+    wb = load_workbook(f, data_only=True)
+    ws = wb.active
+
+    imported = 0
+    updated = 0
+    errors = []
+
+    staged = []
+    ids_to_find = []
+    tire_numbers_to_find = []
+
+    for idx, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        tire_id_raw = row[0] if len(row) > 0 else None
+        tire_number = (str(row[1]).strip().upper() if len(row) > 1 and row[1] is not None else "")
+        brand = (str(row[2]).strip().upper() if len(row) > 2 and row[2] is not None else "")
+        model = (str(row[3]).strip().upper() if len(row) > 3 and row[3] is not None else "")
+        size = (str(row[4]).strip().upper() if len(row) > 4 and row[4] is not None else "")
+        status = _normalize_tire_status(row[5] if len(row) > 5 else None)
+        notes = (str(row[6]).strip() if len(row) > 6 and row[6] is not None else "")
+
+        # Saltar filas totalmente vacías
+        if not any([tire_id_raw, tire_number, brand, model, size, status, notes]):
+            continue
+
+        if not tire_number:
+            errors.append(f"Fila {idx}: falta tire_number.")
+            continue
+
+        tire_id = None
+        if tire_id_raw not in (None, ""):
+            try:
+                tire_id = int(tire_id_raw)
+            except Exception:
+                errors.append(f"Fila {idx}: id inválido ({tire_id_raw}).")
+                continue
+
+        staged.append({
+            "idx": idx,
+            "id": tire_id,
+            "tire_number": tire_number,
+            "brand": brand or None,
+            "model": model or None,
+            "size": size or None,
+            "status": status,
+            "notes": notes or None,
+        })
+
+        if tire_id:
+            ids_to_find.append(tire_id)
+        tire_numbers_to_find.append(tire_number)
+
+    if not staged:
+        flash(f"No se importó nada. Errores: {len(errors)}", "danger")
+        session["tires_import_errors"] = errors[:200]
+        return redirect(url_for("yard.tires_import_view"))
+
+    existing_by_id = {}
+    if ids_to_find:
+        rows_by_id = Tire.query.filter(Tire.id.in_(ids_to_find)).all()
+        existing_by_id = {t.id: t for t in rows_by_id}
+
+    existing_by_number = {}
+    if tire_numbers_to_find:
+        rows_by_number = Tire.query.filter(Tire.tire_number.in_(tire_numbers_to_find)).all()
+        existing_by_number = {t.tire_number: t for t in rows_by_number}
+
+    used_numbers_in_file = set()
+
+    for item in staged:
+        tire_id = item["id"]
+        tire_number = item["tire_number"]
+
+        if tire_number in used_numbers_in_file:
+            errors.append(f"Fila {item['idx']}: tire_number repetido en el mismo archivo ({tire_number}).")
+            continue
+        used_numbers_in_file.add(tire_number)
+
+        tire = None
+
+        if tire_id and tire_id in existing_by_id:
+            tire = existing_by_id[tire_id]
+        elif tire_number in existing_by_number:
+            tire = existing_by_number[tire_number]
+
+        if tire:
+            tire.tire_number = tire_number
+            tire.brand = item["brand"]
+            tire.model = item["model"]
+            tire.size = item["size"]
+            tire.status = item["status"]
+            tire.notes = item["notes"]
+            db.session.add(tire)
+            updated += 1
+        else:
+            tire = Tire(
+                tire_number=tire_number,
+                brand=item["brand"],
+                model=item["model"],
+                size=item["size"],
+                status=item["status"],
+                notes=item["notes"],
+            )
+            db.session.add(tire)
+            imported += 1
+
+    db.session.commit()
+
+    if errors:
+        flash(f"Importado: {imported} | Actualizado: {updated} | Errores: {len(errors)}", "warning")
+        session["tires_import_errors"] = errors[:200]
+    else:
+        flash(f"Importado: {imported} | Actualizado: {updated}", "success")
+        session.pop("tires_import_errors", None)
+
+    return redirect(url_for("yard.tires_list"))
+
