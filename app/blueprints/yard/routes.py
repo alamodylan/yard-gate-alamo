@@ -4341,3 +4341,135 @@ def report_container_movements():
         date_to=date_to,
         movement_type=movement_type,
     )
+
+@yard_bp.get("/reportes/movimientos-chasis")
+@login_required
+def report_chassis_movements():
+    site_id = _ensure_active_site()
+
+    date_from = (request.args.get("date_from") or "").strip()
+    date_to = (request.args.get("date_to") or "").strip()
+    movement_type = (request.args.get("movement_type") or "").strip().upper()
+
+    valid_types = {"", "GATE_IN", "GATE_OUT"}
+    if movement_type not in valid_types:
+        movement_type = ""
+
+    filters_in = ["ci.site_id = :site_id"]
+    filters_out = ["e.site_id = :site_id", "e.status = 'CONFIRMED'", "e.chassis_id IS NOT NULL"]
+    params = {"site_id": site_id}
+
+    if date_from:
+        filters_in.append("ci.inspected_at::date >= :date_from")
+        filters_out.append("COALESCE(e.inventory_out_at::date, e.finalized_at::date, e.trip_date, e.created_at::date) >= :date_from")
+        params["date_from"] = date_from
+
+    if date_to:
+        filters_in.append("ci.inspected_at::date <= :date_to")
+        filters_out.append("COALESCE(e.inventory_out_at::date, e.finalized_at::date, e.trip_date, e.created_at::date) <= :date_to")
+        params["date_to"] = date_to
+
+    if movement_type == "GATE_IN":
+        enable_in = True
+        enable_out = False
+    elif movement_type == "GATE_OUT":
+        enable_in = False
+        enable_out = True
+    else:
+        enable_in = True
+        enable_out = True
+
+    sql_parts = []
+
+    if enable_in:
+        sql_parts.append(f"""
+            SELECT
+                ci.inspected_at AS event_at,
+                'GATE_IN' AS movement_type,
+                ch.id AS chassis_id,
+                ch.chassis_number,
+                ch.plate,
+                ch.length_ft,
+                ch.axles,
+                COALESCE(prev_eir.destination, '') AS origin_name,
+                '' AS destination_name,
+                COALESCE(u.username, '') AS username
+            FROM yard_gate_alamo.chassis_inspections ci
+            JOIN yard_gate_alamo.chassis ch
+              ON ch.id = ci.chassis_id
+            LEFT JOIN yard_gate_alamo.users u
+              ON u.id = ci.inspected_by_user_id
+            LEFT JOIN LATERAL (
+                SELECT e_prev.destination
+                FROM yard_gate_alamo.eirs e_prev
+                WHERE e_prev.chassis_id = ci.chassis_id
+                  AND e_prev.status = 'CONFIRMED'
+                  AND COALESCE(e_prev.inventory_out_at, e_prev.finalized_at, e_prev.created_at) < ci.inspected_at
+                ORDER BY
+                  COALESCE(e_prev.inventory_out_at, e_prev.finalized_at, e_prev.created_at) DESC,
+                  e_prev.id DESC
+                LIMIT 1
+            ) prev_eir ON TRUE
+            WHERE {" AND ".join(filters_in)}
+        """)
+
+    if enable_out:
+        sql_parts.append(f"""
+            SELECT
+                COALESCE(e.inventory_out_at, e.finalized_at, e.created_at) AS event_at,
+                'GATE_OUT' AS movement_type,
+                ch.id AS chassis_id,
+                ch.chassis_number,
+                ch.plate,
+                ch.length_ft,
+                ch.axles,
+                COALESCE(s.name, '') AS origin_name,
+                COALESCE(e.destination, '') AS destination_name,
+                COALESCE(u.username, '') AS username
+            FROM yard_gate_alamo.eirs e
+            JOIN yard_gate_alamo.chassis ch
+              ON ch.id = e.chassis_id
+            LEFT JOIN yard_gate_alamo.sites s
+              ON s.id = e.site_id
+            LEFT JOIN yard_gate_alamo.users u
+              ON u.id = COALESCE(e.last_edited_by_user_id, e.created_by_user_id)
+            WHERE {" AND ".join(filters_out)}
+        """)
+
+    sql = text(f"""
+        SELECT *
+        FROM (
+            {" UNION ALL ".join(sql_parts)}
+        ) x
+        ORDER BY x.event_at DESC, x.chassis_number ASC
+    """)
+
+    rows = db.session.execute(sql, params).mappings().all()
+
+    items = []
+    for r in rows:
+        event_at = r["event_at"]
+        event_at_str = event_at.strftime("%d/%m/%Y %I:%M %p") if event_at else ""
+
+        items.append({
+            "event_at": event_at,
+            "event_at_str": event_at_str,
+            "movement_type": r["movement_type"] or "",
+            "chassis_id": r["chassis_id"],
+            "chassis_number": r["chassis_number"] or "",
+            "plate": r["plate"] or "",
+            "length_ft": r["length_ft"] or "",
+            "axles": r["axles"] or "",
+            "origin_name": r["origin_name"] or "",
+            "destination_name": r["destination_name"] or "",
+            "username": r["username"] or "",
+        })
+
+    return render_template(
+        "yard/report_chassis_movements.html",
+        items=items,
+        total=len(items),
+        date_from=date_from,
+        date_to=date_to,
+        movement_type=movement_type,
+    )
