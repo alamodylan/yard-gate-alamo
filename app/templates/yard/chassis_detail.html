@@ -89,19 +89,21 @@
     padding:18px;
   }
   .modal{
-    width:min(560px, 100%);
+    width:min(860px, 100%);
+    max-height:92vh;
+    overflow:auto;
     border-radius:16px;
     background:rgba(25,25,30,.98);
     border:1px solid rgba(255,255,255,.14);
     box-shadow:0 24px 60px rgba(0,0,0,.55);
-    overflow:hidden;
   }
   .modal-h{padding:14px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid rgba(255,255,255,.10)}
-  .modal-b{padding:14px 16px;display:grid;gap:10px}
+  .modal-b{padding:14px 16px;display:grid;gap:12px}
   .modal-f{padding:12px 16px;display:flex;gap:10px;justify-content:flex-end;border-top:1px solid rgba(255,255,255,.10)}
   .xbtn{cursor:pointer;border:0;background:transparent;color:rgba(255,255,255,.85);font-size:18px}
-  .frow{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center}
-  .frow input,.frow select, .frow textarea{
+
+  .frow{display:grid;grid-template-columns:160px 1fr;gap:10px;align-items:center}
+  .frow input,.frow select,.frow textarea{
     width:100%;
     padding:10px 10px;border-radius:10px;
     border:1px solid rgba(255,255,255,.14);
@@ -111,6 +113,82 @@
   }
   .frow textarea{min-height:70px;resize:vertical}
   .help{font-size:12px;opacity:.75}
+
+  .mode-grid{
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:10px;
+  }
+  @media (max-width: 760px){
+    .mode-grid{grid-template-columns:1fr}
+  }
+  .mode-card{
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.04);
+    border-radius:14px;
+    padding:12px;
+    cursor:pointer;
+  }
+  .mode-card.active{
+    border-color:rgba(0, 200, 120, .6);
+    box-shadow:0 0 0 1px rgba(0,200,120,.25) inset;
+  }
+  .mode-card h4{margin:0 0 6px 0;font-size:14px}
+  .mode-card p{margin:0;font-size:12px;opacity:.8}
+
+  .panel{
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.03);
+    border-radius:14px;
+    padding:12px;
+  }
+
+  .search-row{
+    display:grid;
+    grid-template-columns: 1fr auto;
+    gap:10px;
+    align-items:center;
+  }
+
+  .list-box{
+    margin-top:10px;
+    display:grid;
+    gap:8px;
+    max-height:240px;
+    overflow:auto;
+  }
+  .list-item{
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.04);
+    border-radius:12px;
+    padding:10px;
+    cursor:pointer;
+  }
+  .list-item.active{
+    border-color:rgba(0, 200, 120, .6);
+    background:rgba(0, 200, 120, .10);
+  }
+  .list-item .title{font-weight:800}
+  .list-item .meta{font-size:12px;opacity:.8;margin-top:4px}
+
+  .two-col{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  @media (max-width: 760px){
+    .two-col{grid-template-columns:1fr}
+  }
+
+  .danger-note{
+    padding:10px 12px;
+    border-radius:12px;
+    border:1px solid rgba(255, 193, 7, .35);
+    background:rgba(255, 193, 7, .10);
+    font-size:12px;
+  }
+
+  .hidden{display:none !important;}
 </style>
 
 <div class="ch-wrap">
@@ -175,7 +253,7 @@
         </div>
 
         <div class="help" style="margin-top:10px;">
-          Tip: tocá una llanta para editar marchamo, número, marca, estrías y pinchada.
+          Tocá una posición para crear una llanta nueva, usar una existente o desmontar la actual.
         </div>
       </div>
 
@@ -200,17 +278,18 @@
               <th>Marchamo</th>
               <th>Estrías</th>
               <th>Pinchada</th>
-              <th>Estado</th>
+              <th>Estado técnico</th>
+              <th>Status maestro</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="posTbody">
-            <tr><td colspan="8">Cargando...</td></tr>
+            <tr><td colspan="9">Cargando...</td></tr>
           </tbody>
         </table>
 
         <div class="help" style="margin-top:10px;">
-          Los cambios se guardan por posición. Si no existe la llanta, se crea en catálogo automáticamente.
+          Esta vista administra el montaje actual del chasis y respeta el status maestro de la llanta.
         </div>
       </div>
     </div>
@@ -221,66 +300,136 @@
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-h">
       <div style="font-weight:900;">
-        Editar llanta <span class="muted">•</span> <span id="mPosLabel"></span>
+        Gestión de llanta <span class="muted">•</span> <span id="mPosLabel"></span>
       </div>
       <button class="xbtn" id="modalClose" title="Cerrar">✕</button>
     </div>
 
     <div class="modal-b">
-      <div class="frow">
-        <div style="font-weight:700;">Marchamo</div>
-        <input id="mMarchamo" type="text" placeholder="Ej: MCH-123456">
+      <div class="panel">
+        <div style="font-weight:800;margin-bottom:10px;">Posición actual</div>
+        <div id="mCurrentInfo" class="help">Sin llanta montada.</div>
       </div>
 
-      <div class="frow">
-        <div style="font-weight:700;">Número llanta</div>
-        <input id="mTireNumber" type="text" placeholder="Ej: TL-000987">
+      <div class="panel">
+        <div style="font-weight:800;margin-bottom:10px;">Acción</div>
+        <div class="mode-grid">
+          <div class="mode-card active" data-mode="existing" id="modeExistingCard">
+            <h4>Usar llanta existente</h4>
+            <p>Solo se pueden usar llantas en EN_TALLER_BODEGA.</p>
+          </div>
+          <div class="mode-card" data-mode="new" id="modeNewCard">
+            <h4>Crear llanta nueva</h4>
+            <p>Crea la llanta en catálogo y la deja montada en esta posición.</p>
+          </div>
+          <div class="mode-card" data-mode="unassign" id="modeUnassignCard">
+            <h4>Desmontar actual</h4>
+            <p>Quita la llanta de esta posición y la pasa a EN_TALLER_BODEGA.</p>
+          </div>
+        </div>
       </div>
 
-      <div class="frow">
-        <div style="font-weight:700;">Marca</div>
-        <input id="mBrand" type="text" placeholder="Ej: Michelin">
+      <div id="replaceWarning" class="danger-note hidden">
+        Esta posición ya tiene una llanta montada. Si guardas una nueva asignación, se pedirá confirmación para reemplazarla.
       </div>
 
-      <div class="frow">
-        <div style="font-weight:700;">Estrías (mm)</div>
-        <select id="mEstriasMm">
-          <option value="">—</option>
-          <option value="12">12</option>
-          <option value="11">11</option>
-          <option value="10">10</option>
-          <option value="9">9</option>
-          <option value="8">8</option>
-          <option value="7">7</option>
-          <option value="6">6</option>
-          <option value="5">5</option>
-          <option value="4">4</option>
-          <option value="3">3</option>
-          <option value="2">2</option>
-          <option value="1">1</option>
-        </select>
+      <div id="panelExisting" class="panel">
+        <div style="font-weight:800;margin-bottom:10px;">Seleccionar llanta existente</div>
+
+        <div class="search-row">
+          <input id="mSearchExisting" type="text" placeholder="Buscar por número, marca, modelo o tamaño">
+          <button class="btn btn-sm" type="button" id="btnSearchExisting">Buscar</button>
+        </div>
+
+        <div id="existingEmpty" class="help" style="margin-top:10px;">
+          Busca una llanta disponible en EN_TALLER_BODEGA.
+        </div>
+
+        <div id="existingList" class="list-box"></div>
       </div>
 
-      <div class="frow">
-        <div style="font-weight:700;">Pinchada / desinflada</div>
-        <select id="mIsFlat">
-          <option value="0" selected>No</option>
-          <option value="1">Sí</option>
-        </select>
+      <div id="panelNew" class="panel hidden">
+        <div style="font-weight:800;margin-bottom:10px;">Crear llanta nueva</div>
+
+        <div class="two-col">
+          <div class="frow">
+            <div style="font-weight:700;">Número llanta</div>
+            <input id="mNewTireNumber" type="text" placeholder="Ej: TL-000987">
+          </div>
+
+          <div class="frow">
+            <div style="font-weight:700;">Marca</div>
+            <input id="mNewBrand" type="text" placeholder="Ej: Michelin">
+          </div>
+
+          <div class="frow">
+            <div style="font-weight:700;">Modelo</div>
+            <input id="mNewModel" type="text" placeholder="Modelo">
+          </div>
+
+          <div class="frow">
+            <div style="font-weight:700;">Tamaño</div>
+            <input id="mNewSize" type="text" placeholder="Tamaño">
+          </div>
+        </div>
+
+        <div class="frow" style="margin-top:10px;">
+          <div style="font-weight:700;">Notas</div>
+          <textarea id="mNewNotes" placeholder="Notas de la llanta"></textarea>
+        </div>
       </div>
 
-      <div class="frow">
-        <div style="font-weight:700;">Estado calculado</div>
-        <input id="mState" type="text" readonly>
-      </div>
+      <div id="panelCommon" class="panel">
+        <div style="font-weight:800;margin-bottom:10px;">Datos de montaje</div>
 
-      <div class="help">
-        Verde: 9-12 mm. Amarillo: 4-8 mm. Rojo: 1-3 mm. Si está pinchada, manda más que todo lo demás.
+        <div class="two-col">
+          <div class="frow">
+            <div style="font-weight:700;">Marchamo</div>
+            <input id="mMarchamo" type="text" placeholder="Ej: MCH-123456">
+          </div>
+
+          <div class="frow">
+            <div style="font-weight:700;">Estrías (mm)</div>
+            <select id="mEstriasMm">
+              <option value="">—</option>
+              <option value="12">12</option>
+              <option value="11">11</option>
+              <option value="10">10</option>
+              <option value="9">9</option>
+              <option value="8">8</option>
+              <option value="7">7</option>
+              <option value="6">6</option>
+              <option value="5">5</option>
+              <option value="4">4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+
+          <div class="frow">
+            <div style="font-weight:700;">Pinchada / desinflada</div>
+            <select id="mIsFlat">
+              <option value="0" selected>No</option>
+              <option value="1">Sí</option>
+            </select>
+          </div>
+
+          <div class="frow">
+            <div style="font-weight:700;">Estado técnico</div>
+            <input id="mState" type="text" readonly>
+          </div>
+        </div>
+
+        <div class="help" style="margin-top:10px;">
+          Verde: 9-12 mm. Amarillo: 4-8 mm. Rojo: 1-3 mm. Si está pinchada, manda sobre todo lo demás.
+        </div>
       </div>
     </div>
 
     <div class="modal-f">
       <button class="btn btn-ghost" id="btnCancel" type="button">Cancelar</button>
+      <button class="btn btn-danger hidden" id="btnUnassign" type="button">Desmontar</button>
       <button class="btn" id="btnSave" type="button">Guardar</button>
     </div>
   </div>
@@ -288,7 +437,9 @@
 
 <div id="chassisMeta"
      data-chassis-id="{{ ch.id }}"
-     data-api-prefix="{{ url_for('yard.api_chassis_tires_get', chassis_id=ch.id) | replace('/tires','') }}">
+     data-api-prefix="{{ url_for('yard.api_chassis_tires_get', chassis_id=ch.id) | replace('/tires','') }}"
+     data-available-tires-url="/api/llantas/disponibles"
+     data-manage-url="/api/chassis/{{ ch.id }}/tires/manage">
 </div>
 
 <script>
@@ -296,31 +447,62 @@
   const meta = document.getElementById("chassisMeta");
   const CHASSIS_ID = meta.dataset.chassisId;
   const API_PREFIX = meta.dataset.apiPrefix;
+  const AVAILABLE_TIRES_URL = meta.dataset.availableTiresUrl;
+  const MANAGE_URL = meta.dataset.manageUrl;
 
   const API_GET = `${API_PREFIX}/tires`;
-  const API_SET = `${API_PREFIX}/tires`;
 
   const backdrop = document.getElementById("modalBackdrop");
   const modalClose = document.getElementById("modalClose");
   const btnCancel = document.getElementById("btnCancel");
   const btnSave = document.getElementById("btnSave");
   const btnReload = document.getElementById("btnReload");
+  const btnUnassign = document.getElementById("btnUnassign");
 
   const mPosLabel = document.getElementById("mPosLabel");
+  const mCurrentInfo = document.getElementById("mCurrentInfo");
   const mMarchamo = document.getElementById("mMarchamo");
-  const mTireNumber = document.getElementById("mTireNumber");
-  const mBrand = document.getElementById("mBrand");
   const mEstriasMm = document.getElementById("mEstriasMm");
   const mIsFlat = document.getElementById("mIsFlat");
   const mState = document.getElementById("mState");
+
+  const modeExistingCard = document.getElementById("modeExistingCard");
+  const modeNewCard = document.getElementById("modeNewCard");
+  const modeUnassignCard = document.getElementById("modeUnassignCard");
+
+  const panelExisting = document.getElementById("panelExisting");
+  const panelNew = document.getElementById("panelNew");
+  const panelCommon = document.getElementById("panelCommon");
+  const replaceWarning = document.getElementById("replaceWarning");
+
+  const mSearchExisting = document.getElementById("mSearchExisting");
+  const btnSearchExisting = document.getElementById("btnSearchExisting");
+  const existingEmpty = document.getElementById("existingEmpty");
+  const existingList = document.getElementById("existingList");
+
+  const mNewTireNumber = document.getElementById("mNewTireNumber");
+  const mNewBrand = document.getElementById("mNewBrand");
+  const mNewModel = document.getElementById("mNewModel");
+  const mNewSize = document.getElementById("mNewSize");
+  const mNewNotes = document.getElementById("mNewNotes");
 
   const tbody = document.getElementById("posTbody");
   const wheels = Array.from(document.querySelectorAll(".wheel"));
 
   let stateCache = {};
   let currentPos = null;
+  let currentMode = "existing";
+  let selectedExistingTireId = null;
+  let selectedExistingItem = null;
 
-  function esc(s){ return (s ?? "").toString(); }
+  function esc(s){
+    return (s ?? "").toString()
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
 
   function calcTireStateFromData(estriasMm, isFlat){
     if (String(isFlat) === "1" || isFlat === true){
@@ -349,6 +531,24 @@
     return `A${m[1]} ${m[2]==="L"?"L":"R"}${m[3]==="IN"?"I":"O"}`;
   }
 
+  function translatePosLong(pos){
+    const map = {
+      "AX1_L_IN":"Eje 1 izq int",
+      "AX1_L_OUT":"Eje 1 izq ext",
+      "AX1_R_IN":"Eje 1 der int",
+      "AX1_R_OUT":"Eje 1 der ext",
+      "AX2_L_IN":"Eje 2 izq int",
+      "AX2_L_OUT":"Eje 2 izq ext",
+      "AX2_R_IN":"Eje 2 der int",
+      "AX2_R_OUT":"Eje 2 der ext",
+      "AX3_L_IN":"Eje 3 izq int",
+      "AX3_L_OUT":"Eje 3 izq ext",
+      "AX3_R_IN":"Eje 3 der int",
+      "AX3_R_OUT":"Eje 3 der ext"
+    };
+    return map[pos] || pos;
+  }
+
   function applyWheelClass(pos, tireState){
     const el = wheels.find(w => w.dataset.pos === pos);
     if (!el) return;
@@ -360,13 +560,13 @@
 
   function badge(st){
     const s = (st || "OK").toUpperCase();
-    return `<span class="badge" data-st="${s}">${s}</span>`;
+    return `<span class="badge" data-st="${esc(s)}">${esc(s)}</span>`;
   }
 
   function renderTable(positions){
     const keys = Object.keys(positions || {}).sort();
     if (!keys.length){
-      tbody.innerHTML = `<tr><td colspan="8">No hay posiciones para este chasis.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9">No hay posiciones para este chasis.</td></tr>`;
       return;
     }
 
@@ -378,6 +578,7 @@
       const estrias = p && p.estrias_mm !== null && p.estrias_mm !== undefined && p.estrias_mm !== "" ? p.estrias_mm : "—";
       const isFlat = p ? !!p.is_flat : false;
       const st = p ? (p.tire_state || "OK") : "OK";
+      const status = p ? (p.status || "—") : "—";
 
       return `
         <tr>
@@ -388,8 +589,9 @@
           <td>${estrias} mm</td>
           <td>${isFlat ? "Sí" : "No"}</td>
           <td>${badge(st)}</td>
+          <td>${esc(status)}</td>
           <td style="text-align:right;">
-            <button class="btn btn-sm" type="button" data-edit="${esc(pos)}">Editar</button>
+            <button class="btn btn-sm" type="button" data-edit="${esc(pos)}">Gestionar</button>
           </td>
         </tr>
       `;
@@ -403,7 +605,7 @@
   }
 
   async function loadPositions(){
-    tbody.innerHTML = `<tr><td colspan="8">Cargando...</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="9">Cargando...</td></tr>`;
     try{
       const r = await fetch(API_GET, {headers: {"Accept":"application/json"}});
       const j = await r.json();
@@ -420,7 +622,115 @@
 
       renderTable(stateCache);
     }catch(e){
-      tbody.innerHTML = `<tr><td colspan="8">Error cargando llantas: ${esc(e.message)}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9">Error cargando llantas: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  function setMode(mode){
+    currentMode = mode;
+
+    [modeExistingCard, modeNewCard, modeUnassignCard].forEach(el => el.classList.remove("active"));
+    panelExisting.classList.add("hidden");
+    panelNew.classList.add("hidden");
+    panelCommon.classList.remove("hidden");
+    btnSave.classList.remove("hidden");
+    btnUnassign.classList.add("hidden");
+
+    if (mode === "existing"){
+      modeExistingCard.classList.add("active");
+      panelExisting.classList.remove("hidden");
+    } else if (mode === "new"){
+      modeNewCard.classList.add("active");
+      panelNew.classList.remove("hidden");
+    } else if (mode === "unassign"){
+      modeUnassignCard.classList.add("active");
+      panelCommon.classList.add("hidden");
+      btnSave.classList.add("hidden");
+      btnUnassign.classList.remove("hidden");
+    }
+  }
+
+  function updateCurrentInfo(pos){
+    const p = stateCache[pos] || {};
+    const hasTire = !!p.tire_id || !!p.tire_number || !!p.marchamo;
+
+    if (!hasTire){
+      mCurrentInfo.innerHTML = `Sin llanta montada en <b>${esc(translatePosLong(pos))}</b>.`;
+      replaceWarning.classList.add("hidden");
+      modeUnassignCard.classList.add("hidden");
+      return;
+    }
+
+    mCurrentInfo.innerHTML = `
+      <div><b>Posición:</b> ${esc(translatePosLong(pos))}</div>
+      <div><b>Número:</b> ${esc(p.tire_number || "—")}</div>
+      <div><b>Marca:</b> ${esc(p.brand || "—")}</div>
+      <div><b>Marchamo:</b> ${esc(p.marchamo || "—")}</div>
+      <div><b>Estrías:</b> ${esc(p.estrias_mm ?? "—")} mm</div>
+      <div><b>Pinchada:</b> ${p.is_flat ? "Sí" : "No"}</div>
+      <div><b>Estado técnico:</b> ${esc(p.tire_state || "OK")}</div>
+      <div><b>Status maestro:</b> ${esc(p.status || "—")}</div>
+    `;
+
+    replaceWarning.classList.remove("hidden");
+    modeUnassignCard.classList.remove("hidden");
+  }
+
+  function clearExistingSelection(){
+    selectedExistingTireId = null;
+    selectedExistingItem = null;
+    Array.from(existingList.querySelectorAll(".list-item")).forEach(x => x.classList.remove("active"));
+  }
+
+  function renderExistingList(items){
+    existingList.innerHTML = "";
+    clearExistingSelection();
+
+    if (!items.length){
+      existingEmpty.textContent = "No se encontraron llantas disponibles en EN_TALLER_BODEGA.";
+      return;
+    }
+
+    existingEmpty.textContent = `${items.length} llanta(s) disponible(s).`;
+
+    items.forEach(item => {
+      const div = document.createElement("div");
+      div.className = "list-item";
+      div.innerHTML = `
+        <div class="title">${esc(item.tire_number || "SIN NÚMERO")}</div>
+        <div class="meta">
+          Marca: ${esc(item.brand || "—")}
+          &nbsp;•&nbsp; Modelo: ${esc(item.model || "—")}
+          &nbsp;•&nbsp; Tamaño: ${esc(item.size || "—")}
+          &nbsp;•&nbsp; Status: ${esc(item.status || "EN_TALLER_BODEGA")}
+        </div>
+      `;
+      div.addEventListener("click", () => {
+        clearExistingSelection();
+        div.classList.add("active");
+        selectedExistingTireId = item.id;
+        selectedExistingItem = item;
+      });
+      existingList.appendChild(div);
+    });
+  }
+
+  async function searchExistingTires(){
+    existingEmpty.textContent = "Buscando...";
+    existingList.innerHTML = "";
+    clearExistingSelection();
+
+    try{
+      const q = mSearchExisting.value.trim();
+      const url = q ? `${AVAILABLE_TIRES_URL}?q=${encodeURIComponent(q)}` : AVAILABLE_TIRES_URL;
+      const r = await fetch(url, {headers: {"Accept":"application/json"}});
+      const j = await r.json();
+
+      if (!r.ok || !j.ok) throw new Error(j.error || "SEARCH_FAILED");
+
+      renderExistingList(j.items || []);
+    }catch(e){
+      existingEmpty.textContent = `Error buscando llantas: ${e.message}`;
     }
   }
 
@@ -428,17 +738,35 @@
     currentPos = pos;
     const p = stateCache[pos] || null;
 
-    mPosLabel.textContent = posPretty(pos);
+    mPosLabel.textContent = translatePosLong(pos);
+
     mMarchamo.value = p?.marchamo || "";
-    mTireNumber.value = p?.tire_number || "";
-    mBrand.value = p?.brand || "";
     mEstriasMm.value = (p?.estrias_mm !== null && p?.estrias_mm !== undefined) ? String(p.estrias_mm) : "";
     mIsFlat.value = p?.is_flat ? "1" : "0";
     refreshModalCalculatedState();
 
+    mNewTireNumber.value = "";
+    mNewBrand.value = "";
+    mNewModel.value = "";
+    mNewSize.value = "";
+    mNewNotes.value = "";
+
+    mSearchExisting.value = "";
+    existingList.innerHTML = "";
+    existingEmpty.textContent = "Busca una llanta disponible en EN_TALLER_BODEGA.";
+    clearExistingSelection();
+
+    updateCurrentInfo(pos);
+
+    const hasMounted = !!(p && (p.tire_id || p.tire_number || p.marchamo));
+    setMode("existing");
+    if (!hasMounted){
+      modeUnassignCard.classList.add("hidden");
+      replaceWarning.classList.add("hidden");
+    }
+
     backdrop.style.display = "flex";
     backdrop.setAttribute("aria-hidden","false");
-    setTimeout(()=> mMarchamo.focus(), 50);
   }
 
   function closeModal(){
@@ -447,29 +775,112 @@
     backdrop.setAttribute("aria-hidden","true");
   }
 
+  async function postManage(payload){
+    const r = await fetch(MANAGE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type":"application/json",
+        "Accept":"application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const j = await r.json().catch(() => ({}));
+
+    if (!r.ok || !j.ok){
+      const msg = j.detail || j.error || "REQUEST_FAILED";
+      const err = new Error(msg);
+      err.httpStatus = r.status;
+      err.payload = j;
+      throw err;
+    }
+
+    return j;
+  }
+
+  async function saveExisting(confirmReplace=false){
+    if (!selectedExistingTireId){
+      alert("Debes seleccionar una llanta existente.");
+      return;
+    }
+
+    const payload = {
+      action: "assign_existing",
+      position_code: currentPos,
+      tire_id: selectedExistingTireId,
+      marchamo: mMarchamo.value.trim(),
+      estrias_mm: mEstriasMm.value ? Number(mEstriasMm.value) : null,
+      is_flat: mIsFlat.value === "1",
+      confirm_replace: confirmReplace
+    };
+
+    return await postManage(payload);
+  }
+
+  async function saveNew(confirmReplace=false){
+    const tireNumber = mNewTireNumber.value.trim().toUpperCase();
+    if (!tireNumber){
+      alert("Debes ingresar el número de llanta.");
+      return;
+    }
+
+    const payload = {
+      action: "create_and_assign",
+      position_code: currentPos,
+      tire_number: tireNumber,
+      brand: mNewBrand.value.trim().toUpperCase(),
+      model: mNewModel.value.trim().toUpperCase(),
+      size: mNewSize.value.trim().toUpperCase(),
+      notes: mNewNotes.value.trim(),
+      marchamo: mMarchamo.value.trim(),
+      estrias_mm: mEstriasMm.value ? Number(mEstriasMm.value) : null,
+      is_flat: mIsFlat.value === "1",
+      confirm_replace: confirmReplace
+    };
+
+    return await postManage(payload);
+  }
+
   async function saveModal(){
     if (!currentPos) return;
 
     btnSave.disabled = true;
     btnSave.textContent = "Guardando...";
 
-    const payload = {
-      position_code: currentPos,
-      marchamo: mMarchamo.value.trim(),
-      tire_number: mTireNumber.value.trim(),
-      brand: mBrand.value.trim(),
-      estrias_mm: mEstriasMm.value ? Number(mEstriasMm.value) : null,
-      is_flat: mIsFlat.value === "1"
-    };
-
     try{
-      const r = await fetch(API_SET, {
-        method: "POST",
-        headers: {"Content-Type":"application/json", "Accept":"application/json"},
-        body: JSON.stringify(payload)
-      });
-      const j = await r.json();
-      if (!r.ok || !j.ok) throw new Error(j.error || "SAVE_FAILED");
+      if (currentMode === "existing"){
+        try{
+          await saveExisting(false);
+        }catch(e){
+          if (e.httpStatus === 409 || (e.payload && e.payload.error === "POSITION_OCCUPIED")){
+            const ok = confirm(`La posición ${translatePosLong(currentPos)} ya está ocupada. ¿Deseas reemplazar la llanta actual?`);
+            if (!ok){
+              btnSave.disabled = false;
+              btnSave.textContent = "Guardar";
+              return;
+            }
+            await saveExisting(true);
+          } else {
+            throw e;
+          }
+        }
+      } else if (currentMode === "new"){
+        try{
+          await saveNew(false);
+        }catch(e){
+          if (e.httpStatus === 409 || (e.payload && e.payload.error === "POSITION_OCCUPIED")){
+            const ok = confirm(`La posición ${translatePosLong(currentPos)} ya está ocupada. ¿Deseas reemplazar la llanta actual?`);
+            if (!ok){
+              btnSave.disabled = false;
+              btnSave.textContent = "Guardar";
+              return;
+            }
+            await saveNew(true);
+          } else {
+            throw e;
+          }
+        }
+      }
 
       closeModal();
       await loadPositions();
@@ -478,6 +889,31 @@
     }finally{
       btnSave.disabled = false;
       btnSave.textContent = "Guardar";
+    }
+  }
+
+  async function unassignCurrent(){
+    if (!currentPos) return;
+
+    const ok = confirm(`¿Deseas desmontar la llanta actual de ${translatePosLong(currentPos)}?`);
+    if (!ok) return;
+
+    btnUnassign.disabled = true;
+    btnUnassign.textContent = "Desmontando...";
+
+    try{
+      await postManage({
+        action: "unassign",
+        position_code: currentPos
+      });
+
+      closeModal();
+      await loadPositions();
+    }catch(e){
+      alert("No se pudo desmontar: " + e.message);
+    }finally{
+      btnUnassign.disabled = false;
+      btnUnassign.textContent = "Desmontar";
     }
   }
 
@@ -491,7 +927,20 @@
   mEstriasMm.addEventListener("change", refreshModalCalculatedState);
   mIsFlat.addEventListener("change", refreshModalCalculatedState);
 
+  modeExistingCard.addEventListener("click", () => setMode("existing"));
+  modeNewCard.addEventListener("click", () => setMode("new"));
+  modeUnassignCard.addEventListener("click", () => setMode("unassign"));
+
+  btnSearchExisting.addEventListener("click", searchExistingTires);
+  mSearchExisting.addEventListener("keydown", (e) => {
+    if (e.key === "Enter"){
+      e.preventDefault();
+      searchExistingTires();
+    }
+  });
+
   btnSave.addEventListener("click", saveModal);
+  btnUnassign.addEventListener("click", unassignCurrent);
   btnReload.addEventListener("click", loadPositions);
 
   loadPositions();
