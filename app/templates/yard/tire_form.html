@@ -6,20 +6,23 @@
 
 <style>
   .form-card{
-    max-width:900px;
-    padding:18px;
-    border-radius:16px;
-    border:1px solid rgba(255,255,255,.08);
-    background:rgba(255,255,255,.04);
+    max-width: 980px;
+    padding: 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.04);
   }
+
   .grid{
     display:grid;
-    grid-template-columns:1fr 1fr;
+    grid-template-columns: 1fr 1fr;
     gap:12px;
   }
+
   @media (max-width: 900px){
-    .grid{grid-template-columns:1fr;}
+    .grid{ grid-template-columns:1fr; }
   }
+
   .input, .textarea{
     width:100%;
     border-radius:12px;
@@ -27,8 +30,14 @@
     background:rgba(255,255,255,.06);
     color:inherit;
     padding:10px 12px;
+    min-height:42px;
   }
-  .textarea{ min-height:110px; }
+
+  .textarea{
+    min-height:110px;
+    resize:vertical;
+  }
+
   .btn{
     display:inline-flex;
     align-items:center;
@@ -43,7 +52,30 @@
     text-decoration:none;
     cursor:pointer;
   }
-  .btn:hover{ background:rgba(255,255,255,.09); }
+
+  .btn:hover{
+    background:rgba(255,255,255,.09);
+  }
+
+  .hint{
+    font-size:12px;
+    opacity:.75;
+    margin-top:4px;
+  }
+
+  .warn-box{
+    margin-top:14px;
+    padding:12px 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,200,80,.22);
+    background:rgba(255,200,80,.08);
+  }
+
+  .section-title{
+    margin:0 0 10px 0;
+    font-size:16px;
+    font-weight:800;
+  }
 </style>
 
 <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
@@ -55,7 +87,7 @@
       {% if mode == 'create' %}
         Crear una nueva llanta en el maestro.
       {% else %}
-        Información base de la llanta y su montaje actual.
+        Información base de la llanta y configuración actual de montaje.
       {% endif %}
     </div>
   </div>
@@ -69,6 +101,8 @@
   {% else %}
     <form method="post" action="{{ url_for('yard.tire_edit_post', tire_id=tire.tire_id) }}">
   {% endif %}
+
+    <div class="section-title">Datos base</div>
 
     <div class="grid">
       <div>
@@ -90,6 +124,35 @@
         <label>Tamaño</label>
         <input class="input" type="text" name="size" value="{{ tire.size if tire else '' }}">
       </div>
+
+      <div>
+        <label>Estado</label>
+        <select class="input" name="status">
+          {% set current_status = tire.status if tire else 'EN_TALLER_BODEGA' %}
+          <option value="EN_TALLER_BODEGA" {% if current_status == 'EN_TALLER_BODEGA' %}selected{% endif %}>En taller / bodega</option>
+          <option value="ASIGNADA" {% if current_status == 'ASIGNADA' %}selected{% endif %}>Asignada</option>
+          <option value="RECAUCHE" {% if current_status == 'RECAUCHE' %}selected{% endif %}>Recauche</option>
+          <option value="DESECHADA" {% if current_status == 'DESECHADA' %}selected{% endif %}>Desechada</option>
+        </select>
+        <div class="hint">
+          Para montar una llanta desde esta pantalla, debe estar en estado En taller / bodega.
+        </div>
+      </div>
+
+      <div>
+        {% if mode == 'edit' and tire %}
+          <label>Montada actualmente</label>
+          <input
+            class="input"
+            type="text"
+            value="{% if tire.chassis_number %}Sí · {{ tire.chassis_number }}{% else %}No{% endif %}"
+            disabled
+          >
+        {% else %}
+          <label>Montada actualmente</label>
+          <input class="input" type="text" value="No aplica aún" disabled>
+        {% endif %}
+      </div>
     </div>
 
     <div style="margin-top:12px;">
@@ -100,30 +163,81 @@
     {% if mode == 'edit' and tire %}
       <hr style="margin:18px 0; border:none; border-top:1px solid rgba(255,255,255,.08);">
 
+      <div class="section-title">Configuración actual de montaje</div>
+
       <div class="grid">
         <div>
           <label>Marchamo actual</label>
-          <input class="input" type="text" value="{{ tire.marchamo or '' }}" disabled>
+          <input class="input" type="text" name="marchamo" value="{{ tire.marchamo or '' }}">
         </div>
 
         <div>
           <label>Estrías actuales</label>
-          <input class="input" type="text" value="{{ tire.estrias_mm if tire.estrias_mm is not none else '' }}" disabled>
+          <input
+            class="input"
+            type="number"
+            min="1"
+            max="12"
+            name="estrias_mm"
+            value="{{ tire.estrias_mm if tire.estrias_mm is not none else '' }}"
+          >
         </div>
 
         <div>
-          <label>Chasis actual</label>
-          <input class="input" type="text" value="{{ tire.chassis_number or '' }}" disabled>
+          <label>¿Pinchada?</label>
+          <select class="input" name="is_flat">
+            <option value="0" {% if not tire.is_flat %}selected{% endif %}>No</option>
+            <option value="1" {% if tire.is_flat %}selected{% endif %}>Sí</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Número de chasis</label>
+          <input class="input" type="text" name="chassis_number" value="{{ tire.chassis_number or '' }}">
+          <div class="hint">
+            Puedes indicar el número de chasis aunque esté en otro predio o fuera de patio.
+          </div>
         </div>
 
         <div>
           <label>Ubicación actual</label>
+          <select class="input" name="position_code">
+            <option value="">-- Sin ubicar --</option>
+            <option value="AX1_L_IN" {% if tire.position_code == 'AX1_L_IN' %}selected{% endif %}>Eje 1 izq int</option>
+            <option value="AX1_L_OUT" {% if tire.position_code == 'AX1_L_OUT' %}selected{% endif %}>Eje 1 izq ext</option>
+            <option value="AX1_R_IN" {% if tire.position_code == 'AX1_R_IN' %}selected{% endif %}>Eje 1 der int</option>
+            <option value="AX1_R_OUT" {% if tire.position_code == 'AX1_R_OUT' %}selected{% endif %}>Eje 1 der ext</option>
+
+            <option value="AX2_L_IN" {% if tire.position_code == 'AX2_L_IN' %}selected{% endif %}>Eje 2 izq int</option>
+            <option value="AX2_L_OUT" {% if tire.position_code == 'AX2_L_OUT' %}selected{% endif %}>Eje 2 izq ext</option>
+            <option value="AX2_R_IN" {% if tire.position_code == 'AX2_R_IN' %}selected{% endif %}>Eje 2 der int</option>
+            <option value="AX2_R_OUT" {% if tire.position_code == 'AX2_R_OUT' %}selected{% endif %}>Eje 2 der ext</option>
+
+            <option value="AX3_L_IN" {% if tire.position_code == 'AX3_L_IN' %}selected{% endif %}>Eje 3 izq int</option>
+            <option value="AX3_L_OUT" {% if tire.position_code == 'AX3_L_OUT' %}selected{% endif %}>Eje 3 izq ext</option>
+            <option value="AX3_R_IN" {% if tire.position_code == 'AX3_R_IN' %}selected{% endif %}>Eje 3 der int</option>
+            <option value="AX3_R_OUT" {% if tire.position_code == 'AX3_R_OUT' %}selected{% endif %}>Eje 3 der ext</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Ubicación traducida actual</label>
           <input class="input" type="text" value="{{ tire.position_label or '' }}" disabled>
         </div>
       </div>
+
+      {% if request.args.get('confirm_replace') == '1' %}
+        <input type="hidden" name="confirm_replace" value="1">
+      {% endif %}
+
+      <div class="warn-box">
+        <strong>Importante:</strong><br>
+        Si la posición destino ya tiene una llanta asignada, el sistema pedirá confirmación para reemplazarla.
+        La llanta reemplazada pasará a estado <strong>En taller / bodega</strong>.
+      </div>
     {% endif %}
 
-    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap;">
       <a class="btn" href="{{ url_for('yard.tires_list') }}">Cancelar</a>
       <button class="btn" type="submit">Guardar</button>
     </div>

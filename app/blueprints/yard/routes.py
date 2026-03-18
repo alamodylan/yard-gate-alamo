@@ -4493,6 +4493,33 @@ def _translate_tire_position(position_code: str | None) -> str:
     }
     return mapping.get(value, value)
 
+def _calc_tire_state_from_mm(estrias_mm, is_flat=False):
+    if is_flat:
+        return "PINCHADA"
+
+    if estrias_mm in (None, "",):
+        return "OK"
+
+    try:
+        mm = int(estrias_mm)
+    except Exception:
+        return "OK"
+
+    if 9 <= mm <= 12:
+        return "OK"
+    if 4 <= mm <= 8:
+        return "GASTADA"
+    if 1 <= mm <= 3:
+        return "NO_APTA"
+
+    return "OK"
+
+
+def _normalize_tire_status(value: str | None) -> str:
+    v = (value or "").strip().upper()
+    allowed = {"ASIGNADA", "EN_TALLER_BODEGA", "RECAUCHE", "DESECHADA"}
+    return v if v in allowed else "EN_TALLER_BODEGA"
+
 @yard_bp.get("/llantas")
 @login_required
 def tires_list():
@@ -4540,6 +4567,7 @@ def tires_list():
             t.model,
             t.size,
             t.notes,
+            t.status,
             ct.id AS chassis_tire_id,
             ct.marchamo,
             ct.estrias_mm,
@@ -4558,9 +4586,9 @@ def tires_list():
             END AS estado_color
         FROM yard_gate_alamo.tires t
         LEFT JOIN yard_gate_alamo.chassis_tires ct
-          ON ct.tire_id = t.id
+        ON ct.tire_id = t.id
         LEFT JOIN yard_gate_alamo.chassis ch
-          ON ch.id = ct.chassis_id
+        ON ch.id = ct.chassis_id
         {where_sql}
         ORDER BY t.tire_number ASC
     """)
@@ -4586,6 +4614,7 @@ def tires_list():
             "position_label": _translate_tire_position(r["position_code"]),
             "estado_color": r["estado_color"] or "",
             "is_mounted": bool(r["chassis_tire_id"]),
+            "status": r["status"] or "EN_TALLER_BODEGA",
         })
 
     return render_template(
@@ -4615,6 +4644,7 @@ def tire_create_post():
     model = (request.form.get("model") or "").strip().upper()
     size = (request.form.get("size") or "").strip().upper()
     notes = (request.form.get("notes") or "").strip()
+    status = _normalize_tire_status(request.form.get("status"))
 
     if not tire_number:
         flash("Debes ingresar el número de llanta.", "danger")
@@ -4631,6 +4661,7 @@ def tire_create_post():
         model=model or None,
         size=size or None,
         notes=notes or None,
+        status=status,
     )
     db.session.add(tire)
     db.session.commit()
@@ -4651,6 +4682,7 @@ def tire_detail_view(tire_id: int):
             t.model,
             t.size,
             t.notes,
+            t.status,
             ct.id AS chassis_tire_id,
             ct.marchamo,
             ct.estrias_mm,
@@ -4685,6 +4717,7 @@ def tire_detail_view(tire_id: int):
             "chassis_number": row["chassis_number"] or "",
             "position_code": row["position_code"] or "",
             "position_label": _translate_tire_position(row["position_code"]),
+            "status": row["status"] or "EN_TALLER_BODEGA",
         }
 
     return render_template(
@@ -4705,6 +4738,16 @@ def tire_edit_post(tire_id: int):
     size = (request.form.get("size") or "").strip().upper()
     notes = (request.form.get("notes") or "").strip()
 
+    status = _normalize_tire_status(request.form.get("status"))
+
+    marchamo = (request.form.get("marchamo") or "").strip()
+    chassis_number = (request.form.get("chassis_number") or "").strip().upper()
+    position_code = (request.form.get("position_code") or "").strip().upper()
+    confirm_replace = (request.form.get("confirm_replace") or "").strip() == "1"
+
+    estrias_mm_raw = (request.form.get("estrias_mm") or "").strip()
+    is_flat = (request.form.get("is_flat") or "").strip() == "1"
+
     if not tire_number:
         flash("Debes ingresar el número de llanta.", "danger")
         return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
@@ -4714,15 +4757,154 @@ def tire_edit_post(tire_id: int):
         flash("Ya existe otra llanta con ese número.", "danger")
         return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
 
+    estrias_mm = None
+    if estrias_mm_raw:
+        try:
+            estrias_mm = int(estrias_mm_raw)
+        except Exception:
+            flash("Las estrías deben ser numéricas.", "danger")
+            return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+        if estrias_mm < 1 or estrias_mm > 12:
+            flash("Las estrías deben estar entre 1 y 12.", "danger")
+            return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    # =========================
+    # Actualizar datos base
+    # =========================
     tire.tire_number = tire_number
     tire.brand = brand or None
     tire.model = model or None
     tire.size = size or None
     tire.notes = notes or None
 
+    # Montaje actual de esta llanta, si existe
+    current_mount = ChassisTire.query.filter_by(tire_id=tire.id).first()
+
+    # =========================
+    # Caso 1: NO se quiere montar en chasis
+    # =========================
+    if not chassis_number and not position_code:
+        if current_mount:
+            db.session.delete(current_mount)
+
+        tire.status = status if status in {"EN_TALLER_BODEGA", "RECAUCHE", "DESECHADA"} else "EN_TALLER_BODEGA"
+
+        db.session.add(tire)
+        db.session.commit()
+
+        flash(f"Llanta {tire_number} actualizada correctamente.", "success")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    # =========================
+    # Caso 2: se quiere montar en chasis
+    # =========================
+    if not chassis_number:
+        flash("Debes indicar el número de chasis.", "danger")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    if not position_code:
+        flash("Debes indicar la posición de la llanta.", "danger")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    target_chassis = Chassis.query.filter_by(chassis_number=chassis_number).first()
+    if not target_chassis:
+        flash("El número de chasis no existe.", "danger")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    allowed = set(allowed_positions_for(int(target_chassis.axles or 2)))
+    if position_code not in allowed:
+        flash("La posición no es válida para ese chasis.", "danger")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    # Regla: solo se puede montar si está en taller/bodega
+    if tire.status != "EN_TALLER_BODEGA":
+        flash(
+            f"La llanta {tire.tire_number} no puede montarse porque su estado actual es {tire.status}. "
+            f"Solo se pueden montar llantas en EN_TALLER_BODEGA.",
+            "danger"
+        )
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    # Si esta llanta ya está asignada a otro chasis, bloquear
+    if current_mount and (
+        current_mount.chassis_id != target_chassis.id
+        or current_mount.position_code != position_code
+    ):
+        flash(
+            f"La llanta {tire.tire_number} ya está asignada al chasis "
+            f"{current_mount.chassis.chassis_number if current_mount.chassis else current_mount.chassis_id} "
+            f"en la posición {_translate_tire_position(current_mount.position_code)}.",
+            "danger"
+        )
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    # Verificar si la posición destino está ocupada por otra llanta
+    occupied = ChassisTire.query.filter_by(
+        chassis_id=target_chassis.id,
+        position_code=position_code
+    ).first()
+
+    if occupied and occupied.tire_id != tire.id:
+        existing_tire = Tire.query.get(occupied.tire_id) if occupied.tire_id else None
+        existing_tire_number = existing_tire.tire_number if existing_tire else "SIN NÚMERO"
+        translated_pos = _translate_tire_position(position_code)
+
+        if not confirm_replace:
+            flash(
+                f"La posición {translated_pos} del chasis {target_chassis.chassis_number} "
+                f"ya está ocupada por la llanta {existing_tire_number}. "
+                f"Si deseas reemplazarla, confirma la operación.",
+                "warning"
+            )
+            return redirect(
+                url_for(
+                    "yard.tire_detail_view",
+                    tire_id=tire.id,
+                )
+            )
+
+        # Reemplazo confirmado: la vieja pasa a EN_TALLER_BODEGA
+        if existing_tire:
+            existing_tire.status = "EN_TALLER_BODEGA"
+            db.session.add(existing_tire)
+
+        db.session.delete(occupied)
+        db.session.flush()
+
+    # Recalcular estado técnico de llanta montada
+    tire_state = _calc_tire_state_from_mm(estrias_mm, is_flat)
+
+    # Crear o actualizar montaje
+    mount_row = current_mount
+    if not mount_row:
+        mount_row = ChassisTire(
+            chassis_id=target_chassis.id,
+            position_code=position_code,
+            tire_id=tire.id,
+            installed_at=datetime.utcnow(),
+        )
+
+    mount_row.chassis_id = target_chassis.id
+    mount_row.position_code = position_code
+    mount_row.tire_id = tire.id
+    mount_row.marchamo = marchamo or None
+    mount_row.estrias_mm = estrias_mm
+    mount_row.is_flat = is_flat
+    mount_row.tire_state = tire_state
+    mount_row.updated_at = datetime.utcnow()
+
+    db.session.add(mount_row)
+
+    tire.status = "ASIGNADA"
     db.session.add(tire)
+
     db.session.commit()
 
-    flash(f"Llanta {tire_number} actualizada correctamente.", "success")
+    flash(
+        f"Llanta {tire.tire_number} asignada al chasis {target_chassis.chassis_number} "
+        f"en la posición {_translate_tire_position(position_code)}.",
+        "success"
+    )
     return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
 
