@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if mode == 'create' %}Nueva llanta{% else %}Ver llanta{% endif %}
+{% endblock %}
+{% block content %}
+
+<style>
+  .form-card{
+    max-width:900px;
+    padding:18px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+  }
+  .grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:12px;
+  }
+  @media (max-width: 900px){
+    .grid{grid-template-columns:1fr;}
+  }
+  .input, .textarea{
+    width:100%;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    padding:10px 12px;
+  }
+  .textarea{ min-height:110px; }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    text-decoration:none;
+    cursor:pointer;
+  }
+  .btn:hover{ background:rgba(255,255,255,.09); }
+</style>
+
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+  <div>
+    <h2 style="margin:0;">
+      {% if mode == 'create' %}Nueva llanta{% else %}Detalle de llanta{% endif %}
+    </h2>
+    <div style="opacity:.8; margin-top:4px;">
+      {% if mode == 'create' %}
+        Crear una nueva llanta en el maestro.
+      {% else %}
+        Información base de la llanta y su montaje actual.
+      {% endif %}
+    </div>
+  </div>
+
+  <a class="btn" href="{{ url_for('yard.tires_list') }}">← Volver a llantas</a>
+</div>
+
+<div class="form-card">
+  {% if mode == 'create' %}
+    <form method="post" action="{{ url_for('yard.tire_create_post') }}">
+  {% else %}
+    <form method="post" action="{{ url_for('yard.tire_edit_post', tire_id=tire.tire_id) }}">
+  {% endif %}
+
+    <div class="grid">
+      <div>
+        <label>Número de llanta</label>
+        <input class="input" type="text" name="tire_number" value="{{ tire.tire_number if tire else '' }}" required>
+      </div>
+
+      <div>
+        <label>Marca</label>
+        <input class="input" type="text" name="brand" value="{{ tire.brand if tire else '' }}">
+      </div>
+
+      <div>
+        <label>Modelo</label>
+        <input class="input" type="text" name="model" value="{{ tire.model if tire else '' }}">
+      </div>
+
+      <div>
+        <label>Tamaño</label>
+        <input class="input" type="text" name="size" value="{{ tire.size if tire else '' }}">
+      </div>
+    </div>
+
+    <div style="margin-top:12px;">
+      <label>Notas</label>
+      <textarea class="textarea" name="notes">{{ tire.notes if tire else '' }}</textarea>
+    </div>
+
+    {% if mode == 'edit' and tire %}
+      <hr style="margin:18px 0; border:none; border-top:1px solid rgba(255,255,255,.08);">
+
+      <div class="grid">
+        <div>
+          <label>Marchamo actual</label>
+          <input class="input" type="text" value="{{ tire.marchamo or '' }}" disabled>
+        </div>
+
+        <div>
+          <label>Estrías actuales</label>
+          <input class="input" type="text" value="{{ tire.estrias_mm if tire.estrias_mm is not none else '' }}" disabled>
+        </div>
+
+        <div>
+          <label>Chasis actual</label>
+          <input class="input" type="text" value="{{ tire.chassis_number or '' }}" disabled>
+        </div>
+
+        <div>
+          <label>Ubicación actual</label>
+          <input class="input" type="text" value="{{ tire.position_label or '' }}" disabled>
+        </div>
+      </div>
+    {% endif %}
+
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+      <a class="btn" href="{{ url_for('yard.tires_list') }}">Cancelar</a>
+      <button class="btn" type="submit">Guardar</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

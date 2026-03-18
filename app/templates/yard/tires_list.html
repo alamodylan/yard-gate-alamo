@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Llantas - Yard Gate Álamo{% endblock %}
+{% block content %}
+
+<style>
+  .toolbar-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+    margin-bottom:14px;
+  }
+  .table-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+  }
+  .filters-grid{
+    display:grid;
+    grid-template-columns: 1.2fr .8fr .8fr auto auto;
+    gap:10px;
+    align-items:end;
+  }
+  @media (max-width: 1000px){
+    .filters-grid{grid-template-columns:1fr;}
+  }
+  .input, .select{
+    width:100%;
+    min-height:40px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    padding:0 12px;
+  }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    text-decoration:none;
+    cursor:pointer;
+  }
+  .btn:hover{ background:rgba(255,255,255,.09); }
+  .table-wrap{ overflow:auto; }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:1100px;
+  }
+  th, td{
+    padding:10px 12px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    text-align:left;
+    white-space:nowrap;
+  }
+  th{
+    font-size:12px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    opacity:.8;
+  }
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:5px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.12);
+    font-weight:800;
+    font-size:12px;
+    background:rgba(255,255,255,.06);
+  }
+  .badge-rojo{ border-color:rgba(255,80,80,.45); }
+  .badge-amarillo{ border-color:rgba(255,210,70,.45); }
+  .badge-verde{ border-color:rgba(80,220,120,.45); }
+</style>
+
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+  <div>
+    <h2 style="margin:0;">Llantas</h2>
+    <div style="opacity:.8; margin-top:4px;">
+      Listado central de llantas registradas y su montaje actual.
+    </div>
+  </div>
+
+  <a class="btn" href="{{ url_for('yard.tire_create_view') }}">+ Nueva llanta</a>
+</div>
+
+<form method="get" class="toolbar-card">
+  <div class="filters-grid">
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Buscar</div>
+      <input class="input" type="text" name="q" value="{{ q }}" placeholder="Número, marca, marchamo o chasis">
+    </div>
+
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Estado color</div>
+      <select class="select" name="color">
+        <option value="" {% if not color %}selected{% endif %}>Todos</option>
+        <option value="VERDE" {% if color == 'VERDE' %}selected{% endif %}>Verde</option>
+        <option value="AMARILLO" {% if color == 'AMARILLO' %}selected{% endif %}>Amarillo</option>
+        <option value="ROJO" {% if color == 'ROJO' %}selected{% endif %}>Rojo</option>
+      </select>
+    </div>
+
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Montada</div>
+      <select class="select" name="mounted">
+        <option value="" {% if not mounted %}selected{% endif %}>Todas</option>
+        <option value="SI" {% if mounted == 'SI' %}selected{% endif %}>Sí</option>
+        <option value="NO" {% if mounted == 'NO' %}selected{% endif %}>No</option>
+      </select>
+    </div>
+
+    <button type="submit" class="btn">Filtrar</button>
+    <a class="btn" href="{{ url_for('yard.tires_list') }}">Limpiar</a>
+  </div>
+</form>
+
+<div class="table-card">
+  <div style="margin-bottom:10px; opacity:.85;">Total llantas: {{ total }}</div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Número llanta</th>
+          <th>Marchamo</th>
+          <th>Marca</th>
+          <th>Estado</th>
+          <th>Estrías</th>
+          <th>Chasis</th>
+          <th>Ubicación</th>
+          <th>Acción</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in items %}
+          <tr>
+            <td>{{ row.tire_number or "—" }}</td>
+            <td>{{ row.marchamo or "—" }}</td>
+            <td>{{ row.brand or "—" }}</td>
+            <td>
+              {% if row.estado_color == 'ROJO' %}
+                <span class="badge badge-rojo">Rojo</span>
+              {% elif row.estado_color == 'AMARILLO' %}
+                <span class="badge badge-amarillo">Amarillo</span>
+              {% elif row.estado_color == 'VERDE' %}
+                <span class="badge badge-verde">Verde</span>
+              {% else %}
+                <span class="badge">—</span>
+              {% endif %}
+            </td>
+            <td>{{ row.estrias_mm if row.estrias_mm is not none else "—" }}</td>
+            <td>{{ row.chassis_number or "—" }}</td>
+            <td>{{ row.position_label or "—" }}</td>
+            <td>
+              <a href="{{ url_for('yard.tire_detail_view', tire_id=row.tire_id) }}">Ver llanta</a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

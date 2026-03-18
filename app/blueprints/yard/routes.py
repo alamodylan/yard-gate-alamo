@@ -4473,3 +4473,256 @@ def report_chassis_movements():
         date_to=date_to,
         movement_type=movement_type,
     )
+
+def _translate_tire_position(position_code: str | None) -> str:
+    value = (position_code or "").strip().upper()
+
+    mapping = {
+        "AX1_L_IN": "Eje 1 izq int",
+        "AX1_L_OUT": "Eje 1 izq ext",
+        "AX1_R_IN": "Eje 1 der int",
+        "AX1_R_OUT": "Eje 1 der ext",
+        "AX2_L_IN": "Eje 2 izq int",
+        "AX2_L_OUT": "Eje 2 izq ext",
+        "AX2_R_IN": "Eje 2 der int",
+        "AX2_R_OUT": "Eje 2 der ext",
+        "AX3_L_IN": "Eje 3 izq int",
+        "AX3_L_OUT": "Eje 3 izq ext",
+        "AX3_R_IN": "Eje 3 der int",
+        "AX3_R_OUT": "Eje 3 der ext",
+    }
+    return mapping.get(value, value)
+
+@yard_bp.get("/llantas")
+@login_required
+def tires_list():
+    _ensure_active_site()
+
+    q = (request.args.get("q") or "").strip()
+    color = (request.args.get("color") or "").strip().upper()
+    mounted = (request.args.get("mounted") or "").strip().upper()
+
+    filters = []
+    params = {}
+
+    if q:
+        filters.append("""
+            (
+                t.tire_number ILIKE :q
+                OR COALESCE(t.brand, '') ILIKE :q
+                OR COALESCE(ct.marchamo, '') ILIKE :q
+                OR COALESCE(ch.chassis_number, '') ILIKE :q
+            )
+        """)
+        params["q"] = f"%{q}%"
+
+    if color == "VERDE":
+        filters.append("ct.is_flat = FALSE AND ct.estrias_mm BETWEEN 9 AND 12")
+    elif color == "AMARILLO":
+        filters.append("ct.is_flat = FALSE AND ct.estrias_mm BETWEEN 4 AND 8")
+    elif color == "ROJO":
+        filters.append("(ct.is_flat = TRUE OR ct.estrias_mm <= 3)")
+
+    if mounted == "SI":
+        filters.append("ct.id IS NOT NULL")
+    elif mounted == "NO":
+        filters.append("ct.id IS NULL")
+
+    where_sql = ""
+    if filters:
+        where_sql = "WHERE " + " AND ".join(filters)
+
+    sql = text(f"""
+        SELECT
+            t.id AS tire_id,
+            t.tire_number,
+            t.brand,
+            t.model,
+            t.size,
+            t.notes,
+            ct.id AS chassis_tire_id,
+            ct.marchamo,
+            ct.estrias_mm,
+            ct.is_flat,
+            ct.tire_state,
+            ch.id AS chassis_id,
+            ch.chassis_number,
+            ct.position_code,
+            CASE
+                WHEN ct.is_flat = TRUE THEN 'ROJO'
+                WHEN ct.estrias_mm IS NULL THEN ''
+                WHEN ct.estrias_mm <= 3 THEN 'ROJO'
+                WHEN ct.estrias_mm BETWEEN 4 AND 8 THEN 'AMARILLO'
+                WHEN ct.estrias_mm BETWEEN 9 AND 12 THEN 'VERDE'
+                ELSE ''
+            END AS estado_color
+        FROM yard_gate_alamo.tires t
+        LEFT JOIN yard_gate_alamo.chassis_tires ct
+          ON ct.tire_id = t.id
+        LEFT JOIN yard_gate_alamo.chassis ch
+          ON ch.id = ct.chassis_id
+        {where_sql}
+        ORDER BY t.tire_number ASC
+    """)
+
+    rows = db.session.execute(sql, params).mappings().all()
+
+    items = []
+    for r in rows:
+        items.append({
+            "tire_id": r["tire_id"],
+            "tire_number": r["tire_number"] or "",
+            "brand": r["brand"] or "",
+            "model": r["model"] or "",
+            "size": r["size"] or "",
+            "notes": r["notes"] or "",
+            "marchamo": r["marchamo"] or "",
+            "estrias_mm": r["estrias_mm"],
+            "is_flat": bool(r["is_flat"]) if r["is_flat"] is not None else False,
+            "tire_state": r["tire_state"] or "",
+            "chassis_id": r["chassis_id"],
+            "chassis_number": r["chassis_number"] or "",
+            "position_code": r["position_code"] or "",
+            "position_label": _translate_tire_position(r["position_code"]),
+            "estado_color": r["estado_color"] or "",
+            "is_mounted": bool(r["chassis_tire_id"]),
+        })
+
+    return render_template(
+        "yard/tires_list.html",
+        items=items,
+        total=len(items),
+        q=q,
+        color=color,
+        mounted=mounted,
+    )
+
+@yard_bp.get("/llantas/nueva")
+@login_required
+def tire_create_view():
+    return render_template(
+        "yard/tire_form.html",
+        mode="create",
+        tire=None,
+    )
+
+
+@yard_bp.post("/llantas/nueva")
+@login_required
+def tire_create_post():
+    tire_number = (request.form.get("tire_number") or "").strip().upper()
+    brand = (request.form.get("brand") or "").strip().upper()
+    model = (request.form.get("model") or "").strip().upper()
+    size = (request.form.get("size") or "").strip().upper()
+    notes = (request.form.get("notes") or "").strip()
+
+    if not tire_number:
+        flash("Debes ingresar el número de llanta.", "danger")
+        return redirect(url_for("yard.tire_create_view"))
+
+    existing = Tire.query.filter_by(tire_number=tire_number).first()
+    if existing:
+        flash("Ya existe una llanta con ese número.", "danger")
+        return redirect(url_for("yard.tire_create_view"))
+
+    tire = Tire(
+        tire_number=tire_number,
+        brand=brand or None,
+        model=model or None,
+        size=size or None,
+        notes=notes or None,
+    )
+    db.session.add(tire)
+    db.session.commit()
+
+    flash(f"Llanta {tire_number} creada correctamente.", "success")
+    return redirect(url_for("yard.tires_list"))
+
+@yard_bp.get("/llantas/<int:tire_id>")
+@login_required
+def tire_detail_view(tire_id: int):
+    tire = Tire.query.get_or_404(tire_id)
+
+    row = db.session.execute(text("""
+        SELECT
+            t.id AS tire_id,
+            t.tire_number,
+            t.brand,
+            t.model,
+            t.size,
+            t.notes,
+            ct.id AS chassis_tire_id,
+            ct.marchamo,
+            ct.estrias_mm,
+            ct.is_flat,
+            ct.tire_state,
+            ch.id AS chassis_id,
+            ch.chassis_number,
+            ct.position_code
+        FROM yard_gate_alamo.tires t
+        LEFT JOIN yard_gate_alamo.chassis_tires ct
+          ON ct.tire_id = t.id
+        LEFT JOIN yard_gate_alamo.chassis ch
+          ON ch.id = ct.chassis_id
+        WHERE t.id = :tire_id
+        LIMIT 1
+    """), {"tire_id": tire_id}).mappings().first()
+
+    item = None
+    if row:
+        item = {
+            "tire_id": row["tire_id"],
+            "tire_number": row["tire_number"] or "",
+            "brand": row["brand"] or "",
+            "model": row["model"] or "",
+            "size": row["size"] or "",
+            "notes": row["notes"] or "",
+            "marchamo": row["marchamo"] or "",
+            "estrias_mm": row["estrias_mm"],
+            "is_flat": bool(row["is_flat"]) if row["is_flat"] is not None else False,
+            "tire_state": row["tire_state"] or "",
+            "chassis_id": row["chassis_id"],
+            "chassis_number": row["chassis_number"] or "",
+            "position_code": row["position_code"] or "",
+            "position_label": _translate_tire_position(row["position_code"]),
+        }
+
+    return render_template(
+        "yard/tire_form.html",
+        mode="edit",
+        tire=item,
+    )
+
+
+@yard_bp.post("/llantas/<int:tire_id>/editar")
+@login_required
+def tire_edit_post(tire_id: int):
+    tire = Tire.query.get_or_404(tire_id)
+
+    tire_number = (request.form.get("tire_number") or "").strip().upper()
+    brand = (request.form.get("brand") or "").strip().upper()
+    model = (request.form.get("model") or "").strip().upper()
+    size = (request.form.get("size") or "").strip().upper()
+    notes = (request.form.get("notes") or "").strip()
+
+    if not tire_number:
+        flash("Debes ingresar el número de llanta.", "danger")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    duplicate = Tire.query.filter(Tire.tire_number == tire_number, Tire.id != tire.id).first()
+    if duplicate:
+        flash("Ya existe otra llanta con ese número.", "danger")
+        return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
+    tire.tire_number = tire_number
+    tire.brand = brand or None
+    tire.model = model or None
+    tire.size = size or None
+    tire.notes = notes or None
+
+    db.session.add(tire)
+    db.session.commit()
+
+    flash(f"Llanta {tire_number} actualizada correctamente.", "success")
+    return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+

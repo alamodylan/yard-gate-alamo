@@ -42,6 +42,8 @@
         {# ✅ NUEVO: Chasis (lista principal con botones Dashboard/Import/Export) #}
         <a class="navlink" href="{{ url_for('yard.chassis_list') }}">Chasis</a>
 
+        <a class="navlink" href="{{ url_for('yard.tires_list') }}">Llantas</a>
+
         <a class="navlink" href="{{ url_for('yard.eir_list_view') }}">EIR</a>
 
         {% if session.get('active_site_id') in [2, 3, 4] %}
