@@ -5475,3 +5475,47 @@ def tires_import_post():
 
     return redirect(url_for("yard.tires_list"))
 
+@yard_bp.get("/api/llantas/recauche-report")
+@login_required
+def tire_retread_report():
+    _ensure_active_site()
+
+    sql = text("""
+        SELECT
+            e.id,
+            e.tire_id,
+            e.previous_estrias_mm,
+            e.new_estrias_mm,
+            e.previous_marchamo,
+            e.new_marchamo,
+            e.created_by,
+            e.created_at,
+            t.tire_number,
+            u.username
+        FROM yard_gate_alamo.tire_retread_events e
+        LEFT JOIN yard_gate_alamo.tires t
+          ON t.id = e.tire_id
+        LEFT JOIN yard_gate_alamo.users u
+          ON u.id = e.created_by
+        ORDER BY e.created_at DESC, e.id DESC
+    """)
+
+    rows = db.session.execute(sql).mappings().all()
+
+    items = []
+    for r in rows:
+        created_at = r["created_at"]
+        items.append({
+            "id": r["id"],
+            "fecha": created_at.strftime("%d/%m/%Y %I:%M %p") if created_at else "",
+            "tire_id": r["tire_id"],
+            "tire_number": r["tire_number"] or "",
+            "estrias_antes": r["previous_estrias_mm"],
+            "estrias_despues": r["new_estrias_mm"],
+            "marchamo_anterior": r["previous_marchamo"] or "",
+            "marchamo_nuevo": r["new_marchamo"] or "",
+            "usuario": r["username"] or "",
+        })
+
+    return jsonify({"ok": True, "items": items})
+
