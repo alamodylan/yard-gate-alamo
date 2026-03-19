@@ -1434,7 +1434,9 @@ def gate_in_post():
             "movement_id": mv.id,
         })
 
+        selected_chassis.site_id = site_id
         selected_chassis.is_in_yard = True
+        selected_chassis.updated_at = datetime.utcnow()
         db.session.add(selected_chassis)
 
         inv = ChassisInventory.query.filter_by(chassis_id=selected_chassis.id).first()
