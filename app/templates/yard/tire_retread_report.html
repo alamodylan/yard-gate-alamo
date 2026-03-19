@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Reporte de Recauche{% endblock %}
+{% block content %}
+
+<div class="card card-pad">
+  <h2>Reporte de Recauche</h2>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Llanta</th>
+        <th>Antes</th>
+        <th>Después</th>
+        <th>Marchamo viejo</th>
+        <th>Marchamo nuevo</th>
+        <th>Usuario</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+    </tbody>
+  </table>
+</div>
+
+<script>
+fetch("/api/llantas/recauche-report")
+  .then(r => r.json())
+  .then(data => {
+    const tbody = document.getElementById("tbody");
+    data.items.forEach(r => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${r.fecha}</td>
+        <td>${r.tire_number}</td>
+        <td>${r.estrias_antes}</td>
+        <td>${r.estrias_despues}</td>
+        <td>${r.marchamo_anterior || ""}</td>
+        <td>${r.marchamo_nuevo || ""}</td>
+        <td>${r.usuario || ""}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  });
+</script>
+
+{% endblock %}

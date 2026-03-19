@@ -40,6 +40,7 @@ from app.models.chassis import ChassisInventory
 from app.models.chassis import Chassis
 from app.models.tire import Tire
 from app.models.chassis_tire import ChassisTire
+from app.models.tire_retread_event import TireRetreadEvent
 
 CR_TZ = pytz.timezone("America/Costa_Rica")
 UTC_TZ = pytz.utc
@@ -3355,6 +3356,52 @@ def _save_tire_reading(site_id: int, chassis_id: int, pos: str, ingreso_marchamo
         user_id=user_id,
     )
 
+def _maybe_register_tire_retread(
+    *,
+    tire_id: int | None,
+    previous_estrias_mm,
+    new_estrias_mm,
+    previous_marchamo: str | None,
+    new_marchamo: str | None,
+    created_by: int | None,
+):
+    """
+    Registra un recauche cuando la misma llanta pasa de estrías bajas a 12 mm.
+    Regla actual:
+    - misma llanta
+    - estrías anteriores <= 4
+    - nuevas estrías = 12
+    - evita registrar si ya estaba en 12
+    """
+    if not tire_id:
+        return
+
+    try:
+        old_mm = int(previous_estrias_mm) if previous_estrias_mm not in (None, "",) else None
+    except Exception:
+        old_mm = None
+
+    try:
+        new_mm = int(new_estrias_mm) if new_estrias_mm not in (None, "",) else None
+    except Exception:
+        new_mm = None
+
+    if old_mm is None or new_mm is None:
+        return
+
+    if not (old_mm <= 4 and new_mm == 12 and old_mm != 12):
+        return
+
+    event = TireRetreadEvent(
+        tire_id=tire_id,
+        previous_estrias_mm=old_mm,
+        new_estrias_mm=new_mm,
+        previous_marchamo=(previous_marchamo or None),
+        new_marchamo=(new_marchamo or None),
+        created_by=created_by,
+    )
+    db.session.add(event)
+
 # =========================
 # Chassis pages
 # =========================
@@ -3940,6 +3987,10 @@ def api_chassis_tires_set(chassis_id: int):
 
         tire_state = _calc_tire_state_from_mm(estrias_mm, is_flat)
 
+        previous_estrias_mm = row.estrias_mm if row else None
+        previous_marchamo = row.marchamo if row else None
+        previous_tire_id = row.tire_id if row else None
+
         if not row:
             row = ChassisTire(
                 chassis_id=ch.id,
@@ -3956,6 +4007,16 @@ def api_chassis_tires_set(chassis_id: int):
         row.is_flat = is_flat
         row.tire_state = tire_state
         row.updated_at = datetime.utcnow()
+
+        if previous_tire_id == tire.id:
+            _maybe_register_tire_retread(
+                tire_id=tire.id,
+                previous_estrias_mm=previous_estrias_mm,
+                new_estrias_mm=estrias_mm,
+                previous_marchamo=previous_marchamo,
+                new_marchamo=marchamo,
+                created_by=current_user.id,
+            )
 
         tire.status = "ASIGNADA"
 
@@ -4103,6 +4164,10 @@ def api_chassis_tires_set(chassis_id: int):
                 tire.status = "ASIGNADA"
             db.session.add(tire)
 
+    previous_estrias_mm = row.estrias_mm if row else None
+    previous_marchamo = row.marchamo if row else None
+    previous_tire_id = row.tire_id if row else None
+
     if not row:
         row = ChassisTire(chassis_id=ch.id, position_code=pos)
 
@@ -4112,6 +4177,17 @@ def api_chassis_tires_set(chassis_id: int):
     row.tire_state = tire_state
     row.tire_id = tire.id if tire else None
     row.updated_at = datetime.utcnow()
+
+    current_tire_id = tire.id if tire else None
+    if previous_tire_id and current_tire_id and previous_tire_id == current_tire_id:
+        _maybe_register_tire_retread(
+            tire_id=current_tire_id,
+            previous_estrias_mm=previous_estrias_mm,
+            new_estrias_mm=estrias_mm,
+            previous_marchamo=previous_marchamo,
+            new_marchamo=marchamo,
+            created_by=current_user.id,
+        )
 
     db.session.add(row)
     db.session.commit()
