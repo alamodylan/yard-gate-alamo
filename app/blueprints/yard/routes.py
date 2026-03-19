@@ -5475,6 +5475,12 @@ def tires_import_post():
 
     return redirect(url_for("yard.tires_list"))
 
+@yard_bp.get("/llantas/recauche")
+@login_required
+def tire_retread_report_view():
+    _ensure_active_site()
+    return render_template("yard/tire_retread_report.html")
+
 @yard_bp.get("/api/llantas/recauche-report")
 @login_required
 def tire_retread_report():
