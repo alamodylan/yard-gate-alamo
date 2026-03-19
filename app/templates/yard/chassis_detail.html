@@ -438,8 +438,7 @@
 <div id="chassisMeta"
      data-chassis-id="{{ ch.id }}"
      data-api-prefix="{{ url_for('yard.api_chassis_tires_get', chassis_id=ch.id) | replace('/tires','') }}"
-     data-available-tires-url="/api/llantas/disponibles"
-     data-manage-url="/api/chassis/{{ ch.id }}/tires/manage">
+     data-available-tires-url="/api/llantas/disponibles">
 </div>
 
 <script>
@@ -448,9 +447,8 @@
   const CHASSIS_ID = meta.dataset.chassisId;
   const API_PREFIX = meta.dataset.apiPrefix;
   const AVAILABLE_TIRES_URL = meta.dataset.availableTiresUrl;
-  const MANAGE_URL = meta.dataset.manageUrl;
-
   const API_GET = `${API_PREFIX}/tires`;
+  const API_SET = `${API_PREFIX}/tires`;
 
   const backdrop = document.getElementById("modalBackdrop");
   const modalClose = document.getElementById("modalClose");
@@ -776,7 +774,7 @@
   }
 
   async function postManage(payload){
-    const r = await fetch(MANAGE_URL, {
+    const r = await fetch(API_SET, {
       method: "POST",
       headers: {
         "Content-Type":"application/json",
