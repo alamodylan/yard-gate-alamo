@@ -53,7 +53,7 @@
   table{
     width:100%;
     border-collapse:collapse;
-    min-width:1100px;
+    min-width:1250px;
   }
   th, td{
     padding:10px 12px;
@@ -92,7 +92,6 @@
   </div>
 
 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px;">
-  <a class="btn" href="{{ url_for('yard.tire_create_view') }}">Nueva llanta</a>
   <a class="btn btn-ghost" href="{{ url_for('yard.tires_export') }}">Descargar Excel</a>
   <a class="btn btn-ghost" href="{{ url_for('yard.tires_import_view') }}">Carga masiva</a>
 </div>
@@ -141,8 +140,9 @@
           <th>Número llanta</th>
           <th>Marchamo</th>
           <th>Marca</th>
-          <th>Estado</th>
+          <th>Color</th>
           <th>Estrías</th>
+          <th>Status</th>
           <th>Chasis</th>
           <th>Ubicación</th>
           <th>Acción</th>
@@ -155,21 +155,22 @@
             <td>{{ row.marchamo or "—" }}</td>
             <td>{{ row.brand or "—" }}</td>
             <td>
-              {% if row.estado_color == 'ROJO' %}
+            {% if row.estado_color == 'ROJO' %}
                 <span class="badge badge-rojo">Rojo</span>
-              {% elif row.estado_color == 'AMARILLO' %}
+            {% elif row.estado_color == 'AMARILLO' %}
                 <span class="badge badge-amarillo">Amarillo</span>
-              {% elif row.estado_color == 'VERDE' %}
+            {% elif row.estado_color == 'VERDE' %}
                 <span class="badge badge-verde">Verde</span>
-              {% else %}
+            {% else %}
                 <span class="badge">—</span>
-              {% endif %}
+            {% endif %}
             </td>
             <td>{{ row.estrias_mm if row.estrias_mm is not none else "—" }}</td>
+            <td>{{ row.status or "—" }}</td>
             <td>{{ row.chassis_number or "—" }}</td>
             <td>{{ row.position_label or "—" }}</td>
             <td>
-              <a href="{{ url_for('yard.tire_detail_view', tire_id=row.tire_id) }}">Ver llanta</a>
+            <a href="{{ url_for('yard.tire_detail_view', tire_id=row.tire_id) }}">Ver llanta</a>
             </td>
           </tr>
         {% endfor %}

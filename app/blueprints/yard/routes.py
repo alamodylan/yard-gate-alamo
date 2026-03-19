@@ -3295,6 +3295,23 @@ def _last_confirmed_eir_destination_by_chassis_ids(chassis_ids: list[int]) -> di
 
     return out
 
+def _sync_tire_master_state(
+    tire: Tire | None,
+    *,
+    marchamo: str | None,
+    estrias_mm,
+    is_flat: bool,
+    tire_state: str | None,
+):
+    if not tire:
+        return
+
+    tire.last_marchamo = (marchamo or None)
+    tire.last_estrias_mm = estrias_mm
+    tire.last_is_flat = bool(is_flat)
+    tire.last_tire_state = (tire_state or "OK")
+    db.session.add(tire)
+
 def _build_workshop_ticket_text(
     chassis_number: str,
     axles: int,
@@ -3908,7 +3925,13 @@ def api_chassis_tires_set(chassis_id: int):
         tire = Tire.query.get(row.tire_id) if row.tire_id else None
         if tire:
             tire.status = "EN_TALLER_BODEGA"
-            db.session.add(tire)
+            _sync_tire_master_state(
+                tire,
+                marchamo=row.marchamo,
+                estrias_mm=row.estrias_mm,
+                is_flat=bool(row.is_flat),
+                tire_state=row.tire_state,
+            )
 
         db.session.delete(row)
         db.session.commit()
@@ -3977,7 +4000,13 @@ def api_chassis_tires_set(chassis_id: int):
 
             if old_tire:
                 old_tire.status = "EN_TALLER_BODEGA"
-                db.session.add(old_tire)
+                _sync_tire_master_state(
+                    old_tire,
+                    marchamo=row.marchamo,
+                    estrias_mm=row.estrias_mm,
+                    is_flat=bool(row.is_flat),
+                    tire_state=row.tire_state,
+                )
 
             db.session.delete(row)
             db.session.flush()
@@ -4005,6 +4034,14 @@ def api_chassis_tires_set(chassis_id: int):
         row.is_flat = is_flat
         row.tire_state = tire_state
         row.updated_at = datetime.utcnow()
+
+        _sync_tire_master_state(
+            tire,
+            marchamo=marchamo,
+            estrias_mm=estrias_mm,
+            is_flat=is_flat,
+            tire_state=tire_state,
+        )
 
         if previous_tire_id == tire.id:
             _maybe_register_tire_retread(
@@ -4076,7 +4113,13 @@ def api_chassis_tires_set(chassis_id: int):
 
             if old_tire:
                 old_tire.status = "EN_TALLER_BODEGA"
-                db.session.add(old_tire)
+                _sync_tire_master_state(
+                    old_tire,
+                    marchamo=row.marchamo,
+                    estrias_mm=row.estrias_mm,
+                    is_flat=bool(row.is_flat),
+                    tire_state=row.tire_state,
+                )
 
             db.session.delete(row)
             db.session.flush()
@@ -4111,6 +4154,14 @@ def api_chassis_tires_set(chassis_id: int):
         row.is_flat = is_flat
         row.tire_state = tire_state
         row.updated_at = datetime.utcnow()
+
+        _sync_tire_master_state(
+            tire,
+            marchamo=marchamo,
+            estrias_mm=estrias_mm,
+            is_flat=is_flat,
+            tire_state=tire_state,
+        )
 
         db.session.add(row)
         db.session.commit()
@@ -4176,6 +4227,15 @@ def api_chassis_tires_set(chassis_id: int):
     row.tire_id = tire.id if tire else None
     row.updated_at = datetime.utcnow()
 
+    if tire:
+        _sync_tire_master_state(
+            tire,
+            marchamo=marchamo,
+            estrias_mm=estrias_mm,
+            is_flat=is_flat,
+            tire_state=tire_state,
+        )
+
     current_tire_id = tire.id if tire else None
     if previous_tire_id and current_tire_id and previous_tire_id == current_tire_id:
         _maybe_register_tire_retread(
@@ -4186,6 +4246,18 @@ def api_chassis_tires_set(chassis_id: int):
             new_marchamo=marchamo,
             created_by=current_user.id,
         )
+
+    if previous_tire_id and current_tire_id and previous_tire_id != current_tire_id:
+        old_tire = Tire.query.get(previous_tire_id)
+        if old_tire:
+            old_tire.status = "EN_TALLER_BODEGA"
+            _sync_tire_master_state(
+                old_tire,
+                marchamo=previous_marchamo,
+                estrias_mm=previous_estrias_mm,
+                is_flat=bool(row.is_flat) if row else False,
+                tire_state=row.tire_state if row else "OK",
+            )
 
     db.session.add(row)
     db.session.commit()
@@ -4902,18 +4974,36 @@ def tires_list():
             (
                 t.tire_number ILIKE :q
                 OR COALESCE(t.brand, '') ILIKE :q
-                OR COALESCE(ct.marchamo, '') ILIKE :q
+                OR COALESCE(t.last_marchamo, '') ILIKE :q
                 OR COALESCE(ch.chassis_number, '') ILIKE :q
             )
         """)
         params["q"] = f"%{q}%"
 
     if color == "VERDE":
-        filters.append("ct.is_flat = FALSE AND ct.estrias_mm BETWEEN 9 AND 12")
+        filters.append("""
+            (
+                (ct.id IS NOT NULL AND ct.is_flat = FALSE AND ct.estrias_mm BETWEEN 9 AND 12)
+                OR
+                (ct.id IS NULL AND COALESCE(t.last_is_flat, FALSE) = FALSE AND t.last_estrias_mm BETWEEN 9 AND 12)
+            )
+        """)
     elif color == "AMARILLO":
-        filters.append("ct.is_flat = FALSE AND ct.estrias_mm BETWEEN 4 AND 8")
+        filters.append("""
+            (
+                (ct.id IS NOT NULL AND ct.is_flat = FALSE AND ct.estrias_mm BETWEEN 4 AND 8)
+                OR
+                (ct.id IS NULL AND COALESCE(t.last_is_flat, FALSE) = FALSE AND t.last_estrias_mm BETWEEN 4 AND 8)
+            )
+        """)
     elif color == "ROJO":
-        filters.append("(ct.is_flat = TRUE OR ct.estrias_mm <= 3)")
+        filters.append("""
+            (
+                (ct.id IS NOT NULL AND (ct.is_flat = TRUE OR ct.estrias_mm <= 3))
+                OR
+                (ct.id IS NULL AND (COALESCE(t.last_is_flat, FALSE) = TRUE OR t.last_estrias_mm <= 3))
+            )
+        """)
 
     if mounted == "SI":
         filters.append("ct.id IS NOT NULL")
@@ -4933,27 +5023,47 @@ def tires_list():
             t.size,
             t.notes,
             t.status,
+
             ct.id AS chassis_tire_id,
-            ct.marchamo,
-            ct.estrias_mm,
-            ct.is_flat,
-            ct.tire_state,
+            ct.marchamo AS mounted_marchamo,
+            ct.estrias_mm AS mounted_estrias_mm,
+            ct.is_flat AS mounted_is_flat,
+            ct.tire_state AS mounted_tire_state,
+
+            t.last_marchamo,
+            t.last_estrias_mm,
+            t.last_is_flat,
+            t.last_tire_state,
+
             ch.id AS chassis_id,
             ch.chassis_number,
             ct.position_code,
+
             CASE
-                WHEN ct.is_flat = TRUE THEN 'ROJO'
-                WHEN ct.estrias_mm IS NULL THEN ''
-                WHEN ct.estrias_mm <= 3 THEN 'ROJO'
-                WHEN ct.estrias_mm BETWEEN 4 AND 8 THEN 'AMARILLO'
-                WHEN ct.estrias_mm BETWEEN 9 AND 12 THEN 'VERDE'
-                ELSE ''
+                WHEN ct.id IS NOT NULL THEN
+                    CASE
+                        WHEN ct.is_flat = TRUE THEN 'ROJO'
+                        WHEN ct.estrias_mm IS NULL THEN ''
+                        WHEN ct.estrias_mm <= 3 THEN 'ROJO'
+                        WHEN ct.estrias_mm BETWEEN 4 AND 8 THEN 'AMARILLO'
+                        WHEN ct.estrias_mm BETWEEN 9 AND 12 THEN 'VERDE'
+                        ELSE ''
+                    END
+                ELSE
+                    CASE
+                        WHEN t.last_is_flat = TRUE THEN 'ROJO'
+                        WHEN t.last_estrias_mm IS NULL THEN ''
+                        WHEN t.last_estrias_mm <= 3 THEN 'ROJO'
+                        WHEN t.last_estrias_mm BETWEEN 4 AND 8 THEN 'AMARILLO'
+                        WHEN t.last_estrias_mm BETWEEN 9 AND 12 THEN 'VERDE'
+                        ELSE ''
+                    END
             END AS estado_color
         FROM yard_gate_alamo.tires t
         LEFT JOIN yard_gate_alamo.chassis_tires ct
-        ON ct.tire_id = t.id
+          ON ct.tire_id = t.id
         LEFT JOIN yard_gate_alamo.chassis ch
-        ON ch.id = ct.chassis_id
+          ON ch.id = ct.chassis_id
         {where_sql}
         ORDER BY t.tire_number ASC
     """)
@@ -4962,6 +5072,25 @@ def tires_list():
 
     items = []
     for r in rows:
+        estrias_mm = r["mounted_estrias_mm"] if r["chassis_tire_id"] else r["last_estrias_mm"]
+        is_flat = bool(r["mounted_is_flat"]) if r["chassis_tire_id"] else bool(r["last_is_flat"])
+        tire_state = r["mounted_tire_state"] if r["chassis_tire_id"] else r["last_tire_state"]
+        marchamo = r["mounted_marchamo"] if r["chassis_tire_id"] else r["last_marchamo"]
+
+        if r["chassis_tire_id"]:
+            ubicacion = r["position_code"] or ""
+            position_label = _translate_tire_position(r["position_code"])
+        else:
+            if (r["status"] or "") == "RECAUCHE":
+                ubicacion = "RECAUCHE"
+                position_label = "Recauche"
+            elif (r["status"] or "") == "DESECHADA":
+                ubicacion = "DESECHADA"
+                position_label = "Desechada"
+            else:
+                ubicacion = "TALLER_BODEGA"
+                position_label = "Taller/Bodega"
+
         items.append({
             "tire_id": r["tire_id"],
             "tire_number": r["tire_number"] or "",
@@ -4969,14 +5098,14 @@ def tires_list():
             "model": r["model"] or "",
             "size": r["size"] or "",
             "notes": r["notes"] or "",
-            "marchamo": r["marchamo"] or "",
-            "estrias_mm": r["estrias_mm"],
-            "is_flat": bool(r["is_flat"]) if r["is_flat"] is not None else False,
-            "tire_state": r["tire_state"] or "",
+            "marchamo": marchamo or "",
+            "estrias_mm": estrias_mm,
+            "is_flat": is_flat,
+            "tire_state": tire_state or "",
             "chassis_id": r["chassis_id"],
             "chassis_number": r["chassis_number"] or "",
-            "position_code": r["position_code"] or "",
-            "position_label": _translate_tire_position(r["position_code"]),
+            "position_code": ubicacion or "",
+            "position_label": position_label or "",
             "estado_color": r["estado_color"] or "",
             "is_mounted": bool(r["chassis_tire_id"]),
             "status": r["status"] or "EN_TALLER_BODEGA",
@@ -5134,6 +5263,8 @@ def tire_edit_post(tire_id: int):
             flash("Las estrías deben estar entre 1 y 12.", "danger")
             return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
 
+    tire_state = _calc_tire_state_from_mm(estrias_mm, is_flat)
+
     # =========================
     # Actualizar datos base
     # =========================
@@ -5143,6 +5274,14 @@ def tire_edit_post(tire_id: int):
     tire.size = size or None
     tire.notes = notes or None
 
+    _sync_tire_master_state(
+        tire,
+        marchamo=marchamo,
+        estrias_mm=estrias_mm,
+        is_flat=is_flat,
+        tire_state=tire_state,
+    )
+
     # Montaje actual de esta llanta, si existe
     current_mount = ChassisTire.query.filter_by(tire_id=tire.id).first()
 
@@ -5151,6 +5290,13 @@ def tire_edit_post(tire_id: int):
     # =========================
     if not chassis_number and not position_code:
         if current_mount:
+            _sync_tire_master_state(
+                tire,
+                marchamo=current_mount.marchamo,
+                estrias_mm=current_mount.estrias_mm,
+                is_flat=bool(current_mount.is_flat),
+                tire_state=current_mount.tire_state,
+            )
             db.session.delete(current_mount)
 
         tire.status = status if status in {"EN_TALLER_BODEGA", "RECAUCHE", "DESECHADA"} else "EN_TALLER_BODEGA"
@@ -5232,13 +5378,17 @@ def tire_edit_post(tire_id: int):
         # Reemplazo confirmado: la vieja pasa a EN_TALLER_BODEGA
         if existing_tire:
             existing_tire.status = "EN_TALLER_BODEGA"
-            db.session.add(existing_tire)
+            _sync_tire_master_state(
+                existing_tire,
+                marchamo=occupied.marchamo,
+                estrias_mm=occupied.estrias_mm,
+                is_flat=bool(occupied.is_flat),
+                tire_state=occupied.tire_state,
+            )
 
         db.session.delete(occupied)
         db.session.flush()
 
-    # Recalcular estado técnico de llanta montada
-    tire_state = _calc_tire_state_from_mm(estrias_mm, is_flat)
 
     # Crear o actualizar montaje
     mount_row = current_mount
@@ -5258,6 +5408,14 @@ def tire_edit_post(tire_id: int):
     mount_row.is_flat = is_flat
     mount_row.tire_state = tire_state
     mount_row.updated_at = datetime.utcnow()
+
+    _sync_tire_master_state(
+        tire,
+        marchamo=marchamo,
+        estrias_mm=estrias_mm,
+        is_flat=is_flat,
+        tire_state=tire_state,
+    )
 
     db.session.add(mount_row)
 
