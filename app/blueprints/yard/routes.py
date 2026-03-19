@@ -3237,6 +3237,66 @@ def _insert_dynamic(schema: str, table: str, values: dict) -> int | None:
     db.session.execute(sql, payload)
     return None
 
+def _get_open_tire_retread_event(tire_id: int):
+    return (
+        TireRetreadEvent.query
+        .filter(
+            TireRetreadEvent.tire_id == tire_id,
+            TireRetreadEvent.event_status == "SENT",
+            TireRetreadEvent.returned_at.is_(None),
+        )
+        .order_by(TireRetreadEvent.id.desc())
+        .first()
+    )
+
+
+def _open_tire_retread_event(
+    *,
+    tire_id: int,
+    previous_estrias_mm,
+    previous_marchamo: str | None,
+    user_id: int,
+    notes: str | None = None,
+):
+    existing = _get_open_tire_retread_event(tire_id)
+    if existing:
+        return existing
+
+    event = TireRetreadEvent(
+        tire_id=tire_id,
+        previous_estrias_mm=previous_estrias_mm,
+        previous_marchamo=previous_marchamo or None,
+        created_by=user_id,
+        created_at=datetime.utcnow(),
+        sent_at=datetime.utcnow(),
+        sent_by=user_id,
+        event_status="SENT",
+        notes=notes or None,
+    )
+    db.session.add(event)
+    return event
+
+
+def _close_tire_retread_event(
+    *,
+    tire_id: int,
+    new_estrias_mm,
+    new_marchamo: str | None,
+    user_id: int,
+    final_status: str,
+):
+    event = _get_open_tire_retread_event(tire_id)
+    if not event:
+        return None
+
+    event.new_estrias_mm = new_estrias_mm
+    event.new_marchamo = new_marchamo or None
+    event.returned_at = datetime.utcnow()
+    event.returned_by = user_id
+    event.event_status = "SCRAPPED" if final_status == "DESECHADA" else "RETURNED"
+    db.session.add(event)
+    return event
+
 def _fetch_last_final_eir_for_chassis(chassis_id: int):
     """
     Trae el último EIR FINAL (o estado equivalente) donde participó ese chasis.
@@ -5177,11 +5237,18 @@ def tire_detail_view(tire_id: int):
             t.size,
             t.notes,
             t.status,
+
             ct.id AS chassis_tire_id,
-            ct.marchamo,
-            ct.estrias_mm,
-            ct.is_flat,
-            ct.tire_state,
+            ct.marchamo AS mounted_marchamo,
+            ct.estrias_mm AS mounted_estrias_mm,
+            ct.is_flat AS mounted_is_flat,
+            ct.tire_state AS mounted_tire_state,
+
+            t.last_marchamo,
+            t.last_estrias_mm,
+            t.last_is_flat,
+            t.last_tire_state,
+
             ch.id AS chassis_id,
             ch.chassis_number,
             ct.position_code
@@ -5196,6 +5263,11 @@ def tire_detail_view(tire_id: int):
 
     item = None
     if row:
+        marchamo = row["mounted_marchamo"] if row["chassis_tire_id"] else row["last_marchamo"]
+        estrias_mm = row["mounted_estrias_mm"] if row["chassis_tire_id"] else row["last_estrias_mm"]
+        is_flat = bool(row["mounted_is_flat"]) if row["chassis_tire_id"] else bool(row["last_is_flat"])
+        tire_state = row["mounted_tire_state"] if row["chassis_tire_id"] else row["last_tire_state"]
+
         item = {
             "tire_id": row["tire_id"],
             "tire_number": row["tire_number"] or "",
@@ -5203,10 +5275,10 @@ def tire_detail_view(tire_id: int):
             "model": row["model"] or "",
             "size": row["size"] or "",
             "notes": row["notes"] or "",
-            "marchamo": row["marchamo"] or "",
-            "estrias_mm": row["estrias_mm"],
-            "is_flat": bool(row["is_flat"]) if row["is_flat"] is not None else False,
-            "tire_state": row["tire_state"] or "",
+            "marchamo": marchamo or "",
+            "estrias_mm": estrias_mm,
+            "is_flat": is_flat,
+            "tire_state": tire_state or "",
             "chassis_id": row["chassis_id"],
             "chassis_number": row["chassis_number"] or "",
             "position_code": row["position_code"] or "",
@@ -5225,6 +5297,7 @@ def tire_detail_view(tire_id: int):
 @login_required
 def tire_edit_post(tire_id: int):
     tire = Tire.query.get_or_404(tire_id)
+    previous_status = tire.status
 
     tire_number = (request.form.get("tire_number") or "").strip().upper()
     brand = (request.form.get("brand") or "").strip().upper()
@@ -5301,11 +5374,33 @@ def tire_edit_post(tire_id: int):
 
         tire.status = status if status in {"EN_TALLER_BODEGA", "RECAUCHE", "DESECHADA"} else "EN_TALLER_BODEGA"
 
+        # -------------------------
+        # Flujo de recauche
+        # -------------------------
+        if tire.status == "RECAUCHE" and previous_status != "RECAUCHE":
+            _open_tire_retread_event(
+                tire_id=tire.id,
+                previous_estrias_mm=tire.last_estrias_mm,
+                previous_marchamo=tire.last_marchamo,
+                user_id=current_user.id,
+                notes="Salida a recauche desde ver llanta",
+            )
+
+        elif previous_status == "RECAUCHE" and tire.status in {"EN_TALLER_BODEGA", "DESECHADA"}:
+            _close_tire_retread_event(
+                tire_id=tire.id,
+                new_estrias_mm=tire.last_estrias_mm,
+                new_marchamo=tire.last_marchamo,
+                user_id=current_user.id,
+                final_status=tire.status,
+            )
+
         db.session.add(tire)
         db.session.commit()
 
         flash(f"Llanta {tire_number} actualizada correctamente.", "success")
         return redirect(url_for("yard.tire_detail_view", tire_id=tire.id))
+
 
     # =========================
     # Caso 2: se quiere montar en chasis

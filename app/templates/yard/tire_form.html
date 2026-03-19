@@ -245,3 +245,22 @@
 </div>
 
 {% endblock %}
+<script>
+  const statusSelect = document.querySelector('select[name="status"]');
+  const estriasInput = document.querySelector('input[name="estrias_mm"]');
+
+  function toggleEstrias() {
+    if (statusSelect.value === "RECAUCHE") {
+      estriasInput.setAttribute("readonly", "readonly");
+      estriasInput.style.opacity = "0.6";
+    } else {
+      estriasInput.removeAttribute("readonly");
+      estriasInput.style.opacity = "1";
+    }
+  }
+
+  statusSelect.addEventListener("change", toggleEstrias);
+
+  // Ejecutar al cargar
+  toggleEstrias();
+</script>
