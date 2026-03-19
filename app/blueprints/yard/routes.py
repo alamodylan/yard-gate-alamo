@@ -2480,12 +2480,8 @@ def eir_confirm_view(eir_id: int):
         ch.is_in_yard = False
         db.session.add(ch)
 
-        inv = ChassisInventory.query.filter_by(
-            chassis_id=ch.id,
-            site_id=site_id
-        ).first()
-
-        if inv:
+        inv_rows = ChassisInventory.query.filter_by(chassis_id=ch.id).all()
+        for inv in inv_rows:
             inv.is_in_yard = False
             inv.updated_at = datetime.utcnow()
             db.session.add(inv)
