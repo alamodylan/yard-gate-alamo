@@ -3923,7 +3923,7 @@ def api_tires_available():
             t.model,
             t.size,
             t.notes,
-            t.status
+            t.status,
             t.last_marchamo,
             t.last_estrias_mm,
             t.last_is_flat
