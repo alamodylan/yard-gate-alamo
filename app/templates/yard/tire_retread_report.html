@@ -2,45 +2,229 @@
 {% block title %}Reporte de Recauche{% endblock %}
 {% block content %}
 
-<div class="card card-pad">
-  <h2>Reporte de Recauche</h2>
+<style>
+  .toolbar-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+    margin-bottom:14px;
+  }
+  .table-card{
+    padding:14px;
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,.08);
+    background:rgba(255,255,255,.04);
+  }
+  .filters-row{
+    display:flex;
+    gap:10px;
+    flex-wrap:wrap;
+    align-items:end;
+  }
+  .input{
+    width:100%;
+    max-width:260px;
+    min-height:40px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    padding:0 12px;
+  }
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);
+    color:inherit;
+    text-decoration:none;
+    cursor:pointer;
+  }
+  .btn:hover{ background:rgba(255,255,255,.09); }
+  .table-wrap{ overflow:auto; }
+  table{
+    width:100%;
+    border-collapse:collapse;
+    min-width:1300px;
+  }
+  th, td{
+    padding:10px 12px;
+    border-bottom:1px solid rgba(255,255,255,.08);
+    text-align:left;
+    white-space:nowrap;
+  }
+  th{
+    font-size:12px;
+    letter-spacing:.04em;
+    text-transform:uppercase;
+    opacity:.8;
+  }
+  .badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:5px 10px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.12);
+    font-weight:800;
+    font-size:12px;
+    background:rgba(255,255,255,.06);
+  }
+  .badge-green{ border-color:rgba(80,220,120,.45); }
+  .badge-red{ border-color:rgba(255,80,80,.45); }
+  .badge-yellow{ border-color:rgba(255,210,70,.45); }
+</style>
 
-  <table class="table">
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Llanta</th>
-        <th>Antes</th>
-        <th>Después</th>
-        <th>Marchamo viejo</th>
-        <th>Marchamo nuevo</th>
-        <th>Usuario</th>
-      </tr>
-    </thead>
-    <tbody id="tbody">
-    </tbody>
-  </table>
+<div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:12px;">
+  <div>
+    <h2 style="margin:0;">Reporte de Recauche</h2>
+    <div style="opacity:.8; margin-top:4px;">
+      Historial de salida e ingreso de llantas enviadas a recauche.
+    </div>
+  </div>
+
+  <a class="btn" href="{{ url_for('yard.reports_dashboard') }}">← Volver a reportes</a>
+</div>
+
+<div class="toolbar-card">
+  <form id="filterForm" class="filters-row">
+    <div>
+      <div style="font-size:12px; opacity:.8; margin-bottom:5px;">Buscar por llanta</div>
+      <input
+        class="input"
+        type="text"
+        id="tireNumber"
+        name="tire_number"
+        placeholder="Ej: LL-8502"
+      >
+    </div>
+
+    <button class="btn" type="submit">Filtrar</button>
+    <button class="btn" type="button" id="btnClear">Limpiar</button>
+  </form>
+</div>
+
+<div class="table-card">
+  <div style="margin-bottom:10px; opacity:.85;" id="totalBox">Cargando...</div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Llanta</th>
+          <th>Fecha salida</th>
+          <th>Fecha ingreso</th>
+          <th>Antes (mm)</th>
+          <th>Después (mm)</th>
+          <th>Marchamo viejo</th>
+          <th>Marchamo nuevo</th>
+          <th>Status final</th>
+          <th>Salida por</th>
+          <th>Ingreso por</th>
+        </tr>
+      </thead>
+      <tbody id="tbody">
+        <tr>
+          <td colspan="10">Cargando...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <script>
-fetch("/api/llantas/recauche-report")
-  .then(r => r.json())
-  .then(data => {
-    const tbody = document.getElementById("tbody");
-    data.items.forEach(r => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${r.fecha}</td>
-        <td>${r.tire_number}</td>
-        <td>${r.estrias_antes}</td>
-        <td>${r.estrias_despues}</td>
-        <td>${r.marchamo_anterior || ""}</td>
-        <td>${r.marchamo_nuevo || ""}</td>
-        <td>${r.usuario || ""}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+(function(){
+  const tbody = document.getElementById("tbody");
+  const totalBox = document.getElementById("totalBox");
+  const filterForm = document.getElementById("filterForm");
+  const tireNumber = document.getElementById("tireNumber");
+  const btnClear = document.getElementById("btnClear");
+
+  function esc(value){
+    return (value ?? "").toString()
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  function renderStatusBadge(status){
+    const s = (status || "").toUpperCase();
+
+    if (s === "RECAUCHADA") {
+      return `<span class="badge badge-green">RECAUCHADA</span>`;
+    }
+    if (s === "DESECHADA") {
+      return `<span class="badge badge-red">DESECHADA</span>`;
+    }
+    return `<span class="badge badge-yellow">EN PROCESO</span>`;
+  }
+
+  async function loadReport(){
+    tbody.innerHTML = `<tr><td colspan="10">Cargando...</td></tr>`;
+    totalBox.textContent = "Cargando...";
+
+    try{
+      const params = new URLSearchParams();
+      if (tireNumber.value.trim()){
+        params.set("tire_number", tireNumber.value.trim());
+      }
+
+      const url = `/api/llantas/recauche-report${params.toString() ? "?" + params.toString() : ""}`;
+      const r = await fetch(url, { headers: { "Accept": "application/json" } });
+      const data = await r.json();
+
+      if (!r.ok || !data.ok){
+        throw new Error(data.error || "LOAD_FAILED");
+      }
+
+      const items = data.items || [];
+      totalBox.textContent = `Total registros: ${items.length}`;
+
+      if (!items.length){
+        tbody.innerHTML = `<tr><td colspan="10">No hay registros de recauche.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = items.map(row => `
+        <tr>
+          <td>${esc(row.tire_number || "—")}</td>
+          <td>${esc(row.sent_at || "—")}</td>
+          <td>${esc(row.returned_at || "—")}</td>
+          <td>${esc(row.before_mm ?? "—")}</td>
+          <td>${esc(row.after_mm ?? "—")}</td>
+          <td>${esc(row.old_marchamo || "—")}</td>
+          <td>${esc(row.new_marchamo || "—")}</td>
+          <td>${renderStatusBadge(row.status_final)}</td>
+          <td>${esc(row.sent_by || "—")}</td>
+          <td>${esc(row.returned_by || "—")}</td>
+        </tr>
+      `).join("");
+    }catch(e){
+      totalBox.textContent = "Error";
+      tbody.innerHTML = `<tr><td colspan="10">Error cargando reporte: ${esc(e.message)}</td></tr>`;
+    }
+  }
+
+  filterForm.addEventListener("submit", function(e){
+    e.preventDefault();
+    loadReport();
   });
+
+  btnClear.addEventListener("click", function(){
+    tireNumber.value = "";
+    loadReport();
+  });
+
+  loadReport();
+})();
 </script>
 
 {% endblock %}

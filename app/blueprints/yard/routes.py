@@ -5737,41 +5737,77 @@ def tire_retread_report_view():
 def tire_retread_report():
     _ensure_active_site()
 
-    sql = text("""
+    tire_number = (request.args.get("tire_number") or "").strip().upper()
+
+    filters = []
+    params = {}
+
+    if tire_number:
+        filters.append("t.tire_number ILIKE :tire_number")
+        params["tire_number"] = f"%{tire_number}%"
+
+    where_sql = ""
+    if filters:
+        where_sql = " AND " + " AND ".join(filters)
+
+    sql = text(f"""
         SELECT
             e.id,
-            e.tire_id,
+            t.tire_number,
+
+            e.sent_at,
+            e.returned_at,
+
             e.previous_estrias_mm,
             e.new_estrias_mm,
+
             e.previous_marchamo,
             e.new_marchamo,
-            e.created_by,
-            e.created_at,
-            t.tire_number,
-            u.username
+
+            e.event_status,
+
+            u1.username AS sent_by_user,
+            u2.username AS returned_by_user
+
         FROM yard_gate_alamo.tire_retread_events e
-        LEFT JOIN yard_gate_alamo.tires t
+        JOIN yard_gate_alamo.tires t
           ON t.id = e.tire_id
-        LEFT JOIN yard_gate_alamo.users u
-          ON u.id = e.created_by
-        ORDER BY e.created_at DESC, e.id DESC
+
+        LEFT JOIN yard_gate_alamo.users u1
+          ON u1.id = e.sent_by
+
+        LEFT JOIN yard_gate_alamo.users u2
+          ON u2.id = e.returned_by
+
+        WHERE 1=1
+        {where_sql}
+
+        ORDER BY e.sent_at DESC NULLS LAST, e.id DESC
     """)
 
-    rows = db.session.execute(sql).mappings().all()
+    rows = db.session.execute(sql, params).mappings().all()
 
     items = []
+
     for r in rows:
-        created_at = r["created_at"]
+        if r["event_status"] == "RETURNED":
+            status_final = "RECAUCHADA"
+        elif r["event_status"] == "SCRAPPED":
+            status_final = "DESECHADA"
+        else:
+            status_final = "EN PROCESO"
+
         items.append({
-            "id": r["id"],
-            "fecha": created_at.strftime("%d/%m/%Y %I:%M %p") if created_at else "",
-            "tire_id": r["tire_id"],
             "tire_number": r["tire_number"] or "",
-            "estrias_antes": r["previous_estrias_mm"],
-            "estrias_despues": r["new_estrias_mm"],
-            "marchamo_anterior": r["previous_marchamo"] or "",
-            "marchamo_nuevo": r["new_marchamo"] or "",
-            "usuario": r["username"] or "",
+            "sent_at": r["sent_at"].strftime("%d/%m/%Y %I:%M %p") if r["sent_at"] else "",
+            "returned_at": r["returned_at"].strftime("%d/%m/%Y %I:%M %p") if r["returned_at"] else "",
+            "before_mm": r["previous_estrias_mm"],
+            "after_mm": r["new_estrias_mm"],
+            "old_marchamo": r["previous_marchamo"] or "",
+            "new_marchamo": r["new_marchamo"] or "",
+            "status_final": status_final,
+            "sent_by": r["sent_by_user"] or "",
+            "returned_by": r["returned_by_user"] or "",
         })
 
     return jsonify({"ok": True, "items": items})
