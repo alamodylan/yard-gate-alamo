@@ -708,6 +708,20 @@
         div.classList.add("active");
         selectedExistingTireId = item.id;
         selectedExistingItem = item;
+
+        if (!mMarchamo.value && item.last_marchamo) {
+          mMarchamo.value = item.last_marchamo;
+        }
+
+        if ((!mEstriasMm.value || mEstriasMm.value === "") && item.last_estrias_mm !== null && item.last_estrias_mm !== undefined) {
+          mEstriasMm.value = String(item.last_estrias_mm);
+        }
+
+        if ((mIsFlat.value === "" || mIsFlat.value === "0") && item.last_is_flat) {
+          mIsFlat.value = "1";
+        }
+
+        refreshModalCalculatedState();
       });
       existingList.appendChild(div);
     });

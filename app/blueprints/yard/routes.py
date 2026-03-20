@@ -3924,6 +3924,9 @@ def api_tires_available():
             t.size,
             t.notes,
             t.status
+            t.last_marchamo,
+            t.last_estrias_mm,
+            t.last_is_flat
         FROM yard_gate_alamo.tires t
         LEFT JOIN yard_gate_alamo.chassis_tires ct
           ON ct.tire_id = t.id
@@ -3944,6 +3947,9 @@ def api_tires_available():
             "size": r["size"] or "",
             "notes": r["notes"] or "",
             "status": r["status"] or "EN_TALLER_BODEGA",
+            "last_marchamo": r["last_marchamo"] or "",
+            "last_estrias_mm": r["last_estrias_mm"],
+            "last_is_flat": bool(r["last_is_flat"]) if r["last_is_flat"] is not None else False,
         })
 
     return jsonify({
@@ -4004,9 +4010,15 @@ def api_chassis_tires_set(chassis_id: int):
     if action == "assign_existing":
         tire_id = data.get("tire_id")
         marchamo = (data.get("marchamo") or "").strip()
+        if not marchamo:
+            marchamo = (tire.last_marchamo or "").strip()
 
         estrias_mm_raw = data.get("estrias_mm")
-        is_flat = bool(data.get("is_flat"))
+        is_flat_raw = data.get("is_flat")
+        if is_flat_raw in (None, "",):
+            is_flat = bool(tire.last_is_flat)
+        else:
+            is_flat = bool(is_flat_raw)
 
         if not tire_id:
             return jsonify({"ok": False, "error": "TIRE_ID_REQUIRED"}), 400
@@ -4045,6 +4057,8 @@ def api_chassis_tires_set(chassis_id: int):
 
             if estrias_mm < 1 or estrias_mm > 12:
                 return jsonify({"ok": False, "error": "ESTRIAS_OUT_OF_RANGE"}), 400
+        else:
+            estrias_mm = tire.last_estrias_mm
 
         if row and row.tire_id != tire.id:
             old_tire = Tire.query.get(row.tire_id) if row.tire_id else None
