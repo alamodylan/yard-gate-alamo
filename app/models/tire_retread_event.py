@@ -20,10 +20,22 @@ class TireRetreadEvent(db.Model):
     created_by = db.Column(db.Integer, db.ForeignKey(f"{SCHEMA}.users.id"), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=datetime.utcnow)
 
+    sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    returned_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    event_status = db.Column(db.String(20), nullable=True)
+
+    sent_by = db.Column(db.Integer, db.ForeignKey(f"{SCHEMA}.users.id"), nullable=True)
+    returned_by = db.Column(db.Integer, db.ForeignKey(f"{SCHEMA}.users.id"), nullable=True)
+
+    notes = db.Column(db.Text, nullable=True)
+
     tire = db.relationship("Tire", lazy=True)
 
     def __repr__(self) -> str:
         return (
             f"<TireRetreadEvent tire_id={self.tire_id} "
-            f"old_mm={self.previous_estrias_mm} new_mm={self.new_estrias_mm}>"
+            f"status={self.event_status} "
+            f"old_mm={self.previous_estrias_mm} "
+            f"new_mm={self.new_estrias_mm}>"
         )
