@@ -41,6 +41,7 @@ from app.models.chassis import Chassis
 from app.models.tire import Tire
 from app.models.chassis_tire import ChassisTire
 from app.models.tire_retread_event import TireRetreadEvent
+from app.models.tire import TireReading, TirePosition
 
 CR_TZ = pytz.timezone("America/Costa_Rica")
 UTC_TZ = pytz.utc
@@ -2862,6 +2863,17 @@ def _build_chassis_gate_in_ticket_text(
 
     lines.append("--------------------------------")
     return "\n".join(lines).strip()
+
+SIDE_TO_POSITION = {
+    "AX1_L": "AX1_L_OUT",
+    "AX1_R": "AX1_R_OUT",
+    "AX2_L": "AX2_L_OUT",
+    "AX2_R": "AX2_R_OUT",
+    "AX3_L": "AX3_L_OUT",
+    "AX3_R": "AX3_R_OUT",
+}
+
+POSITION_TO_SIDE = {v: k for k, v in SIDE_TO_POSITION.items()}
 
 def _normalize_structure_status_for_db(value: str | None) -> str | None:
     v = (value or "").strip().upper()
@@ -5826,3 +5838,89 @@ def tire_retread_report():
 
     return jsonify({"ok": True, "items": items})
 
+@yard_bp.get("/api/chassis/<int:chassis_id>/axle-seals")
+@login_required
+def get_chassis_axle_seals(chassis_id):
+    chassis = Chassis.query.get_or_404(chassis_id)
+
+    readings = (
+        db.session.query(TireReading, TirePosition)
+        .join(TirePosition, TireReading.tire_position_id == TirePosition.id)
+        .filter(
+            TireReading.chassis_id == chassis_id,
+            TireReading.event_type == "CHASSIS_DETAIL"
+        )
+        .all()
+    )
+
+    result = {}
+
+    for reading, pos in readings:
+        side_code = POSITION_TO_SIDE.get(pos.position_code)
+        if not side_code:
+            continue
+
+        result[side_code] = {
+            "seal_1": reading.seal_1 or "",
+            "seal_2": reading.seal_2 or ""
+        }
+
+    return {
+        "ok": True,
+        "items": result
+    }
+
+@yard_bp.post("/api/chassis/<int:chassis_id>/axle-seals")
+@login_required
+def save_chassis_axle_seals(chassis_id):
+    data = request.get_json() or {}
+
+    side_code = (data.get("side_code") or "").strip().upper()
+    seal_1 = (data.get("seal_1") or "").strip()
+    seal_2 = (data.get("seal_2") or "").strip()
+
+    if side_code not in SIDE_TO_POSITION:
+        return {"ok": False, "error": "side_code inválido"}, 400
+
+    chassis = Chassis.query.get_or_404(chassis_id)
+
+    position_code = SIDE_TO_POSITION[side_code]
+
+    position = TirePosition.query.filter_by(code=position_code).first()
+    if not position:
+        return {"ok": False, "error": f"Posición {position_code} no encontrada"}, 400
+
+    reading = (
+        TireReading.query
+        .filter_by(
+            chassis_id=chassis_id,
+            tire_position_id=position.id,
+            event_type="CHASSIS_DETAIL"
+        )
+        .first()
+    )
+
+    if reading:
+        # UPDATE
+        reading.seal_1 = seal_1
+        reading.seal_2 = seal_2
+        reading.recorded_at = datetime.utcnow()
+        reading.recorded_by_user_id = current_user.id
+    else:
+        # INSERT
+        reading = TireReading(
+            site_id=chassis.site_id,
+            chassis_id=chassis_id,
+            tire_position_id=position.id,
+            event_type="CHASSIS_DETAIL",
+            event_id=None,
+            seal_1=seal_1,
+            seal_2=seal_2,
+            recorded_at=datetime.utcnow(),
+            recorded_by_user_id=current_user.id
+        )
+        db.session.add(reading)
+
+    db.session.commit()
+
+    return {"ok": True}

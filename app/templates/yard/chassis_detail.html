@@ -17,17 +17,23 @@
   .btn-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 
   .map-card{padding:14px}
-  .map-area{position:relative;width:100%;aspect-ratio: 3/6; min-height:520px; border-radius:16px;
-            background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
-            border:1px solid rgba(255,255,255,.10);
-            overflow:hidden}
-  .frame{position:absolute;left:50%;transform:translateX(-50%);
-         top:10px; bottom:10px; width:60%;
-         border-radius:14px;border:3px solid rgba(0,0,0,.45);
-         box-shadow: inset 0 0 0 2px rgba(255,255,255,.05);}
+  .map-area{
+    position:relative;width:100%;aspect-ratio: 3/6; min-height:520px; border-radius:16px;
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    border:1px solid rgba(255,255,255,.10);
+    overflow:hidden
+  }
+  .frame{
+    position:absolute;left:50%;transform:translateX(-50%);
+    top:10px; bottom:10px; width:60%;
+    border-radius:14px;border:3px solid rgba(0,0,0,.45);
+    box-shadow: inset 0 0 0 2px rgba(255,255,255,.05);
+  }
 
-  .axle{position:absolute;left:50%;transform:translateX(-50%);width:66%;height:10px;
-        background:rgba(0,0,0,.55); border-radius:999px}
+  .axle{
+    position:absolute;left:50%;transform:translateX(-50%);width:66%;height:10px;
+    background:rgba(0,0,0,.55); border-radius:999px
+  }
   .axle.ax1{top:68%}
   .axle.ax2{top:80%}
   .axle.ax3{top:92%}
@@ -41,6 +47,7 @@
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 8px 18px rgba(0,0,0,.35);
     transition: transform .08s ease, box-shadow .08s ease, outline .08s ease;
+    z-index:2;
   }
   .wheel:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.45)}
   .wheel .tag{
@@ -188,6 +195,88 @@
     font-size:12px;
   }
 
+  .seal-side-btn{
+    position:absolute;
+    z-index:3;
+    min-width:88px;
+    padding:8px 10px;
+    border-radius:12px;
+    border:1px solid rgba(0,255,170,.35);
+    background:rgba(0,0,0,.45);
+    color:rgba(255,255,255,.96);
+    font-size:12px;
+    font-weight:800;
+    text-align:center;
+    cursor:pointer;
+    box-shadow:0 8px 20px rgba(0,0,0,.28);
+    transition:transform .08s ease, box-shadow .08s ease, border-color .08s ease;
+  }
+  .seal-side-btn:hover{
+    transform:translateY(-1px);
+    box-shadow:0 10px 24px rgba(0,0,0,.35);
+    border-color:rgba(0,255,170,.55);
+  }
+  .seal-side-btn.active{
+    border-color:rgba(255,193,7,.8);
+    box-shadow:0 0 0 1px rgba(255,193,7,.35) inset, 0 10px 24px rgba(0,0,0,.35);
+  }
+
+  .seal-side-btn.left.ax1{left:16%; top:66.5%}
+  .seal-side-btn.left.ax2{left:16%; top:78.5%}
+  .seal-side-btn.left.ax3{left:16%; top:90.5%}
+
+  .seal-side-btn.right.ax1{right:16%; top:66.5%}
+  .seal-side-btn.right.ax2{right:16%; top:78.5%}
+  .seal-side-btn.right.ax3{right:16%; top:90.5%}
+
+  .seal-editor{
+    margin-top:12px;
+    border:1px solid rgba(0,255,170,.18);
+    background:rgba(0,255,170,.05);
+    border-radius:14px;
+    padding:12px;
+  }
+  .seal-editor-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    gap:10px;
+    margin-bottom:10px;
+  }
+  .seal-editor-title{
+    font-weight:900;
+  }
+  .seal-editor-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:10px;
+  }
+  @media (max-width:760px){
+    .seal-editor-grid{grid-template-columns:1fr}
+  }
+  .seal-box{
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.04);
+    border-radius:12px;
+    padding:10px;
+  }
+  .seal-box label{
+    display:block;
+    font-size:12px;
+    font-weight:800;
+    opacity:.9;
+    margin-bottom:6px;
+  }
+  .seal-box input{
+    width:100%;
+    padding:10px 10px;
+    border-radius:10px;
+    border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06);
+    color:rgba(255,255,255,.95);
+    outline:none;
+  }
+
   .hidden{display:none !important;}
 </style>
 
@@ -227,6 +316,17 @@
             <div class="axle ax3"></div>
           {% endif %}
 
+          <button type="button" class="seal-side-btn left ax1" data-seal-side="AX1_L">Eje 1 Izq</button>
+          <button type="button" class="seal-side-btn right ax1" data-seal-side="AX1_R">Eje 1 Der</button>
+
+          <button type="button" class="seal-side-btn left ax2" data-seal-side="AX2_L">Eje 2 Izq</button>
+          <button type="button" class="seal-side-btn right ax2" data-seal-side="AX2_R">Eje 2 Der</button>
+
+          {% if axles == 3 %}
+            <button type="button" class="seal-side-btn left ax3" data-seal-side="AX3_L">Eje 3 Izq</button>
+            <button type="button" class="seal-side-btn right ax3" data-seal-side="AX3_R">Eje 3 Der</button>
+          {% endif %}
+
           <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
           <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
           <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
@@ -243,6 +343,30 @@
           <div class="wheel" data-pos="AX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
           <div class="wheel" data-pos="AX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
           {% endif %}
+        </div>
+
+        <div class="seal-editor hidden" id="sealEditor">
+          <div class="seal-editor-head">
+            <div>
+              <div class="seal-editor-title" id="sealEditorTitle">Marchamos por lado de eje</div>
+              <div class="help" id="sealEditorHelp">Tocá un lado del eje en el dibujo para ingresar o editar los 2 marchamos.</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <button class="btn btn-sm" type="button" id="sealEditorSave">Guardar</button>
+              <button class="btn btn-sm btn-ghost" type="button" id="sealEditorClose">Cerrar</button>
+            </div>
+          </div>
+
+          <div class="seal-editor-grid">
+            <div class="seal-box">
+              <label for="sealInput1">Marchamo 1</label>
+              <input id="sealInput1" type="text" placeholder="Escanear / escribir marchamo 1">
+            </div>
+            <div class="seal-box">
+              <label for="sealInput2">Marchamo 2</label>
+              <input id="sealInput2" type="text" placeholder="Escanear / escribir marchamo 2">
+            </div>
+          </div>
         </div>
 
         <div class="legend">
@@ -438,7 +562,10 @@
 <div id="chassisMeta"
      data-chassis-id="{{ ch.id }}"
      data-api-prefix="{{ url_for('yard.api_chassis_tires_get', chassis_id=ch.id) | replace('/tires','') }}"
-     data-available-tires-url="/api/llantas/disponibles">
+     data-available-tires-url="/api/llantas/disponibles"
+     data-axles="{{ axles }}"
+     data-axle-seals-get-url="/api/chassis/{{ ch.id }}/axle-seals"
+     data-axle-seals-post-url="/api/chassis/{{ ch.id }}/axle-seals">
 </div>
 
 <script>
@@ -447,6 +574,9 @@
   const CHASSIS_ID = meta.dataset.chassisId;
   const API_PREFIX = meta.dataset.apiPrefix;
   const AVAILABLE_TIRES_URL = meta.dataset.availableTiresUrl;
+  const AXLES = Number(meta.dataset.axles || "2");
+  const AXLE_SEALS_GET_URL = meta.dataset.axleSealsGetUrl;
+  const AXLE_SEALS_POST_URL = meta.dataset.axleSealsPostUrl;
   const API_GET = `${API_PREFIX}/tires`;
   const API_SET = `${API_PREFIX}/tires`;
 
@@ -487,11 +617,23 @@
   const tbody = document.getElementById("posTbody");
   const wheels = Array.from(document.querySelectorAll(".wheel"));
 
+  const sealSideButtons = Array.from(document.querySelectorAll(".seal-side-btn"));
+  const sealEditor = document.getElementById("sealEditor");
+  const sealEditorTitle = document.getElementById("sealEditorTitle");
+  const sealEditorHelp = document.getElementById("sealEditorHelp");
+  const sealEditorClose = document.getElementById("sealEditorClose");
+  const sealEditorSave = document.getElementById("sealEditorSave");
+  const sealInput1 = document.getElementById("sealInput1");
+  const sealInput2 = document.getElementById("sealInput2");
+
   let stateCache = {};
   let currentPos = null;
   let currentMode = "existing";
   let selectedExistingTireId = null;
   let selectedExistingItem = null;
+
+  let currentSealSide = null;
+  const sealDrafts = {};
 
   function esc(s){
     return (s ?? "").toString()
@@ -545,6 +687,136 @@
       "AX3_R_OUT":"Eje 3 der ext"
     };
     return map[pos] || pos;
+  }
+
+  function translateSealSide(side){
+    const map = {
+      "AX1_L":"Eje 1 izquierda",
+      "AX1_R":"Eje 1 derecha",
+      "AX2_L":"Eje 2 izquierda",
+      "AX2_R":"Eje 2 derecha",
+      "AX3_L":"Eje 3 izquierda",
+      "AX3_R":"Eje 3 derecha"
+    };
+    return map[side] || side;
+  }
+
+  function getSealScanOrder(){
+    if (AXLES === 3){
+      return ["AX1_L", "AX2_L", "AX3_L", "AX3_R", "AX2_R", "AX1_R"];
+    }
+    return ["AX1_L", "AX2_L", "AX2_R", "AX1_R"];
+  }
+
+  async function loadAxleSeals(){
+    try{
+      const r = await fetch(AXLE_SEALS_GET_URL, {
+        headers: {"Accept":"application/json"}
+      });
+      const j = await r.json();
+
+      if (!r.ok || !j.ok){
+        throw new Error(j.error || "AXLE_SEALS_LOAD_FAILED");
+      }
+
+      const items = j.items || {};
+
+      Object.keys(items).forEach(side => {
+        const row = items[side] || {};
+        sealDrafts[side] = {
+          seal1: row.seal_1 || "",
+          seal2: row.seal_2 || ""
+        };
+      });
+    }catch(e){
+      console.error("No se pudieron cargar los marchamos por eje:", e);
+    }
+  }
+
+  async function saveSealSide(sideCode){
+    const row = sealDrafts[sideCode] || {seal1:"", seal2:""};
+
+    const payload = {
+      side_code: sideCode,
+      seal_1: row.seal1 || "",
+      seal_2: row.seal2 || ""
+    };
+
+    const r = await fetch(AXLE_SEALS_POST_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type":"application/json",
+        "Accept":"application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const j = await r.json().catch(() => ({}));
+
+    if (!r.ok || !j.ok){
+      throw new Error(j.error || "AXLE_SEALS_SAVE_FAILED");
+    }
+
+    return j;
+  }
+
+  async function saveCurrentSealSide(){
+    if (!currentSealSide) return;
+
+    saveCurrentSealDraft();
+
+    const originalText = sealEditorSave.textContent;
+    sealEditorSave.disabled = true;
+    sealEditorSave.textContent = "Guardando...";
+
+    try{
+      await saveSealSide(currentSealSide);
+    }catch(e){
+      alert("No se pudieron guardar los marchamos: " + e.message);
+      throw e;
+    }finally{
+      sealEditorSave.disabled = false;
+      sealEditorSave.textContent = originalText;
+    }
+  }
+
+  function highlightSealSideButton(side){
+    sealSideButtons.forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.sealSide === side);
+    });
+  }
+
+  function openSealEditor(side){
+    currentSealSide = side;
+
+    if (!sealDrafts[side]){
+      sealDrafts[side] = { seal1:"", seal2:"" };
+    }
+
+    sealEditorTitle.textContent = translateSealSide(side);
+    sealEditorHelp.textContent = "Ingresa o escanea los 2 marchamos de este lado del eje.";
+    sealInput1.value = sealDrafts[side].seal1 || "";
+    sealInput2.value = sealDrafts[side].seal2 || "";
+
+    highlightSealSideButton(side);
+    sealEditor.classList.remove("hidden");
+
+    setTimeout(() => sealInput1.focus(), 30);
+  }
+
+  function closeSealEditor(){
+    saveCurrentSealDraft();
+    currentSealSide = null;
+    highlightSealSideButton(null);
+    sealEditor.classList.add("hidden");
+  }
+
+  function saveCurrentSealDraft(){
+    if (!currentSealSide) return;
+    sealDrafts[currentSealSide] = {
+      seal1: sealInput1.value.trim(),
+      seal2: sealInput2.value.trim()
+    };
   }
 
   function applyWheelClass(pos, tireState){
@@ -934,7 +1206,15 @@
   modalClose.addEventListener("click", closeModal);
   btnCancel.addEventListener("click", closeModal);
   backdrop.addEventListener("click", (e)=>{ if (e.target === backdrop) closeModal(); });
-  document.addEventListener("keydown", (e)=>{ if (e.key === "Escape" && backdrop.style.display === "flex") closeModal(); });
+  document.addEventListener("keydown", (e)=>{
+    if (e.key === "Escape"){
+      if (backdrop.style.display === "flex"){
+        closeModal();
+      } else if (!sealEditor.classList.contains("hidden")){
+        closeSealEditor();
+      }
+    }
+  });
 
   mEstriasMm.addEventListener("change", refreshModalCalculatedState);
   mIsFlat.addEventListener("change", refreshModalCalculatedState);
@@ -955,7 +1235,58 @@
   btnUnassign.addEventListener("click", unassignCurrent);
   btnReload.addEventListener("click", loadPositions);
 
-  loadPositions();
+  sealSideButtons.forEach(btn => {
+    btn.addEventListener("click", () => openSealEditor(btn.dataset.sealSide));
+  });
+
+  sealEditorClose.addEventListener("click", closeSealEditor);
+  sealEditorSave.addEventListener("click", async () => {
+    try{
+      await saveCurrentSealSide();
+      closeSealEditor();
+    }catch(e){
+      // alert ya mostrado
+    }
+  });
+
+  sealInput1.addEventListener("input", saveCurrentSealDraft);
+  sealInput2.addEventListener("input", saveCurrentSealDraft);
+
+  sealInput1.addEventListener("keydown", (e) => {
+    if (e.key === "Enter"){
+      e.preventDefault();
+      saveCurrentSealDraft();
+      sealInput2.focus();
+      sealInput2.select();
+    }
+  });
+
+  sealInput2.addEventListener("keydown", async (e) => {
+    if (e.key === "Enter"){
+      e.preventDefault();
+
+      try{
+        await saveCurrentSealSide();
+
+        const order = getSealScanOrder();
+        const idx = order.indexOf(currentSealSide);
+        const next = idx >= 0 ? order[idx + 1] : null;
+
+        if (next){
+          openSealEditor(next);
+        } else {
+          closeSealEditor();
+        }
+      }catch(e){
+        // alert ya mostrado
+      }
+    }
+  });
+
+  Promise.all([
+    loadPositions(),
+    loadAxleSeals()
+  ]);
 })();
 </script>
 
