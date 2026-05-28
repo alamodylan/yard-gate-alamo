@@ -1,3 +1,4 @@
+# app/__init__.py
 from flask import Flask, current_app, session
 from dotenv import load_dotenv
 

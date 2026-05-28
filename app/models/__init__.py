@@ -5,3 +5,4 @@ from .container import Container, ContainerPosition
 from .movement import Movement, MovementPhoto
 from .audit import AuditLog
 from .ticket import TicketPrint
+from .yard import TireReading, TirePosition
