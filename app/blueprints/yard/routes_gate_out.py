@@ -17,16 +17,13 @@ from app.models.chassis_tire import ChassisTire
 from app.services.audit import audit_log
 from app.services.storage import get_storage, build_photo_key
 
-from .routes import _ensure_active_site
 from .routes import (
     _ensure_active_site,
     _parse_axle_seals_payload,
-    _get_axle_seals_for_event,
+    _get_axle_seals_from_chassis_tires,
     _save_axle_seals_for_event,
     _compare_axle_seals,
     _format_axle_seal_difference_lines,
-    _insert_dynamic,
-    _build_workshop_ticket_text,
 )
 
 
@@ -38,9 +35,6 @@ def gate_out_view():
     active_site = Site.query.get(site_id)
     site_code = (active_site.code or "").upper() if active_site else ""
 
-    # ==========================================================
-    # ✅ PREDIOS: COYOL / CALDERA / LIMON -> flujo nuevo EIR
-    # ==========================================================
     if site_code in {"COYOL", "CALDERA", "LIMON"}:
         sql_last_class = text("""
             SELECT DISTINCT ON (cc.container_id)
@@ -96,9 +90,6 @@ def gate_out_view():
             eirs_draft=eirs_draft,
         )
 
-    # ==========================================================
-    # 🔹 MAERSK: flujo viejo intacto
-    # ==========================================================
     containers = (
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -118,9 +109,6 @@ def gate_out_post():
     site_code = (active_site.code or "").upper() if active_site else ""
     is_predio = site_code in {"COYOL", "CALDERA", "LIMON"}
 
-    # ==========================================================
-    # ✅ PREDIOS: Gate Out / EIR
-    # ==========================================================
     if is_predio:
         mode = (request.form.get("mode") or "create").strip().lower()
         eir_id_raw = (request.form.get("eir_id") or "").strip()
@@ -283,11 +271,9 @@ def gate_out_post():
                 flash("Ese chasis no está disponible en este predio.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
-            expected_seals = _get_axle_seals_for_event(
-                chassis_id=ch.id,
-                event_type="CHASSIS_DETAIL",
-                event_id=None,
-            )
+            # Gate Out compara contra lo configurado en /chassis/<id>.
+            # La comparación NO depende del orden de los dos marchamos por eje/lado.
+            expected_seals = _get_axle_seals_from_chassis_tires(ch.id)
 
             seal_differences = _compare_axle_seals(
                 expected_seals,
@@ -523,9 +509,6 @@ def gate_out_post():
 
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
-    # ==========================================================
-    # 🔹 MAERSK: flujo viejo intacto
-    # ==========================================================
     container_id = request.form.get("container_id")
     driver_name = (request.form.get("driver_name") or "").strip()
     driver_id_doc = (request.form.get("driver_id_doc") or "").strip()

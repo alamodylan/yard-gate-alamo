@@ -122,6 +122,61 @@ def _active_site_key():
     value = getattr(site, "code", None) or getattr(site, "name", None) or ""
     return value.strip().upper()
 
+def _get_axle_seals_from_chassis_tires(chassis_id: int):
+    sql = text("""
+        SELECT
+            position_code,
+            marchamo
+        FROM yard_gate_alamo.chassis_tires
+        WHERE chassis_id = :chassis_id
+          AND marchamo IS NOT NULL
+          AND TRIM(marchamo) <> ''
+        ORDER BY position_code ASC
+    """)
+
+    rows = db.session.execute(
+        sql,
+        {"chassis_id": chassis_id}
+    ).mappings().all()
+
+    grouped = {}
+
+    for r in rows:
+        pos = (r["position_code"] or "").strip().upper()
+        marchamo = _normalize_seal_value(r["marchamo"])
+
+        if not marchamo:
+            continue
+
+        side_code = None
+
+        if pos.startswith("AX1_L_"):
+            side_code = "AX1_L"
+        elif pos.startswith("AX1_R_"):
+            side_code = "AX1_R"
+        elif pos.startswith("AX2_L_"):
+            side_code = "AX2_L"
+        elif pos.startswith("AX2_R_"):
+            side_code = "AX2_R"
+        elif pos.startswith("AX3_L_"):
+            side_code = "AX3_L"
+        elif pos.startswith("AX3_R_"):
+            side_code = "AX3_R"
+
+        if not side_code:
+            continue
+
+        grouped.setdefault(side_code, []).append(marchamo)
+
+    result = {}
+
+    for side_code, seals in grouped.items():
+        result[side_code] = {
+            "seal_1": seals[0] if len(seals) > 0 else "",
+            "seal_2": seals[1] if len(seals) > 1 else "",
+        }
+
+    return result
 
 @yard_bp.app_context_processor
 def inject_active_site():
