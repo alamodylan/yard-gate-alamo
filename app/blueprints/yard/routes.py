@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 import pytz
 from sqlalchemy import text, bindparam
+import json
 
 from flask import (
     render_template,
@@ -866,3 +867,222 @@ def _build_chassis_gate_in_ticket_text(
 
     lines.append("--------------------------------")
     return "\n".join(lines).strip()
+
+def _normalize_seal_value(value):
+    return (value or "").strip().upper()
+
+
+def _normalize_seal_pair(seal_1, seal_2):
+    values = [
+        _normalize_seal_value(seal_1),
+        _normalize_seal_value(seal_2),
+    ]
+    values = [v for v in values if v]
+    return sorted(values)
+
+
+def _parse_axle_seals_payload(raw_value):
+    """
+    Espera JSON tipo:
+    {
+        "AX1_L": {"seal_1": "ABC", "seal_2": "XYZ"},
+        "AX1_R": {"seal_1": "123", "seal_2": "456"}
+    }
+    """
+    if not raw_value:
+        return {}
+
+    try:
+        data = json.loads(raw_value)
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+
+    result = {}
+
+    for side_code, item in data.items():
+        side_code = (side_code or "").strip().upper()
+
+        if side_code not in SIDE_TO_POSITION:
+            continue
+
+        item = item or {}
+        seal_1 = _normalize_seal_value(item.get("seal_1"))
+        seal_2 = _normalize_seal_value(item.get("seal_2"))
+
+        if not seal_1 and not seal_2:
+            continue
+
+        result[side_code] = {
+            "seal_1": seal_1,
+            "seal_2": seal_2,
+        }
+
+    return result
+
+
+def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None):
+    """
+    Carga marchamos por eje/lado desde tire_readings.
+    Retorna:
+    {
+        "AX1_L": {"seal_1": "...", "seal_2": "..."}
+    }
+    """
+    where_event_id = ""
+    params = {
+        "chassis_id": chassis_id,
+        "event_type": event_type,
+    }
+
+    if event_id is None:
+        where_event_id = "AND tr.event_id IS NULL"
+    else:
+        where_event_id = "AND tr.event_id = :event_id"
+        params["event_id"] = event_id
+
+    sql = text(f"""
+        SELECT
+            tp.position_code,
+            tr.seal_1,
+            tr.seal_2
+        FROM yard_gate_alamo.tire_readings tr
+        JOIN yard_gate_alamo.tire_positions tp
+          ON tp.id = tr.tire_position_id
+        WHERE tr.chassis_id = :chassis_id
+          AND tr.event_type = :event_type
+          {where_event_id}
+        ORDER BY tr.recorded_at DESC NULLS LAST, tr.id DESC
+    """)
+
+    rows = db.session.execute(sql, params).mappings().all()
+
+    result = {}
+
+    for r in rows:
+        side_code = POSITION_TO_SIDE.get((r["position_code"] or "").strip().upper())
+        if not side_code:
+            continue
+
+        if side_code in result:
+            continue
+
+        result[side_code] = {
+            "seal_1": _normalize_seal_value(r["seal_1"]),
+            "seal_2": _normalize_seal_value(r["seal_2"]),
+        }
+
+    return result
+
+
+def _save_axle_seals_for_event(
+    *,
+    site_id: int,
+    chassis_id: int,
+    axles: int,
+    seals_payload: dict,
+    event_type: str,
+    event_id,
+    user_id: int,
+):
+    """
+    Guarda marchamos por eje/lado usando tire_readings.
+    Borra lecturas anteriores del mismo evento para evitar duplicados.
+    """
+    if not seals_payload:
+        return
+
+    delete_event_id = "IS NULL" if event_id is None else "= :event_id"
+    params = {
+        "chassis_id": chassis_id,
+        "event_type": event_type,
+    }
+    if event_id is not None:
+        params["event_id"] = event_id
+
+    db.session.execute(text(f"""
+        DELETE FROM yard_gate_alamo.tire_readings
+        WHERE chassis_id = :chassis_id
+          AND event_type = :event_type
+          AND event_id {delete_event_id}
+    """), params)
+
+    for side_code, item in seals_payload.items():
+        side_code = (side_code or "").strip().upper()
+        if side_code not in SIDE_TO_POSITION:
+            continue
+
+        position_code = SIDE_TO_POSITION[side_code]
+
+        _insert_tire_reading_row(
+            site_id=site_id,
+            chassis_id=chassis_id,
+            axles=axles,
+            pos=position_code,
+            event_type=event_type,
+            event_id=event_id,
+            seal_1=_normalize_seal_value(item.get("seal_1")),
+            seal_2=_normalize_seal_value(item.get("seal_2")),
+            pressure_psi=None,
+            condition="OK",
+            comments=f"MARCHAMOS POR EJE/LADO {side_code}",
+            user_id=user_id,
+        )
+
+
+def _compare_axle_seals(expected: dict, scanned: dict):
+    """
+    Compara sin importar orden.
+    Retorna lista de diferencias.
+    """
+    differences = []
+
+    all_sides = sorted(set(expected.keys()) | set(scanned.keys()))
+
+    for side_code in all_sides:
+        expected_item = expected.get(side_code) or {}
+        scanned_item = scanned.get(side_code) or {}
+
+        expected_pair = _normalize_seal_pair(
+            expected_item.get("seal_1"),
+            expected_item.get("seal_2"),
+        )
+        scanned_pair = _normalize_seal_pair(
+            scanned_item.get("seal_1"),
+            scanned_item.get("seal_2"),
+        )
+
+        if expected_pair != scanned_pair:
+            differences.append({
+                "side_code": side_code,
+                "expected": expected_pair,
+                "scanned": scanned_pair,
+            })
+
+    return differences
+
+
+def _format_axle_seal_difference_lines(differences):
+    labels = {
+        "AX1_L": "Eje 1 Izq",
+        "AX1_R": "Eje 1 Der",
+        "AX2_L": "Eje 2 Izq",
+        "AX2_R": "Eje 2 Der",
+        "AX3_L": "Eje 3 Izq",
+        "AX3_R": "Eje 3 Der",
+    }
+
+    lines = []
+
+    for d in differences:
+        side = d.get("side_code")
+        label = labels.get(side, side)
+
+        scanned = d.get("scanned") or []
+        scanned_txt = " / ".join(scanned) if scanned else "NO INGRESADO"
+
+        lines.append(f"{label}: MARCHAMOS NO COINCIDEN. ESCANEADO: {scanned_txt}")
+
+    return lines

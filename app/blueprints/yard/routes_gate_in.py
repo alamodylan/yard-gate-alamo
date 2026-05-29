@@ -36,6 +36,11 @@ from .routes import (
     _build_chassis_gate_in_ticket_text,
     _fetch_last_final_eir_for_chassis,
     _build_workshop_ticket_text,
+    _parse_axle_seals_payload,
+    _get_axle_seals_for_event,
+    _save_axle_seals_for_event,
+    _compare_axle_seals,
+    _format_axle_seal_difference_lines,
 )
 
 
@@ -235,6 +240,10 @@ def gate_in_post():
     chassis_id_raw = (request.form.get("chassis_id") or "").strip()
     chassis_tire_checks_json_raw = (request.form.get("chassis_tire_checks_json") or "{}").strip()
     chassis_inspection_json_raw = (request.form.get("chassis_inspection_json") or "{}").strip()
+
+    # ✅ Marchamos escaneados por eje/lado. El usuario NO ve los anteriores.
+    chassis_axle_seals_json_raw = (request.form.get("chassis_axle_seals_json") or "{}").strip()
+    chassis_axle_seals = _parse_axle_seals_payload(chassis_axle_seals_json_raw)
 
     selected_chassis = None
     chassis_tire_checks = {}
@@ -525,6 +534,47 @@ def gate_in_post():
         any_tire_issue = False
         grouped_tire_readings = {}
 
+        # ======================================================
+        # ✅ Guardar y comparar marchamos por eje/lado - GATE_IN
+        # ======================================================
+        seal_differences = []
+
+        last_eir_for_seals = _fetch_last_final_eir_for_chassis(selected_chassis.id)
+        last_eir_id_for_seals = (
+            int(last_eir_for_seals["id"])
+            if last_eir_for_seals and last_eir_for_seals.get("id")
+            else None
+        )
+
+        expected_seals = {}
+        if last_eir_id_for_seals:
+            expected_seals = _get_axle_seals_for_event(
+                chassis_id=selected_chassis.id,
+                event_type="EIR_OUT",
+                event_id=last_eir_id_for_seals,
+            )
+
+        seal_differences = _compare_axle_seals(
+            expected_seals,
+            chassis_axle_seals,
+        )
+
+        _save_axle_seals_for_event(
+            site_id=site_id,
+            chassis_id=selected_chassis.id,
+            axles=axles,
+            seals_payload=chassis_axle_seals,
+            event_type="GATE_IN",
+            event_id=mv.id,
+            user_id=current_user.id,
+        )
+
+        if seal_differences:
+            seal_lines = _format_axle_seal_difference_lines(seal_differences)
+            tire_lines.extend(seal_lines)
+            ticket_alert_lines.extend(seal_lines)
+            any_tire_issue = True
+
         tire_state_labels = {
             "GASTADA": "REGULAR",
             "PINCHADA": "DESINFLADA",
@@ -794,6 +844,7 @@ def gate_in_post():
                     "movement_id": mv.id,
                     "chassis_id": selected_chassis.id,
                     "container_id": c.id,
+                    "seal_mismatch": bool(seal_differences),
                 },
             )
 
@@ -808,6 +859,7 @@ def gate_in_post():
                 "container_id": c.id,
                 "needs_workshop": needs_workshop_chassis,
                 "classification_ticket": bool(chassis_classification_ticket_payload),
+                "seal_mismatch": bool(seal_differences),
             },
         )
 

@@ -18,6 +18,16 @@ from app.services.audit import audit_log
 from app.services.storage import get_storage, build_photo_key
 
 from .routes import _ensure_active_site
+from .routes import (
+    _ensure_active_site,
+    _parse_axle_seals_payload,
+    _get_axle_seals_for_event,
+    _save_axle_seals_for_event,
+    _compare_axle_seals,
+    _format_axle_seal_difference_lines,
+    _insert_dynamic,
+    _build_workshop_ticket_text,
+)
 
 
 @yard_bp.get("/gate-out")
@@ -112,7 +122,7 @@ def gate_out_post():
     # ✅ PREDIOS: Gate Out / EIR
     # ==========================================================
     if is_predio:
-        mode = (request.form.get("mode") or "create").strip().lower()  # create | link
+        mode = (request.form.get("mode") or "create").strip().lower()
         eir_id_raw = (request.form.get("eir_id") or "").strip()
 
         has_chassis = (request.form.get("has_chassis") or "0").strip() == "1"
@@ -138,6 +148,10 @@ def gate_out_post():
         shipping_line = (request.form.get("shipping_line") or "").strip().upper()
         container_seal = (request.form.get("container_seal") or "").strip()
         general_notes = (request.form.get("notes") or "").strip()
+
+        # ✅ Marchamos escaneados por eje/lado. El usuario NO ve los anteriores.
+        chassis_axle_seals_json_raw = (request.form.get("chassis_axle_seals_json") or "{}").strip()
+        chassis_axle_seals = _parse_axle_seals_payload(chassis_axle_seals_json_raw)
 
         # Sección chasis
         chassis_lights_status = (request.form.get("chassis_lights_status") or "").strip().upper()
@@ -166,9 +180,6 @@ def gate_out_post():
 
         damage_points_raw = (request.form.get("container_damage_points_json") or "[]").strip()
 
-        # -------------------------
-        # Validaciones mínimas
-        # -------------------------
         terminal_name = terminal_name or (active_site.name if active_site else site_code or "")
         origin = origin or (active_site.name if active_site else site_code or "")
         carrier = carrier or "ATM"
@@ -194,9 +205,6 @@ def gate_out_post():
             flash("Tipo de operación inválido.", "danger")
             return redirect(url_for("yard.gate_out_view"))
 
-        # -------------------------
-        # Parse daños visuales
-        # -------------------------
         try:
             damage_points = json.loads(damage_points_raw or "[]")
             if not isinstance(damage_points, list):
@@ -205,9 +213,6 @@ def gate_out_post():
             flash("Los daños del contenedor vienen dañados en el formulario.", "danger")
             return redirect(url_for("yard.gate_out_view"))
 
-        # -------------------------
-        # Validar / cargar contenedor
-        # -------------------------
         c = None
         bay_code = None
         depth_row = None
@@ -234,7 +239,6 @@ def gate_out_post():
 
             container_size = getattr(c, "size", None)
 
-            # Intentar jalar naviera de la última clasificación del Gate In
             if not shipping_line:
                 sql_last_class = text("""
                     SELECT shipping_line
@@ -265,9 +269,6 @@ def gate_out_post():
                 "damage_count": len(damage_points),
             }
 
-        # -------------------------
-        # Validar / cargar chasis
-        # -------------------------
         ch = None
         chassis_snapshot = None
 
@@ -285,7 +286,6 @@ def gate_out_post():
                 flash("Ese chasis no está disponible en este predio.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
-            # Snapshot de llantas / marchamos
             tire_rows = (
                 ChassisTire.query
                 .filter_by(chassis_id=ch.id)
@@ -336,9 +336,6 @@ def gate_out_post():
                 "tires": tires_snapshot,
             }
 
-        # -------------------------
-        # Reefer snapshot
-        # -------------------------
         reefer_snapshot = None
         if is_reefer:
             reefer_snapshot = {
@@ -355,22 +352,12 @@ def gate_out_post():
                 "notes": rf_notes or None,
             }
 
-        # -------------------------
-        # Si no trae ningún equipo, bloquear
-        # -------------------------
         if not has_container and not has_chassis:
             flash("Debes indicar al menos un equipo: chasis o contenedor.", "danger")
             return redirect(url_for("yard.gate_out_view"))
 
-        # -------------------------
-        # En predios NO se crea Movement todavía.
-        # El Movement real se crea hasta CONFIRMAR el EIR.
-        # -------------------------
         mv = None
 
-        # -------------------------
-        # Crear o ligar EIR
-        # -------------------------
         if mode == "link":
             if not eir_id_raw or not str(eir_id_raw).isdigit():
                 db.session.rollback()
@@ -388,7 +375,6 @@ def gate_out_post():
                 flash("Solo puedes ligar EIRs en estado PENDING o EDITING.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
-            # Limpiar daños viejos para reescribir
             EIRContainerDamage.query.filter_by(eir_id=eir.id).delete()
         else:
             eir = EIR(
@@ -411,9 +397,6 @@ def gate_out_post():
             db.session.add(eir)
             db.session.flush()
 
-        # -------------------------
-        # Completar / actualizar EIR
-        # -------------------------
         eir.terminal_name = terminal_name or ""
         eir.trip_date = trip_date
         eir.trip_time = trip_time
@@ -453,9 +436,6 @@ def gate_out_post():
         eir.inventory_out_at = None
         eir.editable_until = None
 
-        # -------------------------
-        # Guardar daños visuales
-        # -------------------------
         for item in damage_points:
             side = (item.get("side") or "").strip().upper()
             damage_type = (item.get("damage_type") or "").strip().upper()
@@ -483,6 +463,72 @@ def gate_out_post():
             )
             db.session.add(dmg)
 
+        # ======================================================
+        # ✅ Guardar y comparar marchamos por eje/lado - EIR_OUT
+        # ======================================================
+        seal_differences = []
+        seal_ticket_id = None
+
+        if ch:
+            axles = int(getattr(ch, "axles", 2) or 2)
+
+            expected_seals = _get_axle_seals_for_event(
+                chassis_id=ch.id,
+                event_type="CHASSIS_DETAIL",
+                event_id=None,
+            )
+
+            seal_differences = _compare_axle_seals(
+                expected_seals,
+                chassis_axle_seals,
+            )
+
+            _save_axle_seals_for_event(
+                site_id=site_id,
+                chassis_id=ch.id,
+                axles=axles,
+                seals_payload=chassis_axle_seals,
+                event_type="EIR_OUT",
+                event_id=eir.id,
+                user_id=current_user.id,
+            )
+
+            if seal_differences:
+                tire_lines = _format_axle_seal_difference_lines(seal_differences)
+
+                body = _build_workshop_ticket_text(
+                    chassis_number=ch.chassis_number,
+                    axles=axles,
+                    structure_lines=[],
+                    tire_lines=tire_lines,
+                    eir_prev_id=eir.id,
+                )
+
+                seal_ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
+                    "site_id": site_id,
+                    "chassis_id": ch.id,
+                    "inspection_id": None,
+                    "created_at": datetime.utcnow(),
+                    "created_by_user_id": current_user.id,
+                    "status": "OPEN",
+                    "ticket_type": "SEAL_MISMATCH",
+                    "payload_text": body,
+                    "notes": body,
+                })
+
+                audit_log(
+                    current_user.id,
+                    "WORKSHOP_TICKET_CREATED_FROM_EIR_OUT_SEAL_MISMATCH",
+                    "workshop_ticket",
+                    seal_ticket_id,
+                    {
+                        "site_id": site_id,
+                        "eir_id": eir.id,
+                        "chassis_id": ch.id,
+                        "differences": seal_differences,
+                    },
+                )
+
         audit_log(
             current_user.id,
             "EIR_PENDING_SAVED",
@@ -496,16 +542,25 @@ def gate_out_post():
                 "chassis_id": ch.id if ch else None,
                 "damage_count": len(damage_points),
                 "is_reefer": bool(is_reefer),
+                "seal_mismatch": bool(seal_differences),
+                "seal_ticket_id": seal_ticket_id,
             },
         )
 
         db.session.commit()
 
-        flash(
-            f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
-            f"Debes confirmarlo para aplicar la salida de inventario.",
-            "success",
-        )
+        if seal_differences:
+            flash(
+                f"EIR #{eir.id} guardado en estado PENDIENTE. "
+                f"Se detectaron diferencias de marchamos por eje/lado y se generó ticket de taller.",
+                "warning",
+            )
+        else:
+            flash(
+                f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
+                f"Debes confirmarlo para aplicar la salida de inventario.",
+                "success",
+            )
 
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 

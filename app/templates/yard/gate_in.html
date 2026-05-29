@@ -311,6 +311,7 @@
     <input type="hidden" name="chassis_id" id="chassis_id" value="">
     <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
     <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
+    <input type="hidden" name="chassis_axle_seals_json" id="chassis_axle_seals_json" value="{}">
 
     <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
       <div>
@@ -326,6 +327,51 @@
         <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
           <button type="button" id="btnLoadSelectedChassis" class="btn" onclick="window.__forceLoadChassis && window.__forceLoadChassis()">Cargar chasis</button>
           <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
+        </div>
+
+        <div id="axleSealsBlock" class="section-card hidden">
+          <h3 style="margin:0;">Marchamos por eje/lado</h3>
+          <div class="hint" style="margin-top:6px;">
+            Escanea los 2 marchamos por lado del eje. No importa el orden; el sistema hará la comparación automáticamente.
+          </div>
+
+          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+            <div data-axle-seal-row="AX1_L">
+              <label>Eje 1 Izquierdo</label>
+              <input data-axle-seal-side="AX1_L" data-seal-field="seal_1" placeholder="Marchamo 1">
+              <input data-axle-seal-side="AX1_L" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
+            </div>
+
+            <div data-axle-seal-row="AX1_R">
+              <label>Eje 1 Derecho</label>
+              <input data-axle-seal-side="AX1_R" data-seal-field="seal_1" placeholder="Marchamo 1">
+              <input data-axle-seal-side="AX1_R" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
+            </div>
+
+            <div data-axle-seal-row="AX2_L">
+              <label>Eje 2 Izquierdo</label>
+              <input data-axle-seal-side="AX2_L" data-seal-field="seal_1" placeholder="Marchamo 1">
+              <input data-axle-seal-side="AX2_L" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
+            </div>
+
+            <div data-axle-seal-row="AX2_R">
+              <label>Eje 2 Derecho</label>
+              <input data-axle-seal-side="AX2_R" data-seal-field="seal_1" placeholder="Marchamo 1">
+              <input data-axle-seal-side="AX2_R" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
+            </div>
+
+            <div data-axle-seal-row="AX3_L" class="hidden">
+              <label>Eje 3 Izquierdo</label>
+              <input data-axle-seal-side="AX3_L" data-seal-field="seal_1" placeholder="Marchamo 1">
+              <input data-axle-seal-side="AX3_L" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
+            </div>
+
+            <div data-axle-seal-row="AX3_R" class="hidden">
+              <label>Eje 3 Derecho</label>
+              <input data-axle-seal-side="AX3_R" data-seal-field="seal_1" placeholder="Marchamo 1">
+              <input data-axle-seal-side="AX3_R" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
+            </div>
+          </div>
         </div>
 
         <div class="hint" style="margin-top:8px;">
@@ -914,6 +960,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const chassisIdHidden = document.getElementById("chassis_id");
   const chassisTireChecksHidden = document.getElementById("chassis_tire_checks_json");
   const chassisInspectionHidden = document.getElementById("chassis_inspection_json");
+  const chassisAxleSealsHidden = document.getElementById("chassis_axle_seals_json");
+  const axleSealsBlock = document.getElementById("axleSealsBlock");
   const chassisPosTbody = document.getElementById("chassisPosTbody");
 
   const ci_structure = document.getElementById("ci_structure");
@@ -1008,12 +1056,15 @@ document.addEventListener("DOMContentLoaded", () => {
     el.classList.remove("st-OK","st-GASTADA","st-PINCHADA","st-CAMBIAR","st-NO_APTA");
     el.classList.add(wheelStateClass(st));
   }
-
   function toggleAxles(axles){
     const show3 = Number(axles) === 3;
     if (axle3) axle3.classList.toggle("hidden", !show3);
     wAX3.forEach(el => {
       if (el) el.classList.toggle("hidden", !show3);
+    });
+
+    document.querySelectorAll("[data-axle-seal-row='AX3_L'], [data-axle-seal-row='AX3_R']").forEach(el => {
+      el.classList.toggle("hidden", !show3);
     });
   }
 
@@ -1270,10 +1321,39 @@ document.addEventListener("DOMContentLoaded", () => {
     };
   }
 
+  function buildAxleSealsPayload(){
+    const payload = {};
+
+    document.querySelectorAll("[data-axle-seal-side]").forEach(input => {
+      const side = (input.dataset.axleSealSide || "").trim().toUpperCase();
+      const field = (input.dataset.sealField || "").trim();
+
+      if (!side || !field) return;
+
+      if (!payload[side]){
+        payload[side] = {
+          seal_1: "",
+          seal_2: ""
+        };
+      }
+
+      payload[side][field] = (input.value || "").trim().toUpperCase();
+    });
+
+    Object.keys(payload).forEach(side => {
+      if (!payload[side].seal_1 && !payload[side].seal_2){
+        delete payload[side];
+      }
+    });
+
+    return payload;
+  }
+
   function syncHiddenChassisPayloads(){
     if (chassisIdHidden) chassisIdHidden.value = selectedChassisId || "";
     if (chassisTireChecksHidden) chassisTireChecksHidden.value = JSON.stringify(chassisChecksCache || {});
     if (chassisInspectionHidden) chassisInspectionHidden.value = JSON.stringify(buildInspectionPayload());
+    if (chassisAxleSealsHidden) chassisAxleSealsHidden.value = JSON.stringify(buildAxleSealsPayload());
   }
 
   function refreshPlateObservedVisibility(){
@@ -1344,7 +1424,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return `
         <tr>
           <td style="font-weight:800;">${esc(posPretty(pos))}<div class="help">${esc(pos)}</div></td>
-          <td>${cfg.marchamo ? esc(cfg.marchamo) : "—"}</td>
+          <td>Oculto</td>
           <td>${esc(chk.seal_status || "OK")}</td>
           <td>${cfg.tire_number ? esc(cfg.tire_number) : "—"}</td>
           <td>${esc(chk.tire_number_status || "OK")}</td>
@@ -1411,7 +1491,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     if (cmPosLabel) cmPosLabel.textContent = posPretty(pos);
-    if (cmMarchamoConfig) cmMarchamoConfig.value = cfg.marchamo || "";
+    if (cmMarchamoConfig) cmMarchamoConfig.value = "Oculto";
     if (cmSealStatus) cmSealStatus.value = (chk.seal_status || "OK").toUpperCase();
     if (cmTireNumberConfig) cmTireNumberConfig.value = cfg.tire_number || "";
     if (cmTireNumberStatus) cmTireNumberStatus.value = (chk.tire_number_status || "OK").toUpperCase();
@@ -1497,6 +1577,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (chassisIdHidden) chassisIdHidden.value = "";
     if (chassisTireChecksHidden) chassisTireChecksHidden.value = "{}";
     if (chassisInspectionHidden) chassisInspectionHidden.value = "{}";
+    if (chassisAxleSealsHidden) chassisAxleSealsHidden.value = "{}";
+    if (axleSealsBlock) axleSealsBlock.classList.add("hidden");
+
+    document.querySelectorAll("[data-axle-seal-side]").forEach(input => {
+      input.value = "";
+    });
 
     if (chassisBlock) chassisBlock.classList.add("hidden");
 
@@ -1556,6 +1642,7 @@ document.addEventListener("DOMContentLoaded", () => {
     toggleAxles(selectedChassisAxles);
 
     if (chassisBlock) chassisBlock.classList.remove("hidden");
+    if (axleSealsBlock) axleSealsBlock.classList.remove("hidden");
 
     if (chassisSummaryPill) {
       chassisSummaryPill.textContent = `Chasis #${item.chassis_number} | ${item.plate || "SIN PLACA"} | ${item.axles || "?"} ejes`;
