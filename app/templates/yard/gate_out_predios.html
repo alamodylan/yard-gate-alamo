@@ -452,6 +452,11 @@
     <!-- JSON de daños visuales -->
     <input type="hidden" name="container_damage_points_json" id="container_damage_points_json" value="[]">
 
+    <input type="hidden"
+           name="chassis_axle_seals_json"
+           id="chassis_axle_seals_json"
+           value="{}">
+
     <!-- =========================
          1) MODO
          ========================= -->
@@ -717,28 +722,22 @@
         </div>
       </div>
 
-      <div class="tire-map" id="tire_map_preview">
-        {% for pos, label in [
-            ('AX1_L_IN', 'Eje 1 izq int'),
-            ('AX1_L_OUT', 'Eje 1 izq ext'),
-            ('AX1_R_IN', 'Eje 1 der int'),
-            ('AX1_R_OUT', 'Eje 1 der ext'),
-            ('AX2_L_IN', 'Eje 2 izq int'),
-            ('AX2_L_OUT', 'Eje 2 izq ext'),
-            ('AX2_R_IN', 'Eje 2 der int'),
-            ('AX2_R_OUT', 'Eje 2 der ext'),
-            ('AX3_L_IN', 'Eje 3 izq int'),
-            ('AX3_L_OUT', 'Eje 3 izq ext'),
-            ('AX3_R_IN', 'Eje 3 der int'),
-            ('AX3_R_OUT', 'Eje 3 der ext')
-        ] %}
-        <div class="tire-item" data-pos="{{ pos }}">
-            <div class="tire-pos">{{ pos }}</div>
-            <div class="muted-line" style="font-size:12px; margin-bottom:6px;">{{ label }}</div>
-            <div class="tire-value">Marchamo: —</div>
+      <div class="subbox">
+        <h4>Marchamos por eje / lado</h4>
+
+        <div class="eir-note">
+          Escanee los marchamos instalados actualmente.
+          El sistema comparará automáticamente contra la última configuración.
+          El usuario NO verá los marchamos anteriores.
         </div>
-        {% endfor %}
+
+        <div id="axleSealsContainer"
+            style="display:grid;
+                    grid-template-columns:repeat(2,minmax(0,1fr));
+                    gap:14px;">
+        </div>
       </div>
+    </div>
 
     <!-- =========================
          5) CONTENEDOR
@@ -1130,7 +1129,11 @@
   const modalDamageNote = document.getElementById("modal_damage_note");
   const btnCancelDamage = document.getElementById("btn_cancel_damage");
   const btnSaveDamage = document.getElementById("btn_save_damage");
+
   const shippingLineInput = document.getElementById("shipping_line");
+
+  const chassisAxleSealsHidden = document.getElementById("chassis_axle_seals_json");
+  const axleSealsContainer = document.getElementById("axleSealsContainer");
 
   let damagePoints = [];
   let pendingDamage = null;
@@ -1176,6 +1179,103 @@
     }
   }
 
+  function buildAxleSealPayload() {
+    const payload = {};
+
+    document.querySelectorAll("[data-side]").forEach(input => {
+      const side = input.dataset.side;
+      const field = input.dataset.field;
+
+      if (!side || !field) return;
+
+      if (!payload[side]) {
+        payload[side] = {
+          seal_1: "",
+          seal_2: ""
+        };
+      }
+
+      payload[side][field] = (input.value || "").trim().toUpperCase();
+    });
+
+    Object.keys(payload).forEach(side => {
+      if (!payload[side].seal_1 && !payload[side].seal_2) {
+        delete payload[side];
+      }
+    });
+
+    return payload;
+  }
+
+  function syncAxleSealsHidden() {
+    if (!chassisAxleSealsHidden) return;
+    chassisAxleSealsHidden.value = JSON.stringify(buildAxleSealPayload());
+  }
+
+  function bindSealInputs() {
+    document.querySelectorAll("[data-side]").forEach(input => {
+      input.addEventListener("input", syncAxleSealsHidden);
+      input.addEventListener("change", syncAxleSealsHidden);
+    });
+  }
+
+  function buildAxleSealEditor(axles) {
+    if (!axleSealsContainer) return;
+
+    axleSealsContainer.innerHTML = "";
+
+    const totalAxles = Number(axles || 2);
+    const sides = [];
+
+    for (let axle = 1; axle <= totalAxles; axle++) {
+      sides.push(`AX${axle}_L`);
+      sides.push(`AX${axle}_R`);
+    }
+
+    sides.forEach(side => {
+      const title = side
+        .replace("_L", " Izquierdo")
+        .replace("_R", " Derecho")
+        .replace("AX", "Eje ");
+
+      const card = document.createElement("div");
+      card.className = "tire-item";
+
+      card.innerHTML = `
+        <div class="tire-pos">${title}</div>
+
+        <input
+          data-side="${side}"
+          data-field="seal_1"
+          placeholder="Marchamo 1"
+          autocomplete="off"
+          style="margin-bottom:8px; width:100%;">
+
+        <input
+          data-side="${side}"
+          data-field="seal_2"
+          placeholder="Marchamo 2"
+          autocomplete="off"
+          style="width:100%;">
+      `;
+
+      axleSealsContainer.appendChild(card);
+    });
+
+    bindSealInputs();
+    syncAxleSealsHidden();
+  }
+
+  function clearAxleSealEditor() {
+    if (axleSealsContainer) {
+      axleSealsContainer.innerHTML = "";
+    }
+
+    if (chassisAxleSealsHidden) {
+      chassisAxleSealsHidden.value = "{}";
+    }
+  }
+
   function syncEquipmentSections() {
     hasChassisHidden.value = chkHasChassis.checked ? "1" : "0";
     hasContainerHidden.value = chkHasContainer.checked ? "1" : "0";
@@ -1196,6 +1296,7 @@
       chassisPlateView.value = "";
       chassisTypeView.value = "";
       resumeChassis.textContent = "—";
+      clearAxleSealEditor();
     }
 
     if (!chkHasContainer.checked) {
@@ -1211,37 +1312,46 @@
 
   function syncChassisInfo() {
     const opt = chassisSelect.options[chassisSelect.selectedIndex];
+
     if (!opt || !opt.value) {
       chassisNumberView.value = "";
       chassisPlateView.value = "";
       chassisTypeView.value = "";
       resumeChassis.textContent = "—";
-      resetTireMap();
+      clearAxleSealEditor();
       return;
     }
 
     const chassisNumber = opt.dataset.chassisNumber || "";
     const plate = opt.dataset.plate || "";
-    const axles = opt.dataset.axles || "";
+    const axles = Number(opt.dataset.axles || 2);
     const typeCode = opt.dataset.typeCode || "";
 
     chassisNumberView.value = chassisNumber;
     chassisPlateView.value = plate;
-    chassisTypeView.value = typeCode ? `${typeCode}${axles ? " · " + axles + " ejes" : ""}` : (axles ? axles + " ejes" : "");
+    chassisTypeView.value = typeCode
+      ? `${typeCode}${axles ? " · " + axles + " ejes" : ""}`
+      : (axles ? axles + " ejes" : "");
+
     resumeChassis.textContent = chassisNumber || "—";
 
-    loadChassisTires(opt.value);
+    buildAxleSealEditor(axles);
   }
 
   function syncContainerInfo() {
     const opt = containerSelect.options[containerSelect.selectedIndex];
+
     if (!opt || !opt.value) {
-        containerCodeView.value = "";
-        containerSizeView.value = "";
-        containerPositionView.value = "";
-        if (shippingLineInput) shippingLineInput.value = "";
-        resumeContainer.textContent = "—";
-        return;
+      containerCodeView.value = "";
+      containerSizeView.value = "";
+      containerPositionView.value = "";
+
+      if (shippingLineInput) {
+        shippingLineInput.value = "";
+      }
+
+      resumeContainer.textContent = "—";
+      return;
     }
 
     const code = opt.dataset.code || "";
@@ -1254,9 +1364,13 @@
     containerCodeView.value = code;
     containerSizeView.value = size;
     containerPositionView.value = bay ? `${bay} F${String(row).padStart(2, "0")} N${tier}` : "";
-    if (shippingLineInput) shippingLineInput.value = shippingLine;
-    resumeContainer.textContent = code || "—";
+
+    if (shippingLineInput) {
+      shippingLineInput.value = shippingLine;
     }
+
+    resumeContainer.textContent = code || "—";
+  }
 
   function syncOperationResume() {
     resumeOperation.textContent = operationType.value || "—";
@@ -1264,11 +1378,14 @@
 
   function bindStatusToggles() {
     const toggles = document.querySelectorAll(".status-toggle");
+
     toggles.forEach(sel => {
       sel.addEventListener("change", () => {
         const targetId = sel.dataset.target;
         const box = document.getElementById(targetId);
+
         if (!box) return;
+
         const show = sel.value === "DANO" || sel.value === "OTRO";
         box.classList.toggle("hidden", !show);
       });
@@ -1309,6 +1426,7 @@
       damage_type: damageType,
       notes: notes || ""
     };
+
     damagePoints.push(item);
     syncDamageUi();
   }
@@ -1331,7 +1449,13 @@
 
   function syncDamageUi() {
     damageJsonInput.value = JSON.stringify(
-      damagePoints.map(({side, x, y, damage_type, notes}) => ({side, x, y, damage_type, notes}))
+      damagePoints.map(({ side, x, y, damage_type, notes }) => ({
+        side,
+        x,
+        y,
+        damage_type,
+        notes
+      }))
     );
 
     resumeDamageCount.textContent = String(damagePoints.length);
@@ -1349,6 +1473,7 @@
       const rect = svg.viewBox.baseVal;
 
       const items = damagePoints.filter(p => p.side === side);
+
       items.forEach(item => {
         const cx = item.x * rect.width;
         const cy = item.y * rect.height;
@@ -1381,6 +1506,7 @@
       const sideTxt = sideLabels[item.side] || item.side;
       const damageTxt = damageLabels[item.damage_type] || item.damage_type;
       const noteTxt = item.notes ? item.notes : "Sin observación";
+
       return `
         <div class="damage-list-item">
           <div class="damage-list-head">
@@ -1417,12 +1543,16 @@
   });
 
   btnCancelDamage.addEventListener("click", closeDamageModal);
+
   damageModalBackdrop.addEventListener("click", (e) => {
-    if (e.target === damageModalBackdrop) closeDamageModal();
+    if (e.target === damageModalBackdrop) {
+      closeDamageModal();
+    }
   });
 
   btnSaveDamage.addEventListener("click", () => {
     if (!pendingDamage) return;
+
     if (!modalDamageType.value) {
       alert("Selecciona un código de daño.");
       return;
@@ -1440,8 +1570,10 @@
   });
 
   btnClearLastDamage.addEventListener("click", removeLastDamage);
+
   btnClearAllDamage.addEventListener("click", () => {
     if (!damagePoints.length) return;
+
     if (confirm("¿Deseas eliminar todas las marcas de daño del contenedor?")) {
       clearAllDamage();
     }
@@ -1453,87 +1585,24 @@
   chkHasChassis.addEventListener("change", syncEquipmentSections);
   chkHasContainer.addEventListener("change", syncEquipmentSections);
   chkIsReefer.addEventListener("change", syncEquipmentSections);
-  if (rfGenset) rfGenset.addEventListener("change", syncEquipmentSections);
+
+  if (rfGenset) {
+    rfGenset.addEventListener("change", syncEquipmentSections);
+  }
 
   chassisSelect.addEventListener("change", syncChassisInfo);
   containerSelect.addEventListener("change", syncContainerInfo);
   operationType.addEventListener("change", syncOperationResume);
   btnFillNow.addEventListener("click", setNow);
 
-  const tireMapPreview = document.getElementById("tire_map_preview");
+  const eirForm = document.getElementById("eirForm");
 
-const tireLabels = {
-  AX1_L_IN: "Eje 1 izq int",
-  AX1_L_OUT: "Eje 1 izq ext",
-  AX1_R_IN: "Eje 1 der int",
-  AX1_R_OUT: "Eje 1 der ext",
-  AX2_L_IN: "Eje 2 izq int",
-  AX2_L_OUT: "Eje 2 izq ext",
-  AX2_R_IN: "Eje 2 der int",
-  AX2_R_OUT: "Eje 2 der ext",
-  AX3_L_IN: "Eje 3 izq int",
-  AX3_L_OUT: "Eje 3 izq ext",
-  AX3_R_IN: "Eje 3 der int",
-  AX3_R_OUT: "Eje 3 der ext",
-};
-
-function resetTireMap() {
-  if (!tireMapPreview) return;
-
-  tireMapPreview.querySelectorAll(".tire-item").forEach((item) => {
-    const pos = item.dataset.pos;
-    const valueEl = item.querySelector(".tire-value");
-    const labelEl = item.querySelector(".muted-line");
-
-    if (labelEl) {
-      labelEl.textContent = tireLabels[pos] || "";
-    }
-    if (valueEl) {
-      valueEl.textContent = "Marchamo: —";
-    }
-
-    item.classList.remove("hidden");
-  });
-}
-
-async function loadChassisTires(chassisId) {
-  resetTireMap();
-
-  if (!chassisId) return;
-
-  try {
-    const resp = await fetch(`/api/chassis/${chassisId}/tires`, {
-      headers: { "X-Requested-With": "XMLHttpRequest" }
+  if (eirForm) {
+    eirForm.addEventListener("submit", () => {
+      syncAxleSealsHidden();
+      syncDamageUi();
     });
-
-    if (!resp.ok) return;
-
-    const data = await resp.json();
-    if (!data.ok || !data.positions) return;
-
-    const axles = Number(data.chassis?.axles || 2);
-
-    tireMapPreview.querySelectorAll(".tire-item").forEach((item) => {
-      const pos = item.dataset.pos;
-      const valueEl = item.querySelector(".tire-value");
-
-      if (axles === 2 && pos.startsWith("AX3_")) {
-        item.classList.add("hidden");
-        return;
-      }
-
-      const row = data.positions[pos];
-      const marchamo = row?.marchamo || "—";
-
-      if (valueEl) {
-        valueEl.textContent = `Marchamo: ${marchamo}`;
-      }
-    });
-
-  } catch (err) {
-    console.error("Error cargando llantas del chasis:", err);
   }
-}
 
   bindStatusToggles();
   syncMode();
