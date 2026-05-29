@@ -727,8 +727,15 @@
 
         <div class="eir-note">
           Escanee los marchamos instalados actualmente.
+
+          <br><br>
+
           El sistema comparará automáticamente contra la última configuración.
-          El usuario NO verá los marchamos anteriores.
+
+          <br><br>
+
+          Si existe una diferencia de marchamos,
+          el EIR no podrá guardarse hasta corregirla.
         </div>
 
         <div id="axleSealsContainer"
@@ -1249,6 +1256,7 @@
           data-field="seal_1"
           placeholder="Marchamo 1"
           autocomplete="off"
+          inputmode="numeric"
           style="margin-bottom:8px; width:100%;">
 
         <input
@@ -1256,6 +1264,7 @@
           data-field="seal_2"
           placeholder="Marchamo 2"
           autocomplete="off"
+          inputmode="numeric"
           style="width:100%;">
       `;
 

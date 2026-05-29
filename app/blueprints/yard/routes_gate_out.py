@@ -149,11 +149,9 @@ def gate_out_post():
         container_seal = (request.form.get("container_seal") or "").strip()
         general_notes = (request.form.get("notes") or "").strip()
 
-        # ✅ Marchamos escaneados por eje/lado. El usuario NO ve los anteriores.
         chassis_axle_seals_json_raw = (request.form.get("chassis_axle_seals_json") or "{}").strip()
         chassis_axle_seals = _parse_axle_seals_payload(chassis_axle_seals_json_raw)
 
-        # Sección chasis
         chassis_lights_status = (request.form.get("chassis_lights_status") or "").strip().upper()
         chassis_lights_detail = (request.form.get("chassis_lights_detail") or "").strip()
         chassis_twistlocks_status = (request.form.get("chassis_twistlocks_status") or "").strip().upper()
@@ -165,7 +163,6 @@ def gate_out_post():
         chassis_structure_status = (request.form.get("chassis_structure_status") or "").strip().upper()
         chassis_structure_detail = (request.form.get("chassis_structure_detail") or "").strip()
 
-        # Sección reefer
         rf_running_status = (request.form.get("rf_running_status") or "").strip().upper()
         rf_temperature = (request.form.get("rf_temperature") or "").strip()
         rf_genset = (request.form.get("rf_genset") or "").strip().upper()
@@ -284,6 +281,29 @@ def gate_out_post():
 
             if ch.site_id != site_id or not ch.is_in_yard:
                 flash("Ese chasis no está disponible en este predio.", "danger")
+                return redirect(url_for("yard.gate_out_view"))
+
+            expected_seals = _get_axle_seals_for_event(
+                chassis_id=ch.id,
+                event_type="CHASSIS_DETAIL",
+                event_id=None,
+            )
+
+            seal_differences = _compare_axle_seals(
+                expected_seals,
+                chassis_axle_seals,
+            )
+
+            if seal_differences:
+                detail_lines = _format_axle_seal_difference_lines(seal_differences)
+
+                flash(
+                    "No se puede guardar el EIR. "
+                    "Los marchamos escaneados no coinciden con la configuración del chasis. "
+                    + " | ".join(detail_lines),
+                    "danger",
+                )
+
                 return redirect(url_for("yard.gate_out_view"))
 
             tire_rows = (
@@ -463,25 +483,8 @@ def gate_out_post():
             )
             db.session.add(dmg)
 
-        # ======================================================
-        # ✅ Guardar y comparar marchamos por eje/lado - EIR_OUT
-        # ======================================================
-        seal_differences = []
-        seal_ticket_id = None
-
         if ch:
             axles = int(getattr(ch, "axles", 2) or 2)
-
-            expected_seals = _get_axle_seals_for_event(
-                chassis_id=ch.id,
-                event_type="CHASSIS_DETAIL",
-                event_id=None,
-            )
-
-            seal_differences = _compare_axle_seals(
-                expected_seals,
-                chassis_axle_seals,
-            )
 
             _save_axle_seals_for_event(
                 site_id=site_id,
@@ -492,42 +495,6 @@ def gate_out_post():
                 event_id=eir.id,
                 user_id=current_user.id,
             )
-
-            if seal_differences:
-                tire_lines = _format_axle_seal_difference_lines(seal_differences)
-
-                body = _build_workshop_ticket_text(
-                    chassis_number=ch.chassis_number,
-                    axles=axles,
-                    structure_lines=[],
-                    tire_lines=tire_lines,
-                    eir_prev_id=eir.id,
-                )
-
-                seal_ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
-                    "site_id": site_id,
-                    "chassis_id": ch.id,
-                    "inspection_id": None,
-                    "created_at": datetime.utcnow(),
-                    "created_by_user_id": current_user.id,
-                    "status": "OPEN",
-                    "ticket_type": "SEAL_MISMATCH",
-                    "payload_text": body,
-                    "notes": body,
-                })
-
-                audit_log(
-                    current_user.id,
-                    "WORKSHOP_TICKET_CREATED_FROM_EIR_OUT_SEAL_MISMATCH",
-                    "workshop_ticket",
-                    seal_ticket_id,
-                    {
-                        "site_id": site_id,
-                        "eir_id": eir.id,
-                        "chassis_id": ch.id,
-                        "differences": seal_differences,
-                    },
-                )
 
         audit_log(
             current_user.id,
@@ -542,25 +509,17 @@ def gate_out_post():
                 "chassis_id": ch.id if ch else None,
                 "damage_count": len(damage_points),
                 "is_reefer": bool(is_reefer),
-                "seal_mismatch": bool(seal_differences),
-                "seal_ticket_id": seal_ticket_id,
+                "seal_mismatch": False,
             },
         )
 
         db.session.commit()
 
-        if seal_differences:
-            flash(
-                f"EIR #{eir.id} guardado en estado PENDIENTE. "
-                f"Se detectaron diferencias de marchamos por eje/lado y se generó ticket de taller.",
-                "warning",
-            )
-        else:
-            flash(
-                f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
-                f"Debes confirmarlo para aplicar la salida de inventario.",
-                "success",
-            )
+        flash(
+            f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
+            f"Debes confirmarlo para aplicar la salida de inventario.",
+            "success",
+        )
 
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
