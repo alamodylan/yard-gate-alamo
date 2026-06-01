@@ -1027,18 +1027,6 @@ def _parse_axle_seals_payload(raw_value):
 
 
 def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None):
-    """
-    Carga marchamos por eje/lado desde tire_readings.
-
-    Retorna:
-    {
-        "AX1_L": {"seal_1": "...", "seal_2": "..."},
-        "AX1_R": {"seal_1": "...", "seal_2": "..."},
-        ...
-    }
-
-    Agrupa tanto posiciones IN como OUT en el mismo eje/lado.
-    """
     where_event_id = ""
     params = {
         "chassis_id": chassis_id,
@@ -1056,6 +1044,7 @@ def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None
             tp.position_code,
             tr.seal_1,
             tr.seal_2,
+            tr.comments,
             tr.recorded_at,
             tr.id
         FROM yard_gate_alamo.tire_readings tr
@@ -1064,66 +1053,34 @@ def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None
         WHERE tr.chassis_id = :chassis_id
           AND tr.event_type = :event_type
           {where_event_id}
-        ORDER BY tr.recorded_at DESC NULLS LAST, tr.id DESC
+        ORDER BY tr.recorded_at DESC NULLS LAST,
+                 tr.id DESC
     """)
 
     rows = db.session.execute(sql, params).mappings().all()
 
-    position_to_side = {
-        "AX1_L_IN": "AX1_L",
-        "AX1_L_OUT": "AX1_L",
-        "AX1_R_IN": "AX1_R",
-        "AX1_R_OUT": "AX1_R",
-
-        "AX2_L_IN": "AX2_L",
-        "AX2_L_OUT": "AX2_L",
-        "AX2_R_IN": "AX2_R",
-        "AX2_R_OUT": "AX2_R",
-
-        "AX3_L_IN": "AX3_L",
-        "AX3_L_OUT": "AX3_L",
-        "AX3_R_IN": "AX3_R",
-        "AX3_R_OUT": "AX3_R",
-
-        "A1_IN": "AX1_L",
-        "A1_OUT": "AX1_L",
-        "A2_IN": "AX2_L",
-        "A2_OUT": "AX2_L",
-        "A3_IN": "AX3_L",
-        "A3_OUT": "AX3_L",
-    }
-
-    grouped = {}
+    result = {}
 
     for r in rows:
-        position_code = (r["position_code"] or "").strip().upper()
-        side_code = position_to_side.get(position_code)
+
+        comments = (r["comments"] or "").strip().upper()
+
+        side_code = None
+
+        m = re.search(r"(AX[1-3]_[LR])", comments)
+
+        if m:
+            side_code = m.group(1)
 
         if not side_code:
             continue
 
-        seal_values = [
-            _normalize_seal_value(r["seal_1"]),
-            _normalize_seal_value(r["seal_2"]),
-        ]
-
-        seal_values = [v for v in seal_values if v]
-
-        if not seal_values:
+        if side_code in result:
             continue
 
-        grouped.setdefault(side_code, [])
-
-        for seal in seal_values:
-            if seal not in grouped[side_code]:
-                grouped[side_code].append(seal)
-
-    result = {}
-
-    for side_code, seals in grouped.items():
         result[side_code] = {
-            "seal_1": seals[0] if len(seals) > 0 else "",
-            "seal_2": seals[1] if len(seals) > 1 else "",
+            "seal_1": _normalize_seal_value(r["seal_1"]),
+            "seal_2": _normalize_seal_value(r["seal_2"]),
         }
 
     return result
