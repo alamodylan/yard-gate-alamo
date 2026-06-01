@@ -41,6 +41,8 @@ from .routes import (
     _save_axle_seals_for_event,
     _compare_axle_seals,
     _format_axle_seal_difference_lines,
+    _enqueue_print_job,
+    _build_merchant_gate_in_ticket_text,
 )
 
 
