@@ -570,20 +570,39 @@ def gate_in_post():
         axles = int(getattr(selected_chassis, "axles", 2) or 2)
         allowed = set(allowed_positions_for(axles))
 
-        structure_status = _normalize_structure_status_for_db(
-            _norm_enum(chassis_inspection.get("structure_status"))
+        structure_status = (
+            _normalize_structure_status_for_db(
+                _norm_enum(chassis_inspection.get("structure_status"))
+            )
+            or "OK"
         )
-        twistlocks_status = _normalize_twistlocks_status_for_db(
-            _norm_enum(chassis_inspection.get("twistlocks_status"))
+
+        twistlocks_status = (
+            _normalize_twistlocks_status_for_db(
+                _norm_enum(chassis_inspection.get("twistlocks_status"))
+            )
+            or "OK"
         )
-        landing_gear_status = _normalize_landing_gear_status_for_db(
-            _norm_enum(chassis_inspection.get("landing_gear_status"))
+
+        landing_gear_status = (
+            _normalize_landing_gear_status_for_db(
+                _norm_enum(chassis_inspection.get("landing_gear_status"))
+            )
+            or "OK"
         )
-        lights_status = _normalize_lights_status_for_db(
-            _norm_enum(chassis_inspection.get("lights_status"))
+
+        lights_status = (
+            _normalize_lights_status_for_db(
+                _norm_enum(chassis_inspection.get("lights_status"))
+            )
+            or "OK"
         )
-        mudflap_status = _normalize_mudflap_status_for_db(
-            _norm_enum(chassis_inspection.get("mudflap_status"))
+
+        mudflap_status = (
+            _normalize_mudflap_status_for_db(
+                _norm_enum(chassis_inspection.get("mudflap_status"))
+            )
+            or "OK"
         )
 
         plate_text = (chassis_inspection.get("plate_text") or "").strip()
