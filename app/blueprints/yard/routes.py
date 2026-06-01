@@ -859,69 +859,105 @@ def _build_chassis_gate_in_ticket_text(
     damage_summary: str | None,
     comments: str | None,
     driver_comments: str | None,
-    tire_rows: list[dict],
-    alert_lines: list[str],
-) -> str:
-    dt_local = occurred_at.replace(tzinfo=UTC_TZ).astimezone(CR_TZ)
+    tire_rows: list,
+    alert_lines: list,
+):
+    def side_label(pos: str) -> str:
+        pos = (pos or "").upper()
+
+        if pos.startswith("AX1_L_"):
+            return "Eje 1 Izq."
+        if pos.startswith("AX1_R_"):
+            return "Eje 1 Der."
+        if pos.startswith("AX2_L_"):
+            return "Eje 2 Izq."
+        if pos.startswith("AX2_R_"):
+            return "Eje 2 Der."
+        if pos.startswith("AX3_L_"):
+            return "Eje 3 Izq."
+        if pos.startswith("AX3_R_"):
+            return "Eje 3 Der."
+
+        return pos or "—"
+
+    def status_txt(value):
+        return value or "OK"
+
+    try:
+        dt_local = occurred_at.replace(tzinfo=UTC_TZ).astimezone(CR_TZ)
+    except Exception:
+        dt_local = occurred_at
+
+    grouped_tires = {}
+
+    for row in tire_rows or []:
+        pos = (row.get("pos") or "").upper()
+        label = side_label(pos)
+        estrias = row.get("estrias_mm")
+
+        if estrias in (None, ""):
+            continue
+
+        grouped_tires.setdefault(label, []).append(str(estrias))
 
     lines = []
-    lines.append(APP_NAME)
-    lines.append("CLASIFICACION CHASIS - GATE IN")
+    lines.append("================================")
+    lines.append("YARD GATE ALAMO")
+    lines.append("GATE IN CHASIS")
     lines.append(dt_local.strftime("%d/%m/%Y %I:%M %p"))
-
     if site_name:
-        lines.append(f"PREDIO: {site_name}")
-
-    if username:
-        lines.append(f"USUARIO: {username}")
-
-    lines.append("--------------------------------")
+        lines.append(site_name)
+    lines.append("================================")
     lines.append(f"CHASIS: {chassis_number}")
-    lines.append(f"PLACA: {plate or 'SIN PLACA'}")
-
+    lines.append(f"PLACA : {plate or '—'}")
     lines.append("--------------------------------")
-    lines.append("ESTRUCTURA")
-    lines.append(f"Estructura: {structure_status or '—'}")
-    lines.append(f"Twistlocks: {twistlocks_status or '—'}")
-    lines.append(f"Patas: {landing_gear_status or '—'}")
-    lines.append(f"Luces: {lights_status or '—'}")
-    lines.append(f"Faldones: {mudflap_status or '—'}")
-    lines.append(f"Placa: {plate_validation_status or '—'}")
+    lines.append("INSPECCION")
+    lines.append(f"ESTR : {status_txt(structure_status)}")
+    lines.append(f"TWIST: {status_txt(twistlocks_status)}")
+    lines.append(f"PATAS: {status_txt(landing_gear_status)}")
+    lines.append(f"LUCES: {status_txt(lights_status)}")
+    lines.append(f"FALD : {status_txt(mudflap_status)}")
 
-    if damage_summary:
-        lines.append(f"Resumen: {damage_summary}")
-    if comments:
-        lines.append(f"Chequeador: {comments}")
-    if driver_comments:
-        lines.append(f"Chofer: {driver_comments}")
+    if plate_validation_status:
+        lines.append(f"PLACA: {plate_validation_status}")
 
-    lines.append("--------------------------------")
-    lines.append("LLANTAS")
+    if grouped_tires:
+        lines.append("--------------------------------")
+        lines.append("LLANTAS / ESTRIAS")
 
-    for row in tire_rows:
-        estrias_txt = row.get("estrias_mm")
-        if estrias_txt in (None, ""):
-            estrias_txt = "—"
-
-        flat_txt = "SI" if row.get("is_flat") else "NO"
-
-        lines.append(
-            f"{row['pos']} | M:{row['marchamo_config'] or '—'} | "
-            f"M ING:{row['seal_status']} | "
-            f"L:{row['tire_number_config'] or '—'} | "
-            f"L ING:{row['tire_number_status']} | "
-            f"MM:{estrias_txt} | PINCH:{flat_txt} | "
-            f"EST:{row['tire_state']}"
-        )
+        for label in sorted(grouped_tires.keys()):
+            values = grouped_tires[label]
+            lines.append(f"{label}: {'/'.join(values)} mm")
 
     if alert_lines:
         lines.append("--------------------------------")
-        lines.append("ALERTAS")
-        for x in alert_lines:
-            lines.append(f"! {x}")
+        lines.append("DIFERENCIAS / ALERTAS")
+        for item in alert_lines:
+            lines.append(str(item)[:36])
+    else:
+        lines.append("--------------------------------")
+        lines.append("SIN DIFERENCIAS")
+
+    if damage_summary:
+        lines.append("--------------------------------")
+        lines.append("DANOS:")
+        lines.append(damage_summary[:80])
+
+    if comments:
+        lines.append("--------------------------------")
+        lines.append("OBS:")
+        lines.append(comments[:80])
+
+    if driver_comments:
+        lines.append("--------------------------------")
+        lines.append("CHOFER:")
+        lines.append(driver_comments[:80])
 
     lines.append("--------------------------------")
-    return "\n".join(lines).strip()
+    lines.append(f"USR: {username or '—'}")
+    lines.append("================================")
+
+    return "\n".join(lines)
 
 def _normalize_seal_value(value):
     return (value or "").strip().upper()
@@ -1089,31 +1125,39 @@ def _save_axle_seals_for_event(
 
 def _compare_axle_seals(expected: dict, scanned: dict):
     """
-    Compara sin importar orden.
-    Retorna lista de diferencias.
+    Compara marchamos por eje/lado sin importar el orden.
+
+    Ejemplo:
+    Esperado: 123 / 456
+    Escaneado: 456 / 123
+    Resultado: OK
     """
     differences = []
 
-    all_sides = sorted(set(expected.keys()) | set(scanned.keys()))
+    all_sides = sorted(set((expected or {}).keys()) | set((scanned or {}).keys()))
 
-    for side_code in all_sides:
-        expected_item = expected.get(side_code) or {}
-        scanned_item = scanned.get(side_code) or {}
+    for side in all_sides:
+        exp_row = expected.get(side) or {}
+        scn_row = scanned.get(side) or {}
 
-        expected_pair = _normalize_seal_pair(
-            expected_item.get("seal_1"),
-            expected_item.get("seal_2"),
-        )
-        scanned_pair = _normalize_seal_pair(
-            scanned_item.get("seal_1"),
-            scanned_item.get("seal_2"),
-        )
+        expected_values = [
+            _normalize_seal_value(exp_row.get("seal_1")),
+            _normalize_seal_value(exp_row.get("seal_2")),
+        ]
 
-        if expected_pair != scanned_pair:
+        scanned_values = [
+            _normalize_seal_value(scn_row.get("seal_1")),
+            _normalize_seal_value(scn_row.get("seal_2")),
+        ]
+
+        expected_values = sorted([v for v in expected_values if v])
+        scanned_values = sorted([v for v in scanned_values if v])
+
+        if expected_values != scanned_values:
             differences.append({
-                "side_code": side_code,
-                "expected": expected_pair,
-                "scanned": scanned_pair,
+                "side": side,
+                "expected": expected_values,
+                "scanned": scanned_values,
             })
 
     return differences
