@@ -1141,3 +1141,114 @@ def _format_axle_seal_difference_lines(differences):
         lines.append(f"{label}: MARCHAMOS NO COINCIDEN. ESCANEADO: {scanned_txt}")
 
     return lines
+
+def _enqueue_print_job(
+    *,
+    payload_text: str,
+    requested_by: str | None = None,
+    request_origin: str = "GATE_IN",
+    ticket_id: int | None = None,
+):
+    """
+    Inserta un trabajo pendiente en yard_gate_alamo.print_jobs.
+    El agente local de impresión debe tomar los registros PENDING.
+    """
+    return _insert_dynamic("yard_gate_alamo", "print_jobs", {
+        "created_at": datetime.utcnow(),
+        "status": "PENDING",
+        "ticket_id": ticket_id,
+        "payload_text": payload_text,
+        "requested_by": requested_by or None,
+        "request_origin": request_origin,
+        "attempts": 0,
+    })
+
+
+def _build_merchant_gate_in_ticket_text(
+    *,
+    site_name: str,
+    username: str,
+    occurred_at: datetime,
+    container_code: str,
+    container_size: str | None,
+    bay_code: str | None,
+    depth_row,
+    tier,
+    driver_name: str,
+    driver_id_doc: str,
+    truck_plate: str,
+    shipping_line: str | None,
+    max_gross_kg,
+    tare_kg,
+    manufacture_year,
+    summary_text: str | None,
+    classification_notes: str | None,
+):
+    """
+    Ticket compacto para ingreso Merchant:
+    contenedor sin chasis ATM.
+    """
+    try:
+        dt_local = occurred_at.replace(tzinfo=UTC_TZ).astimezone(CR_TZ)
+    except Exception:
+        dt_local = occurred_at
+
+    location = "—"
+    if bay_code:
+        location = f"{bay_code} F{str(depth_row).zfill(2) if depth_row else '—'} N{tier or '—'}"
+
+    lines = []
+    lines.append("================================")
+    lines.append("YARD GATE ALAMO")
+    lines.append("INGRESO MERCHANT")
+    lines.append(dt_local.strftime("%d/%m/%Y %I:%M %p"))
+    if site_name:
+        lines.append(site_name)
+    lines.append("================================")
+    lines.append(f"CONT: {container_code}")
+    lines.append(f"TAM : {container_size or '—'}")
+    lines.append(f"NAV : {shipping_line or '—'}")
+    lines.append(f"UBIC: {location}")
+
+    if max_gross_kg is not None:
+        lines.append(f"MG  : {max_gross_kg} KG")
+
+    if tare_kg is not None:
+        lines.append(f"TARA: {tare_kg} KG")
+
+    if manufacture_year:
+        lines.append(f"ANIO: {manufacture_year}")
+
+    lines.append("--------------------------------")
+    lines.append("CHOFER")
+    lines.append(f"NOM : {driver_name}")
+    lines.append(f"ID  : {driver_id_doc}")
+    lines.append(f"PLACA: {truck_plate}")
+
+    if summary_text:
+        lines.append("--------------------------------")
+        lines.append("CLASIF:")
+        lines.append(summary_text[:180])
+
+    if classification_notes:
+        lines.append("--------------------------------")
+        lines.append("OBS:")
+        lines.append(classification_notes[:180])
+
+    lines.append("--------------------------------")
+    lines.append(f"USR : {username or '—'}")
+    lines.append("================================")
+    lines.append("FIRMA CHOFER")
+    lines.append("")
+    lines.append("________________________")
+    lines.append("")
+    lines.append("NOMBRE CHOFER")
+    lines.append("")
+    lines.append("________________________")
+    lines.append("")
+    lines.append("FIRMA ATM")
+    lines.append("")
+    lines.append("________________________")
+    lines.append("================================")
+
+    return "\n".join(lines)

@@ -178,6 +178,19 @@ def gate_in_post():
     site_id = _ensure_active_site()
     active_site = Site.query.get(site_id)
 
+    gate_in_mode = (request.form.get("gate_in_mode") or "CHASSIS_CONTAINER").strip().upper()
+    has_chassis = (request.form.get("has_chassis") or "0").strip() == "1"
+    has_container = (request.form.get("has_container") or "0").strip() == "1"
+    is_merchant = has_container and not has_chassis
+
+    if gate_in_mode not in {"CHASSIS_CONTAINER", "CHASSIS_ONLY", "CONTAINER_ONLY"}:
+        flash("Tipo de ingreso inválido.", "danger")
+        return redirect(url_for("yard.gate_in_view"))
+
+    if not has_chassis and not has_container:
+        flash("Debes seleccionar al menos chasis o contenedor.", "danger")
+        return redirect(url_for("yard.gate_in_view"))
+
     code = (request.form.get("container_code") or "").strip().upper()
     size = (request.form.get("size") or "").strip()
     year_raw = (request.form.get("year") or "").strip()
@@ -195,9 +208,6 @@ def gate_in_post():
     depth_row_raw = (request.form.get("depth_row") or "").strip()
     tier_raw = (request.form.get("tier") or "").strip()
 
-    # =========================
-    # Clasificación contenedor
-    # =========================
     summary_text = (request.form.get("summary_text") or "").strip()
     classification_notes = (request.form.get("classification_notes") or "").strip()
 
@@ -209,6 +219,7 @@ def gate_in_post():
     max_gross_hidden = (request.form.get("max_gross_kg_hidden") or "").strip()
     max_gross_other = (request.form.get("max_gross_kg") or "").strip()
     max_gross_kg = None
+
     if max_gross_hidden:
         try:
             max_gross_kg = int(max_gross_hidden)
@@ -232,16 +243,14 @@ def gate_in_post():
 
     final_status_notes = summary_text or ""
     if status_notes_extra:
-        final_status_notes = (final_status_notes + (", " if final_status_notes else "") + status_notes_extra).strip()
+        final_status_notes = (
+            final_status_notes + (", " if final_status_notes else "") + status_notes_extra
+        ).strip()
 
-    # =========================
-    # Clasificación chasis
-    # =========================
     chassis_id_raw = (request.form.get("chassis_id") or "").strip()
     chassis_tire_checks_json_raw = (request.form.get("chassis_tire_checks_json") or "{}").strip()
     chassis_inspection_json_raw = (request.form.get("chassis_inspection_json") or "{}").strip()
 
-    # ✅ Marchamos escaneados por eje/lado. El usuario NO ve los anteriores.
     chassis_axle_seals_json_raw = (request.form.get("chassis_axle_seals_json") or "{}").strip()
     chassis_axle_seals = _parse_axle_seals_payload(chassis_axle_seals_json_raw)
 
@@ -249,7 +258,49 @@ def gate_in_post():
     chassis_tire_checks = {}
     chassis_inspection = {}
 
-    if chassis_id_raw:
+    c = None
+    bay = None
+    bay_code = None
+    depth_row = None
+    tier = None
+    year = None
+    mv = None
+    workshop_ticket_id = None
+    chassis_classification_ticket_payload = None
+    merchant_ticket_payload = None
+    print_job_ids = []
+
+    username = (
+        getattr(current_user, "name", None)
+        or getattr(current_user, "username", None)
+        or getattr(current_user, "email", None)
+        or f"USER {current_user.id}"
+    )
+
+    # =========================
+    # Validación Merchant
+    # =========================
+    if is_merchant:
+        if not driver_name:
+            flash("Para ingreso Merchant debes ingresar el nombre del chofer.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        if not driver_id_doc:
+            flash("Para ingreso Merchant debes ingresar la cédula del chofer.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        if not truck_plate:
+            flash("Para ingreso Merchant debes ingresar la placa del cabezal.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+    # =========================
+    # Validar / cargar chasis
+    # =========================
+    if has_chassis:
+        if not chassis_id_raw:
+            flash("Debes cargar un chasis para este tipo de ingreso.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
         if not chassis_id_raw.isdigit():
             flash("Chasis inválido.", "danger")
             return redirect(url_for("yard.gate_in_view"))
@@ -272,14 +323,14 @@ def gate_in_post():
             if active_inv.site_id == site_id:
                 flash(
                     f"El chasis {selected_chassis.chassis_number} ya se encuentra en inventario de este predio.",
-                    "danger"
+                    "danger",
                 )
                 return redirect(url_for("yard.gate_in_view"))
 
             flash(
                 f"El chasis {selected_chassis.chassis_number} está activo en inventario del predio {inv_site_name}. "
                 f"Primero debe realizarse el Gate Out / EIR de salida en ese predio.",
-                "danger"
+                "danger",
             )
             return redirect(url_for("yard.gate_in_view"))
 
@@ -298,197 +349,211 @@ def gate_in_post():
             return redirect(url_for("yard.gate_in_view"))
 
     # =========================
-    # Validaciones contenedor
+    # Validar / procesar contenedor
     # =========================
-    if not CONTAINER_RE.match(code):
-        flash("Formato de contenedor inválido. Debe ser AAAA-000000-0.", "danger")
-        return redirect(url_for("yard.gate_in_view"))
-
-    if size not in SIZES:
-        flash("Tamaño inválido.", "danger")
-        return redirect(url_for("yard.gate_in_view"))
-
-    year = None
-    if year_raw:
-        try:
-            year = int(year_raw)
-            if year < 1950 or year > (datetime.utcnow().year + 1):
-                raise ValueError()
-        except ValueError:
-            flash("Año inválido.", "danger")
+    if has_container:
+        if not CONTAINER_RE.match(code):
+            flash("Formato de contenedor inválido. Debe ser AAAA-000000-0.", "danger")
             return redirect(url_for("yard.gate_in_view"))
 
-    if block_code not in {"A", "B", "C", "D"}:
-        flash("Bloque inválido.", "danger")
-        return redirect(url_for("yard.gate_in_view"))
+        if size not in SIZES:
+            flash("Tamaño inválido.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
 
-    try:
-        bay_number = int(bay_number_raw)
-        if not (1 <= bay_number <= 15):
-            raise ValueError()
-    except ValueError:
-        flash("Estiba inválida (1..15).", "danger")
-        return redirect(url_for("yard.gate_in_view"))
+        if year_raw:
+            try:
+                year = int(year_raw)
+                if year < 1950 or year > (datetime.utcnow().year + 1):
+                    raise ValueError()
+            except ValueError:
+                flash("Año inválido.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
 
-    block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
-    bay = (
-        YardBay.query.filter_by(block_id=block.id, bay_number=bay_number, is_active=True, site_id=site_id).first()
-        if block else None
-    )
-    if not bay:
-        flash("Estiba no encontrada.", "danger")
-        return redirect(url_for("yard.gate_in_view"))
+        if block_code not in {"A", "B", "C", "D"}:
+            flash("Bloque inválido.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
 
-    db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()
+        try:
+            bay_number = int(bay_number_raw)
+            if not (1 <= bay_number <= 15):
+                raise ValueError()
+        except ValueError:
+            flash("Estiba inválida (1..15).", "danger")
+            return redirect(url_for("yard.gate_in_view"))
 
-    existing_here = Container.query.filter_by(site_id=site_id, code=code).first()
+        block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
+        bay = (
+            YardBay.query
+            .filter_by(block_id=block.id, bay_number=bay_number, is_active=True, site_id=site_id)
+            .first()
+            if block else None
+        )
 
-    other_in_yard = (
-        Container.query
-        .filter(Container.code == code, Container.is_in_yard == True, Container.site_id != site_id)  # noqa: E712
-        .first()
-    )
-    if other_in_yard:
-        flash("Este contenedor está en patio, pero en otro predio.", "danger")
-        return redirect(url_for("yard.gate_in_view"))
+        if not bay:
+            flash("Estiba no encontrada.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
 
-    if existing_here and existing_here.is_in_yard:
-        flash("Este contenedor ya está en patio.", "danger")
-        return redirect(url_for("yard.gate_in_view"))
+        db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()
 
-    # =========================
-    # Upsert Container
-    # =========================
-    if existing_here:
-        c = existing_here
-    else:
-        c = (
+        existing_here = Container.query.filter_by(site_id=site_id, code=code).first()
+
+        other_in_yard = (
             Container.query
-            .filter(Container.code == code)
-            .order_by(Container.id.desc())
+            .filter(
+                Container.code == code,
+                Container.is_in_yard == True,  # noqa: E712
+                Container.site_id != site_id,
+            )
             .first()
         )
 
-    if not c:
-        c = Container(
-            code=code,
-            size=size,
-            year=year,
-            status_notes=final_status_notes or None,
-            is_in_yard=True,
-            site_id=site_id
+        if other_in_yard:
+            flash("Este contenedor está en patio, pero en otro predio.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        if existing_here and existing_here.is_in_yard:
+            flash("Este contenedor ya está en patio.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        if existing_here:
+            c = existing_here
+        else:
+            c = (
+                Container.query
+                .filter(Container.code == code)
+                .order_by(Container.id.desc())
+                .first()
+            )
+
+        if not c:
+            c = Container(
+                code=code,
+                size=size,
+                year=year,
+                status_notes=final_status_notes or None,
+                is_in_yard=True,
+                site_id=site_id,
+            )
+            db.session.add(c)
+            db.session.flush()
+        else:
+            c.site_id = site_id
+            c.is_in_yard = True
+
+            if size:
+                c.size = size
+            if year is not None:
+                c.year = year
+            if final_status_notes:
+                c.status_notes = final_status_notes
+
+            db.session.add(c)
+            db.session.flush()
+
+        should_insert_class = any([
+            bool(shipping_line),
+            bool(summary_text),
+            max_gross_kg is not None,
+            tare_kg is not None,
+            year is not None,
+            bool(classification_notes),
+            bool(needs_workshop),
+        ])
+
+        if should_insert_class:
+            shipping_line_db = (shipping_line or "").strip().upper()
+            if not shipping_line_db:
+                shipping_line_db = "ATM"
+
+            db.session.execute(text("""
+                INSERT INTO yard_gate_alamo.container_classifications
+                (site_id, container_id, classified_at, classified_by_user_id,
+                 shipping_line, max_gross_kg, tare_kg, manufacture_year,
+                 needs_workshop, summary_text, notes)
+                VALUES
+                (:site_id, :container_id, NOW(), :uid,
+                 :shipping_line, :max_gross_kg, :tare_kg, :manufacture_year,
+                 :needs_workshop, :summary_text, :notes)
+            """), {
+                "site_id": site_id,
+                "container_id": c.id,
+                "uid": current_user.id,
+                "shipping_line": shipping_line_db,
+                "max_gross_kg": max_gross_kg,
+                "tare_kg": tare_kg,
+                "manufacture_year": year,
+                "needs_workshop": bool(needs_workshop),
+                "summary_text": (summary_text or None),
+                "notes": (classification_notes or None),
+            })
+
+        if placement_mode == "manual":
+            try:
+                depth_row = int(depth_row_raw)
+                tier = int(tier_raw)
+            except ValueError:
+                db.session.rollback()
+                flash("Fila/Nivel inválidos.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+
+            if not (1 <= depth_row <= bay.max_depth_rows) or not (1 <= tier <= bay.max_tiers):
+                db.session.rollback()
+                flash("Fila/Nivel fuera de rango.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+
+            occupied = ContainerPosition.query.filter_by(
+                bay_id=bay.id,
+                depth_row=depth_row,
+                tier=tier,
+            ).first()
+
+            if occupied:
+                db.session.rollback()
+                flash("Ese slot ya está ocupado.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+        else:
+            slot = find_first_free_slot(bay.id)
+            if not slot:
+                db.session.rollback()
+                flash(f"La estiba {bay.code} está llena.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+            depth_row, tier = slot
+
+        ContainerPosition.query.filter_by(container_id=c.id).delete()
+        db.session.add(
+            ContainerPosition(
+                container_id=c.id,
+                bay_id=bay.id,
+                depth_row=depth_row,
+                tier=tier,
+                placed_by_user_id=current_user.id,
+            )
         )
-        db.session.add(c)
-        db.session.flush()
+
+        bay_code = bay.code
+
+    # =========================
+    # Crear movimiento
+    # =========================
+    if has_container:
+        movement_notes = final_status_notes or None
+    elif has_chassis:
+        movement_notes = f"INGRESO SOLO CHASIS: {selected_chassis.chassis_number}"
     else:
-        c.site_id = site_id
-        c.is_in_yard = True
-
-        if size:
-            c.size = size
-        if year is not None:
-            c.year = year
-        if final_status_notes:
-            c.status_notes = final_status_notes
-
-        db.session.add(c)
-        db.session.flush()
-
-    # =========================
-    # Guardar clasificación contenedor
-    # =========================
-    should_insert_class = any([
-        bool(shipping_line),
-        bool(summary_text),
-        max_gross_kg is not None,
-        tare_kg is not None,
-        year is not None,
-        bool(classification_notes),
-        bool(needs_workshop),
-    ])
-
-    if should_insert_class:
-        shipping_line_db = (shipping_line or "").strip().upper()
-
-        if not shipping_line_db:
-            shipping_line_db = "ATM"
-
-        sql_ins = text("""
-            INSERT INTO yard_gate_alamo.container_classifications
-            (site_id, container_id, classified_at, classified_by_user_id,
-             shipping_line, max_gross_kg, tare_kg, manufacture_year,
-             needs_workshop, summary_text, notes)
-            VALUES
-            (:site_id, :container_id, NOW(), :uid,
-             :shipping_line, :max_gross_kg, :tare_kg, :manufacture_year,
-             :needs_workshop, :summary_text, :notes)
-        """)
-        db.session.execute(sql_ins, {
-            "site_id": site_id,
-            "container_id": c.id,
-            "uid": current_user.id,
-            "shipping_line": shipping_line_db,
-            "max_gross_kg": max_gross_kg,
-            "tare_kg": tare_kg,
-            "manufacture_year": year,
-            "needs_workshop": bool(needs_workshop),
-            "summary_text": (summary_text or None),
-            "notes": (classification_notes or None),
-        })
-
-    # =========================
-    # Slot / posición
-    # =========================
-    if placement_mode == "manual":
-        try:
-            depth_row = int(depth_row_raw)
-            tier = int(tier_raw)
-        except ValueError:
-            db.session.rollback()
-            flash("Fila/Nivel inválidos.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-
-        if not (1 <= depth_row <= bay.max_depth_rows) or not (1 <= tier <= bay.max_tiers):
-            db.session.rollback()
-            flash("Fila/Nivel fuera de rango.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-
-        occupied = ContainerPosition.query.filter_by(bay_id=bay.id, depth_row=depth_row, tier=tier).first()
-        if occupied:
-            db.session.rollback()
-            flash("Ese slot ya está ocupado.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-    else:
-        slot = find_first_free_slot(bay.id)
-        if not slot:
-            db.session.rollback()
-            flash(f"La estiba {bay.code} está llena.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-        depth_row, tier = slot
-
-    ContainerPosition.query.filter_by(container_id=c.id).delete()
-    db.session.add(
-        ContainerPosition(
-            container_id=c.id,
-            bay_id=bay.id,
-            depth_row=depth_row,
-            tier=tier,
-            placed_by_user_id=current_user.id,
-        )
-    )
+        movement_notes = None
 
     mv = Movement(
         site_id=site_id,
-        container_id=c.id,
+        container_id=c.id if c else None,
         movement_type="GATE_IN",
         occurred_at=datetime.utcnow(),
-        bay_code=bay.code,
+        bay_code=bay_code,
         depth_row=depth_row,
         tier=tier,
         driver_name=driver_name or None,
         driver_id_doc=driver_id_doc or None,
         truck_plate=truck_plate or None,
-        notes=final_status_notes or None,
+        notes=movement_notes,
         created_by_user_id=current_user.id,
         created_at=datetime.utcnow(),
     )
@@ -498,9 +563,6 @@ def gate_in_post():
     # =========================
     # Procesar clasificación de chasis
     # =========================
-    workshop_ticket_id = None
-    chassis_classification_ticket_payload = None
-
     if selected_chassis:
         axles = int(getattr(selected_chassis, "axles", 2) or 2)
         allowed = set(allowed_positions_for(axles))
@@ -534,9 +596,6 @@ def gate_in_post():
         any_tire_issue = False
         grouped_tire_readings = {}
 
-        # ======================================================
-        # ✅ Guardar y comparar marchamos por eje/lado - GATE_IN
-        # ======================================================
         seal_differences = []
 
         last_eir_for_seals = _fetch_last_final_eir_for_chassis(selected_chassis.id)
@@ -616,7 +675,7 @@ def gate_in_post():
 
             row = ChassisTire.query.filter_by(
                 chassis_id=selected_chassis.id,
-                position_code=pos
+                position_code=pos,
             ).first()
 
             if not row:
@@ -742,7 +801,11 @@ def gate_in_post():
             structure_lines.append(f"Chofer: {driver_comments}")
 
         chassis_needs_workshop_manual = bool(chassis_inspection.get("needs_workshop"))
-        needs_workshop_chassis = bool(structure_lines) or bool(any_tire_issue) or chassis_needs_workshop_manual
+        needs_workshop_chassis = (
+            bool(structure_lines)
+            or bool(any_tire_issue)
+            or chassis_needs_workshop_manual
+        )
 
         inspection_id = _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
             "site_id": site_id,
@@ -783,13 +846,6 @@ def gate_in_post():
             inv.updated_at = datetime.utcnow()
         db.session.add(inv)
 
-        username = (
-            getattr(current_user, "name", None)
-            or getattr(current_user, "username", None)
-            or getattr(current_user, "email", None)
-            or f"USER {current_user.id}"
-        )
-
         chassis_classification_ticket_payload = _build_chassis_gate_in_ticket_text(
             site_name=(active_site.name if active_site else ""),
             username=username,
@@ -818,7 +874,7 @@ def gate_in_post():
                 axles=axles,
                 structure_lines=structure_lines,
                 tire_lines=tire_lines,
-                eir_prev_id=eir_prev_id
+                eir_prev_id=eir_prev_id,
             )
 
             workshop_ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
@@ -843,10 +899,19 @@ def gate_in_post():
                     "site_id": site_id,
                     "movement_id": mv.id,
                     "chassis_id": selected_chassis.id,
-                    "container_id": c.id,
+                    "container_id": c.id if c else None,
                     "seal_mismatch": bool(seal_differences),
                 },
             )
+
+        if chassis_classification_ticket_payload:
+            print_job_id = _enqueue_print_job(
+                payload_text=chassis_classification_ticket_payload,
+                requested_by=username,
+                request_origin="GATE_IN_CHASSIS",
+                ticket_id=workshop_ticket_id,
+            )
+            print_job_ids.append(print_job_id)
 
         audit_log(
             current_user.id,
@@ -856,70 +921,115 @@ def gate_in_post():
             {
                 "site_id": site_id,
                 "movement_id": mv.id,
-                "container_id": c.id,
+                "container_id": c.id if c else None,
                 "needs_workshop": needs_workshop_chassis,
                 "classification_ticket": bool(chassis_classification_ticket_payload),
                 "seal_mismatch": bool(seal_differences),
+                "print_job_ids": print_job_ids,
             },
         )
 
     # =========================
-    # Fotos
+    # Ticket Merchant
     # =========================
-    storage = get_storage()
-    photos = request.files.getlist("photos") or []
+    if is_merchant and c:
+        merchant_ticket_payload = _build_merchant_gate_in_ticket_text(
+            site_name=(active_site.name if active_site else ""),
+            username=username,
+            occurred_at=mv.occurred_at or datetime.utcnow(),
+            container_code=c.code,
+            container_size=c.size,
+            bay_code=bay_code,
+            depth_row=depth_row,
+            tier=tier,
+            driver_name=driver_name,
+            driver_id_doc=driver_id_doc,
+            truck_plate=truck_plate,
+            shipping_line=shipping_line or None,
+            max_gross_kg=max_gross_kg,
+            tare_kg=tare_kg,
+            manufacture_year=year,
+            summary_text=summary_text or None,
+            classification_notes=classification_notes or None,
+        )
 
-    for f in photos:
-        if not f or not f.filename:
-            continue
-        try:
-            key = build_photo_key(c.code, mv.id, f.filename)
-            url = storage.upload_fileobj(
-                f,
-                key,
-                f.mimetype or "application/octet-stream"
-            )
-            db.session.add(
-                MovementPhoto(
-                    movement_id=mv.id,
-                    photo_type="CONTAINER",
-                    url=url
+        print_job_id = _enqueue_print_job(
+            payload_text=merchant_ticket_payload,
+            requested_by=username,
+            request_origin="GATE_IN_MERCHANT",
+            ticket_id=None,
+        )
+        print_job_ids.append(print_job_id)
+
+    # =========================
+    # Fotos contenedor
+    # =========================
+    if has_container and c:
+        storage = get_storage()
+        photos = request.files.getlist("photos") or []
+
+        for f in photos:
+            if not f or not f.filename:
+                continue
+            try:
+                key = build_photo_key(c.code, mv.id, f.filename)
+                url = storage.upload_fileobj(
+                    f,
+                    key,
+                    f.mimetype or "application/octet-stream",
                 )
-            )
-        except Exception as e:
-            db.session.add(
-                MovementPhoto(
-                    movement_id=mv.id,
-                    photo_type="UPLOAD_ERROR",
-                    url=str(e)
+                db.session.add(
+                    MovementPhoto(
+                        movement_id=mv.id,
+                        photo_type="CONTAINER",
+                        url=url,
+                    )
                 )
-            )
+            except Exception as e:
+                db.session.add(
+                    MovementPhoto(
+                        movement_id=mv.id,
+                        photo_type="UPLOAD_ERROR",
+                        url=str(e),
+                    )
+                )
 
     audit_log(
         current_user.id,
         "GATE_IN_CREATED",
-        "container",
-        c.id,
+        "movement",
+        mv.id,
         {
-            "container_code": c.code,
-            "bay": bay.code,
+            "gate_in_mode": gate_in_mode,
+            "has_chassis": has_chassis,
+            "has_container": has_container,
+            "is_merchant": is_merchant,
+            "container_id": c.id if c else None,
+            "container_code": c.code if c else None,
+            "bay": bay.code if bay else None,
             "depth_row": depth_row,
             "tier": tier,
             "site_id": site_id,
             "chassis_id": selected_chassis.id if selected_chassis else None,
             "workshop_ticket_id": workshop_ticket_id,
+            "print_job_ids": print_job_ids,
         },
     )
 
     db.session.commit()
 
-    if workshop_ticket_id:
-        flash(
-            f"Gate In registrado: {c.code} en {bay.code} F{depth_row:02d} N{tier}. "
-            f"Se generó ticket de taller para el chasis {selected_chassis.chassis_number}.",
-            "success",
-        )
-        return redirect(url_for("yard.gate_in_view"))
+    if has_chassis and has_container:
+        msg = f"Gate In registrado: {c.code} con chasis {selected_chassis.chassis_number}."
+    elif has_chassis:
+        msg = f"Ingreso de chasis registrado: {selected_chassis.chassis_number}."
+    else:
+        msg = f"Ingreso Merchant registrado: {c.code}."
 
-    flash(f"Gate In registrado: {c.code} en {bay.code} F{depth_row:02d} N{tier}.", "success")
+    if print_job_ids:
+        msg += " Ticket enviado a cola de impresión."
+
+    if workshop_ticket_id:
+        msg += " Se generó ticket de taller por hallazgos."
+
+    flash(msg, "success")
     return redirect(url_for("yard.gate_in_view"))

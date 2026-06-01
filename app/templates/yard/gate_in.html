@@ -216,618 +216,718 @@
   .help{font-size:12px;opacity:.75}
   .hidden{display:none !important;}
   .sep{height:1px;background:rgba(255,255,255,.10);margin:10px 0}
+
+  .mode-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+  }
+
+  @media(max-width:800px){
+    .mode-grid{grid-template-columns:1fr;}
+  }
+
+  .mode-card{
+    cursor:pointer;
+    border:1px solid rgba(255,255,255,.10);
+    background:rgba(255,255,255,.04);
+    border-radius:16px;
+    padding:14px;
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+  }
+
+  .mode-card strong{
+    display:block;
+    margin-bottom:4px;
+  }
+
+  .mode-card small{
+    opacity:.75;
+    line-height:1.35;
+  }
 </style>
 
 <h2>Gate In</h2>
 
 <form id="gateInForm" method="post" enctype="multipart/form-data" class="card" style="max-width: 1180px;">
 
-  <h3>Identificación</h3>
+  <input type="hidden" name="has_chassis" id="has_chassis" value="1">
+  <input type="hidden" name="has_container" id="has_container" value="1">
 
-  <div class="grid" style="display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;">
-    <div>
-      <label>Número de contenedor (AAAA-000000-0)</label>
-      <input id="container_code" name="container_code" placeholder="MSKU-123456-7" required>
-      <div id="containerPrefillHint" class="hint" style="margin-top:6px;"></div>
-    </div>
+  <h3>Tipo de ingreso</h3>
 
-    <div>
-      <label>Año fabricación</label>
-      <input id="year_input" name="year" inputmode="numeric" placeholder="Ej: 2020">
-      <div class="hint" style="margin-top:6px;">(Opcional)</div>
-    </div>
-  </div>
-
-  <label style="margin-top:12px;">Tamaño / Tipo</label>
   <div class="card" style="padding:12px; border-radius:16px;">
-    <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;">
-      {% for t in (sizes or ["40HC","40ST","40RF","40OT","20ST","20OT","20RF","20TQ","45HC"]) %}
-        <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
-          <input type="radio" name="size" value="{{ t }}" {% if loop.first %}checked{% endif %}>
-          <span style="font-weight:800;">{{ t }}</span>
-        </label>
-      {% endfor %}
+    <div class="mode-grid">
+      <label class="mode-card">
+        <input type="radio" name="gate_in_mode" value="CHASSIS_CONTAINER" checked>
+        <span>
+          <strong>Chasis + Contenedor</strong>
+          <small>Ingresa equipo completo. Se clasifica contenedor y chasis.</small>
+        </span>
+      </label>
+
+      <label class="mode-card">
+        <input type="radio" name="gate_in_mode" value="CHASSIS_ONLY">
+        <span>
+          <strong>Solo Chasis</strong>
+          <small>Se muestra solo la inspección de chasis y llantas.</small>
+        </span>
+      </label>
+
+      <label class="mode-card">
+        <input type="radio" name="gate_in_mode" value="CONTAINER_ONLY">
+        <span>
+          <strong>Solo Contenedor / Merchant</strong>
+          <small>Ingreso de contenedor con chofer externo. Solicita chofer, cédula y placa.</small>
+        </span>
+      </label>
     </div>
   </div>
 
-  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
-    <div>
-      <label>Naviera (opcional)</label>
-      <select id="shipping_line" name="shipping_line">
-        <option value="" selected>—</option>
-        <option value="COSCO">COSCO</option>
-        <option value="ONE">ONE</option>
-        <option value="OOCL">OOCL</option>
-        <option value="MAERSK">MAERSK</option>
-        <option value="ATM">ATM</option>
-        <option value="VASI">Otro</option>
-      </select>
-
-      <div id="shipOtherBox" style="display:none; margin-top:10px;">
-        <label>Indica cuál</label>
-        <input id="shipping_line_other" name="shipping_line_other" placeholder="Ej: Hapag, CMA, etc.">
-      </div>
-    </div>
-
-    <div>
-      <label>Max Gross (KG) (opcional)</label>
-      <select id="max_gross_select" name="max_gross_select">
-        <option value="" selected>—</option>
-        <option value="32500">32500 KG</option>
-        <option value="OTHER">Otro…</option>
-      </select>
-
-      <div id="maxGrossOtherBox" style="display:none; margin-top:10px;">
-        <label>Max Gross (KG) - otro</label>
-        <input id="max_gross_kg" name="max_gross_kg" inputmode="numeric" placeholder="Ej: 34000" min="1">
-      </div>
-
-      <input type="hidden" id="max_gross_kg_hidden" name="max_gross_kg_hidden" value="">
-    </div>
-  </div>
-
-  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
-    <div>
-      <label>Tare (KG) (opcional)</label>
-      <input id="tare_kg_input" name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
-    </div>
-    <div>
-      <label>Comentarios generales del contenedor (opcional)</label>
-      <input id="classification_notes_input" name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
-    </div>
-  </div>
-
-  <div class="section-card">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
-      <div>
-        <h3 style="margin:0;">Clasificación de chasis</h3>
-        <div class="hint" style="margin-top:6px;">
-          Al guardar, el chasis ingresa automáticamente al inventario del predio, imprime ticket de clasificación y, si hay hallazgos, genera un único ticket a taller.
-        </div>
-      </div>
-      <div class="mini-pill" id="chassisSummaryPill">Sin chasis seleccionado</div>
-    </div>
-
-    <input type="hidden" name="chassis_id" id="chassis_id" value="">
-    <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
-    <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
-    <input type="hidden" name="chassis_axle_seals_json" id="chassis_axle_seals_json" value="{}">
-
-    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
-      <div>
-        <label>Buscar / seleccionar chasis</label>
-        <input id="chassisSearch" list="chassisList" type="text" placeholder="Digita número de chasis o placa..." autocomplete="off">
-
-        <datalist id="chassisList">
-          {% for ch in (chassis_rows or []) %}
-            <option value="{{ ch.chassis_number }}">{{ ch.chassis_number }} | {{ ch.plate or 'SIN PLACA' }} | {{ ch.axles or '?' }} ejes</option>
-          {% endfor %}
-        </datalist>
-
-        <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-          <button type="button" id="btnLoadSelectedChassis" class="btn" onclick="window.__forceLoadChassis && window.__forceLoadChassis()">Cargar chasis</button>
-          <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
-        </div>
-
-        <div id="axleSealsBlock" class="section-card hidden">
-          <h3 style="margin:0;">Marchamos por eje/lado</h3>
-          <div class="hint" style="margin-top:6px;">
-            Escanea los 2 marchamos por lado del eje. No importa el orden; el sistema hará la comparación automáticamente.
-          </div>
-
-          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
-            <div data-axle-seal-row="AX1_L">
-              <label>Eje 1 Izquierdo</label>
-              <input data-axle-seal-side="AX1_L" data-seal-field="seal_1" placeholder="Marchamo 1">
-              <input data-axle-seal-side="AX1_L" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
-            </div>
-
-            <div data-axle-seal-row="AX1_R">
-              <label>Eje 1 Derecho</label>
-              <input data-axle-seal-side="AX1_R" data-seal-field="seal_1" placeholder="Marchamo 1">
-              <input data-axle-seal-side="AX1_R" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
-            </div>
-
-            <div data-axle-seal-row="AX2_L">
-              <label>Eje 2 Izquierdo</label>
-              <input data-axle-seal-side="AX2_L" data-seal-field="seal_1" placeholder="Marchamo 1">
-              <input data-axle-seal-side="AX2_L" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
-            </div>
-
-            <div data-axle-seal-row="AX2_R">
-              <label>Eje 2 Derecho</label>
-              <input data-axle-seal-side="AX2_R" data-seal-field="seal_1" placeholder="Marchamo 1">
-              <input data-axle-seal-side="AX2_R" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
-            </div>
-
-            <div data-axle-seal-row="AX3_L" class="hidden">
-              <label>Eje 3 Izquierdo</label>
-              <input data-axle-seal-side="AX3_L" data-seal-field="seal_1" placeholder="Marchamo 1">
-              <input data-axle-seal-side="AX3_L" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
-            </div>
-
-            <div data-axle-seal-row="AX3_R" class="hidden">
-              <label>Eje 3 Derecho</label>
-              <input data-axle-seal-side="AX3_R" data-seal-field="seal_1" placeholder="Marchamo 1">
-              <input data-axle-seal-side="AX3_R" data-seal-field="seal_2" placeholder="Marchamo 2" style="margin-top:8px;">
-            </div>
-          </div>
-        </div>
-
-        <div class="hint" style="margin-top:8px;">
-          Total chasis cargados: {{ (chassis_rows or []) | length }}
-        </div>
-      </div>
-
-      <div>
-        <label>Estado general del chasis (referencia)</label>
-        <input id="chassisGeneralStatus" type="text" readonly placeholder="Se carga desde el maestro del chasis">
-      </div>
-    </div>
-
-    <div id="chassisBlock" class="hidden" style="margin-top:14px;">
-      <div class="chassis-grid">
-        <div class="card" style="padding:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-            <div style="font-weight:900;">Mapa de llantas</div>
-            <button class="btn btn-sm" type="button" id="btnReloadChassis">Recargar</button>
-          </div>
-
-          <div class="help" style="margin-top:8px;">
-            Toca una llanta para validar <b>marchamo</b>, <b>número de llanta</b>, <b>estrías (mm)</b> y si está <b>pinchada/desinflada</b>.
-          </div>
-
-          <div class="map-area" style="margin-top:10px;">
-            <div class="frame"></div>
-
-            <div class="axle ax1"></div>
-            <div class="axle ax2"></div>
-            <div class="axle ax3 hidden" id="axle3"></div>
-
-            <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
-            <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
-            <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
-            <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
-
-            <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
-            <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
-            <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
-            <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
-
-            <div class="wheel hidden" data-pos="AX3_L_IN" id="wAX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
-            <div class="wheel hidden" data-pos="AX3_L_OUT" id="wAX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
-            <div class="wheel hidden" data-pos="AX3_R_IN" id="wAX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
-            <div class="wheel hidden" data-pos="AX3_R_OUT" id="wAX3_R_OUT" style="right:2%;  top:87%;"><span class="tag">A3 RO</span></div>
-          </div>
-
-          <div class="legend">
-            <div class="lg"><span class="dot ok"></span> Verde (9-12 mm)</div>
-            <div class="lg"><span class="dot g"></span> Amarillo (4-8 mm)</div>
-            <div class="lg"><span class="dot n"></span> Rojo (1-3 mm)</div>
-            <div class="lg"><span class="dot p"></span> Pinchada</div>
-          </div>
-
-          <div class="help" style="margin-top:10px;">
-            Si el marchamo o el número de llanta viene <b>DISTINTO</b>, se refleja como alerta en el ticket de clasificación.
-          </div>
-        </div>
-
-        <div class="card" style="padding:14px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-            <div style="font-weight:900;">Clasificación estructural del chasis</div>
-            <span class="badge2 ok" id="chassisIssuesBadge">LISTO</span>
-          </div>
-
-          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;">
-            <div>
-              <label>Estructura</label>
-              <select id="ci_structure">
-                <option value="">—</option>
-                <option value="OK">OK</option>
-                <option value="DANO_LEVE">DAÑO LEVE</option>
-                <option value="DANO_GRAVE">DAÑO GRAVE</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Twistlocks</label>
-              <select id="ci_twistlocks">
-                <option value="">—</option>
-                <option value="OK">OK</option>
-                <option value="DANO_LEVE">DAÑO LEVE</option>
-                <option value="DANO_GRAVE">DAÑO GRAVE</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Patas</label>
-              <select id="ci_landing_gear">
-                <option value="">—</option>
-                <option value="OK">OK</option>
-                <option value="DANO_LEVE">DAÑO LEVE</option>
-                <option value="DANO_GRAVE">DAÑO GRAVE</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Luces</label>
-              <select id="ci_lights">
-                <option value="">—</option>
-                <option value="OK">OK</option>
-                <option value="UNA_DANADA">UNA DAÑADA</option>
-                <option value="AMBAS_DANADAS">AMBAS DAÑADAS</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Faldones</label>
-              <select id="ci_mudflap">
-                <option value="">—</option>
-                <option value="OK">OK</option>
-                <option value="DANADO">DAÑADO</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Requiere taller (chasis)</label>
-              <select id="ci_needs_workshop">
-                <option value="0" selected>No</option>
-                <option value="1">Sí</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="sep"></div>
-
-          <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div>
-              <label>Placa configurada</label>
-              <input id="ci_plate_text" type="text" readonly placeholder="Se carga desde el chasis">
-            </div>
-
-            <div>
-              <label>Validación de placa</label>
-              <select id="ci_plate_validation_status">
-                <option value="">—</option>
-                <option value="MISMA">MISMA</option>
-                <option value="DISTINTA">DISTINTA</option>
-                <option value="NO_TRAE">NO TRAE</option>
-              </select>
-            </div>
-          </div>
-
-          <div id="ciPlateObservedWrap" style="margin-top:12px; display:none;">
-            <label>Placa observada</label>
-            <input id="ci_plate_text_observed" type="text" placeholder="Escribe la placa que trae el chasis">
-          </div>
-
-          <div style="margin-top:12px;">
-            <label>Resumen corto de daños del chasis</label>
-            <textarea id="ci_damage_summary" rows="3" placeholder="Ej: twistlock derecho dañado, faldón izquierdo quebrado..."></textarea>
-          </div>
-
-          <div style="margin-top:12px;">
-            <label>Comentarios del chequeador</label>
-            <textarea id="ci_comments" rows="3" placeholder="Observaciones adicionales..."></textarea>
-          </div>
-
-          <div style="margin-top:12px;">
-            <label>Comentarios del chofer</label>
-            <textarea id="ci_driver_comments" rows="3" placeholder="Lo que indique el chofer sobre el chasis..."></textarea>
-          </div>
-
-          <div class="help" style="margin-top:10px;">
-            El ticket de clasificación del chasis se imprime siempre. El ticket de taller solo si hay hallazgos.
-          </div>
-
-          <div style="margin-top:14px;">
-            <table class="pos-table">
-              <thead>
-                <tr>
-                  <th>Posición</th>
-                  <th>Marchamo config</th>
-                  <th>Ingreso marchamo</th>
-                  <th>Llanta config</th>
-                  <th>Ingreso llanta</th>
-                  <th>Estrías</th>
-                  <th>Pinchada</th>
-                  <th>Estado</th>
-                </tr>
-              </thead>
-              <tbody id="chassisPosTbody">
-                <tr><td colspan="8">Selecciona un chasis para cargar llantas.</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <details open style="margin-top:14px;">
-    <summary style="cursor:pointer; font-weight:900;">Condición estructural del contenedor</summary>
-
-    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
-      <div>
-        <label>Barras</label>
-        <select name="bars">
-          <option value="OK" selected>OK</option>
-          <option value="DAÑO_LEVE">DAÑO LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
-          <option value="OTRO">OTRO</option>
-        </select>
-      </div>
-
-      <div>
-        <label>Seguros</label>
-        <select name="locks">
-          <option value="OK" selected>OK</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
-        </select>
-      </div>
-    </div>
-
-    <label style="margin-top:12px;">Piso (selección múltiple)</label>
-    <div class="card" style="padding:12px; border-radius:16px;">
-      {% set floor_opts = ["OK","HUNDIDO","LEVANTADO","REVENTADO","DESLAMINADO","HUECO"] %}
-      <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px;">
-        {% for f in floor_opts %}
-          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
-            <input type="checkbox" name="floor_flags" value="{{ f }}" {% if f=="OK" %}checked{% endif %}>
-            <span style="font-weight:800;">{{ f }}</span>
-          </label>
-        {% endfor %}
-      </div>
-      <div class="hint" style="margin-top:8px;">Tip: si marcas algo distinto de OK, quita OK.</div>
+  <div id="merchantSection" class="section-card hidden">
+    <h3 style="margin-top:0;">Datos Merchant</h3>
+    <div class="hint" style="margin-top:6px;">
+      Estos datos son obligatorios cuando ingresa solo contenedor sin chasis ATM.
     </div>
 
     <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px;">
       <div>
-        <label>Astillas</label>
-        <select name="splinters">
-          <option value="NO" selected>NO</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
-        </select>
+        <label>Nombre del chofer</label>
+        <input id="driver_name" name="driver_name" placeholder="Nombre completo del chofer">
       </div>
+
       <div>
-        <label>Aceite</label>
-        <select name="oil">
-          <option value="NO" selected>NO</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
-        </select>
+        <label>Cédula / identificación</label>
+        <input id="driver_id_doc" name="driver_id_doc" placeholder="Identificación del chofer">
       </div>
+
       <div>
-        <label>Barrido</label>
-        <select name="swept">
-          <option value="SI" selected>SI</option>
-          <option value="NO">NO</option>
-        </select>
+        <label>Placa del cabezal</label>
+        <input id="truck_plate" name="truck_plate" placeholder="Placa del cabezal">
+      </div>
+    </div>
+  </div>
+
+  <div id="containerSection">
+    <h3>Identificación del contenedor</h3>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1.2fr .8fr; gap:12px;">
+      <div>
+        <label>Número de contenedor (AAAA-000000-0)</label>
+        <input id="container_code" name="container_code" placeholder="MSKU-123456-7">
+        <div id="containerPrefillHint" class="hint" style="margin-top:6px;"></div>
+      </div>
+
+      <div>
+        <label>Año fabricación</label>
+        <input id="year_input" name="year" inputmode="numeric" placeholder="Ej: 2020">
+        <div class="hint" style="margin-top:6px;">(Opcional)</div>
       </div>
     </div>
 
-    <div style="margin-top:12px;">
-      <label>Argollas</label>
-      <select name="rings">
-        <option value="SI" selected>SI</option>
-        <option value="NO">NO</option>
-      </select>
-    </div>
-  </details>
-
-  <details open style="margin-top:14px;">
-    <summary style="cursor:pointer; font-weight:900;">Condición general del contenedor</summary>
-
-    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
-      <div>
-        <label>Mal olor</label>
-        <select name="bad_smell">
-          <option value="NO" selected>NO</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
-        </select>
-      </div>
-      <div>
-        <label>Suciedad (transferibles)</label>
-        <select name="dirt">
-          <option value="NO" selected>NO</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
-        </select>
+    <label style="margin-top:12px;">Tamaño / Tipo</label>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      <div style="display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px;">
+        {% for t in (sizes or ["40HC","40ST","40RF","40OT","20ST","20OT","20RF","20TQ","45HC"]) %}
+          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+            <input type="radio" name="size" value="{{ t }}" {% if loop.first %}checked{% endif %}>
+            <span style="font-weight:800;">{{ t }}</span>
+          </label>
+        {% endfor %}
       </div>
     </div>
 
     <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
       <div>
-        <label>Manchas (transferibles)</label>
-        <select name="stains">
-          <option value="NO" selected>NO</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
+        <label>Naviera (opcional)</label>
+        <select id="shipping_line" name="shipping_line">
+          <option value="" selected>—</option>
+          <option value="COSCO">COSCO</option>
+          <option value="ONE">ONE</option>
+          <option value="OOCL">OOCL</option>
+          <option value="MAERSK">MAERSK</option>
+          <option value="ATM">ATM</option>
+          <option value="VASI">Otro</option>
         </select>
+
+        <div id="shipOtherBox" style="display:none; margin-top:10px;">
+          <label>Indica cuál</label>
+          <input id="shipping_line_other" name="shipping_line_other" placeholder="Ej: Hapag, CMA, etc.">
+        </div>
+      </div>
+
+      <div>
+        <label>Max Gross (KG) (opcional)</label>
+        <select id="max_gross_select" name="max_gross_select">
+          <option value="" selected>—</option>
+          <option value="32500">32500 KG</option>
+          <option value="OTHER">Otro…</option>
+        </select>
+
+        <div id="maxGrossOtherBox" style="display:none; margin-top:10px;">
+          <label>Max Gross (KG) - otro</label>
+          <input id="max_gross_kg" name="max_gross_kg" inputmode="numeric" placeholder="Ej: 34000" min="1">
+        </div>
+
+        <input type="hidden" id="max_gross_kg_hidden" name="max_gross_kg_hidden" value="">
+      </div>
+    </div>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+      <div>
+        <label>Tare (KG) (opcional)</label>
+        <input id="tare_kg_input" name="tare_kg" inputmode="numeric" placeholder="Ej: 3800" min="1">
       </div>
       <div>
-        <label>Golpes</label>
-        <select name="hits">
-          <option value="NO" selected>NO</option>
-          <option value="LEVE">LEVE</option>
-          <option value="MEDIO">MEDIO</option>
-          <option value="GRAVE">GRAVE</option>
+        <label>Comentarios generales del contenedor (opcional)</label>
+        <input id="classification_notes_input" name="classification_notes" placeholder="Ej: contenedor para cartón, etc.">
+      </div>
+    </div>
+  </div>
+
+  <div id="chassisSection">
+    <div class="section-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Clasificación de chasis</h3>
+          <div class="hint" style="margin-top:6px;">
+            Al guardar, el chasis ingresa automáticamente al inventario del predio, imprime ticket de clasificación y, si hay hallazgos, genera un único ticket a taller.
+          </div>
+        </div>
+        <div class="mini-pill" id="chassisSummaryPill">Sin chasis seleccionado</div>
+      </div>
+
+      <input type="hidden" name="chassis_id" id="chassis_id" value="">
+      <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
+      <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
+      <input type="hidden" name="chassis_axle_seals_json" id="chassis_axle_seals_json" value="{}">
+
+      <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+        <div>
+          <label>Buscar / seleccionar chasis</label>
+          <input id="chassisSearch" list="chassisList" type="text" placeholder="Digita número de chasis o placa..." autocomplete="off">
+
+          <datalist id="chassisList">
+            {% for ch in (chassis_rows or []) %}
+              <option value="{{ ch.chassis_number }}">{{ ch.chassis_number }} | {{ ch.plate or 'SIN PLACA' }} | {{ ch.axles or '?' }} ejes</option>
+            {% endfor %}
+          </datalist>
+
+          <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
+            <button type="button" id="btnLoadSelectedChassis" class="btn" onclick="window.__forceLoadChassis && window.__forceLoadChassis()">Cargar chasis</button>
+            <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
+          </div>
+
+          <div id="axleSealsBlock" class="section-card hidden">
+            <h3 style="margin:0;">Marchamos por eje/lado</h3>
+            <div class="hint" style="margin-top:6px;">
+              Escanea los 2 marchamos por lado del eje. No importa el orden; el sistema hará la comparación automáticamente.
+            </div>
+
+            <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+              <div data-axle-seal-row="AX1_L">
+                <label>Eje 1 Izquierdo</label>
+                <input data-axle-seal-side="AX1_L" data-seal-field="seal_1" placeholder="Marchamo 1" autocomplete="off" inputmode="numeric">
+                <input data-axle-seal-side="AX1_L" data-seal-field="seal_2" placeholder="Marchamo 2" autocomplete="off" inputmode="numeric" style="margin-top:8px;">
+              </div>
+
+              <div data-axle-seal-row="AX1_R">
+                <label>Eje 1 Derecho</label>
+                <input data-axle-seal-side="AX1_R" data-seal-field="seal_1" placeholder="Marchamo 1" autocomplete="off" inputmode="numeric">
+                <input data-axle-seal-side="AX1_R" data-seal-field="seal_2" placeholder="Marchamo 2" autocomplete="off" inputmode="numeric" style="margin-top:8px;">
+              </div>
+
+              <div data-axle-seal-row="AX2_L">
+                <label>Eje 2 Izquierdo</label>
+                <input data-axle-seal-side="AX2_L" data-seal-field="seal_1" placeholder="Marchamo 1" autocomplete="off" inputmode="numeric">
+                <input data-axle-seal-side="AX2_L" data-seal-field="seal_2" placeholder="Marchamo 2" autocomplete="off" inputmode="numeric" style="margin-top:8px;">
+              </div>
+
+              <div data-axle-seal-row="AX2_R">
+                <label>Eje 2 Derecho</label>
+                <input data-axle-seal-side="AX2_R" data-seal-field="seal_1" placeholder="Marchamo 1" autocomplete="off" inputmode="numeric">
+                <input data-axle-seal-side="AX2_R" data-seal-field="seal_2" placeholder="Marchamo 2" autocomplete="off" inputmode="numeric" style="margin-top:8px;">
+              </div>
+
+              <div data-axle-seal-row="AX3_L" class="hidden">
+                <label>Eje 3 Izquierdo</label>
+                <input data-axle-seal-side="AX3_L" data-seal-field="seal_1" placeholder="Marchamo 1" autocomplete="off" inputmode="numeric">
+                <input data-axle-seal-side="AX3_L" data-seal-field="seal_2" placeholder="Marchamo 2" autocomplete="off" inputmode="numeric" style="margin-top:8px;">
+              </div>
+
+              <div data-axle-seal-row="AX3_R" class="hidden">
+                <label>Eje 3 Derecho</label>
+                <input data-axle-seal-side="AX3_R" data-seal-field="seal_1" placeholder="Marchamo 1" autocomplete="off" inputmode="numeric">
+                <input data-axle-seal-side="AX3_R" data-seal-field="seal_2" placeholder="Marchamo 2" autocomplete="off" inputmode="numeric" style="margin-top:8px;">
+              </div>
+            </div>
+          </div>
+
+          <div class="hint" style="margin-top:8px;">
+            Total chasis cargados: {{ (chassis_rows or []) | length }}
+          </div>
+        </div>
+
+        <div>
+          <label>Estado general del chasis (referencia)</label>
+          <input id="chassisGeneralStatus" type="text" readonly placeholder="Se carga desde el maestro del chasis">
+        </div>
+      </div>
+
+      <div id="chassisBlock" class="hidden" style="margin-top:14px;">
+        <div class="chassis-grid">
+          <div class="card" style="padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div style="font-weight:900;">Mapa de llantas</div>
+              <button class="btn btn-sm" type="button" id="btnReloadChassis">Recargar</button>
+            </div>
+
+            <div class="help" style="margin-top:8px;">
+              Toca una llanta para validar <b>marchamo</b>, <b>número de llanta</b>, <b>estrías (mm)</b> y si está <b>pinchada/desinflada</b>.
+            </div>
+
+            <div class="map-area" style="margin-top:10px;">
+              <div class="frame"></div>
+
+              <div class="axle ax1"></div>
+              <div class="axle ax2"></div>
+              <div class="axle ax3 hidden" id="axle3"></div>
+
+              <div class="wheel" data-pos="AX1_L_IN" style="left:12%; top:63%;"><span class="tag">A1 LI</span></div>
+              <div class="wheel" data-pos="AX1_L_OUT" style="left:2%;  top:63%;"><span class="tag">A1 LO</span></div>
+              <div class="wheel" data-pos="AX1_R_IN" style="right:12%; top:63%;"><span class="tag">A1 RI</span></div>
+              <div class="wheel" data-pos="AX1_R_OUT" style="right:2%;  top:63%;"><span class="tag">A1 RO</span></div>
+
+              <div class="wheel" data-pos="AX2_L_IN" style="left:12%; top:75%;"><span class="tag">A2 LI</span></div>
+              <div class="wheel" data-pos="AX2_L_OUT" style="left:2%;  top:75%;"><span class="tag">A2 LO</span></div>
+              <div class="wheel" data-pos="AX2_R_IN" style="right:12%; top:75%;"><span class="tag">A2 RI</span></div>
+              <div class="wheel" data-pos="AX2_R_OUT" style="right:2%;  top:75%;"><span class="tag">A2 RO</span></div>
+
+              <div class="wheel hidden" data-pos="AX3_L_IN" id="wAX3_L_IN" style="left:12%; top:87%;"><span class="tag">A3 LI</span></div>
+              <div class="wheel hidden" data-pos="AX3_L_OUT" id="wAX3_L_OUT" style="left:2%;  top:87%;"><span class="tag">A3 LO</span></div>
+              <div class="wheel hidden" data-pos="AX3_R_IN" id="wAX3_R_IN" style="right:12%; top:87%;"><span class="tag">A3 RI</span></div>
+              <div class="wheel hidden" data-pos="AX3_R_OUT" id="wAX3_R_OUT" style="right:2%; top:87%;"><span class="tag">A3 RO</span></div>
+            </div>
+
+            <div class="legend">
+              <div class="lg"><span class="dot ok"></span> Verde (9-12 mm)</div>
+              <div class="lg"><span class="dot g"></span> Amarillo (4-8 mm)</div>
+              <div class="lg"><span class="dot n"></span> Rojo (1-3 mm)</div>
+              <div class="lg"><span class="dot p"></span> Pinchada</div>
+            </div>
+
+            <div class="help" style="margin-top:10px;">
+              Si el marchamo o el número de llanta viene <b>DISTINTO</b>, se refleja como alerta en el ticket de clasificación.
+            </div>
+          </div>
+
+          <div class="card" style="padding:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+              <div style="font-weight:900;">Clasificación estructural del chasis</div>
+              <span class="badge2 ok" id="chassisIssuesBadge">LISTO</span>
+            </div>
+
+            <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:12px;">
+              <div>
+                <label>Estructura</label>
+                <select id="ci_structure">
+                  <option value="">—</option>
+                  <option value="OK">OK</option>
+                  <option value="DANO_LEVE">DAÑO LEVE</option>
+                  <option value="DANO_GRAVE">DAÑO GRAVE</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Twistlocks</label>
+                <select id="ci_twistlocks">
+                  <option value="">—</option>
+                  <option value="OK">OK</option>
+                  <option value="DANO_LEVE">DAÑO LEVE</option>
+                  <option value="DANO_GRAVE">DAÑO GRAVE</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Patas</label>
+                <select id="ci_landing_gear">
+                  <option value="">—</option>
+                  <option value="OK">OK</option>
+                  <option value="DANO_LEVE">DAÑO LEVE</option>
+                  <option value="DANO_GRAVE">DAÑO GRAVE</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Luces</label>
+                <select id="ci_lights">
+                  <option value="">—</option>
+                  <option value="OK">OK</option>
+                  <option value="UNA_DANADA">UNA DAÑADA</option>
+                  <option value="AMBAS_DANADAS">AMBAS DAÑADAS</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Faldones</label>
+                <select id="ci_mudflap">
+                  <option value="">—</option>
+                  <option value="OK">OK</option>
+                  <option value="DANADO">DAÑADO</option>
+                </select>
+              </div>
+
+              <div>
+                <label>Requiere taller (chasis)</label>
+                <select id="ci_needs_workshop">
+                  <option value="0" selected>No</option>
+                  <option value="1">Sí</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+              <div>
+                <label>Placa configurada</label>
+                <input id="ci_plate_text" type="text" readonly placeholder="Se carga desde el chasis">
+              </div>
+
+              <div>
+                <label>Validación de placa</label>
+                <select id="ci_plate_validation_status">
+                  <option value="">—</option>
+                  <option value="MISMA">MISMA</option>
+                  <option value="DISTINTA">DISTINTA</option>
+                  <option value="NO_TRAE">NO TRAE</option>
+                </select>
+              </div>
+            </div>
+
+            <div id="ciPlateObservedWrap" style="margin-top:12px; display:none;">
+              <label>Placa observada</label>
+              <input id="ci_plate_text_observed" type="text" placeholder="Escribe la placa que trae el chasis">
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Resumen corto de daños del chasis</label>
+              <textarea id="ci_damage_summary" rows="3" placeholder="Ej: twistlock derecho dañado, faldón izquierdo quebrado..."></textarea>
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Comentarios del chequeador</label>
+              <textarea id="ci_comments" rows="3" placeholder="Observaciones adicionales..."></textarea>
+            </div>
+
+            <div style="margin-top:12px;">
+              <label>Comentarios del chofer</label>
+              <textarea id="ci_driver_comments" rows="3" placeholder="Lo que indique el chofer sobre el chasis..."></textarea>
+            </div>
+
+            <div class="help" style="margin-top:10px;">
+              El ticket de clasificación del chasis se imprime siempre. El ticket de taller solo si hay hallazgos.
+            </div>
+
+            <div style="margin-top:14px;">
+              <table class="pos-table">
+                <thead>
+                  <tr>
+                    <th>Posición</th>
+                    <th>Marchamo config</th>
+                    <th>Ingreso marchamo</th>
+                    <th>Llanta config</th>
+                    <th>Ingreso llanta</th>
+                    <th>Estrías</th>
+                    <th>Pinchada</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody id="chassisPosTbody">
+                  <tr><td colspan="8">Selecciona un chasis para cargar llantas.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="containerClassificationSection">
+    <details open style="margin-top:14px;">
+      <summary style="cursor:pointer; font-weight:900;">Condición estructural del contenedor</summary>
+
+      <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+        <div>
+          <label>Barras</label>
+          <select name="bars">
+            <option value="OK" selected>OK</option>
+            <option value="DAÑO_LEVE">DAÑO LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+            <option value="OTRO">OTRO</option>
+          </select>
+        </div>
+
+        <div>
+          <label>Seguros</label>
+          <select name="locks">
+            <option value="OK" selected>OK</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+      </div>
+
+      <label style="margin-top:12px;">Piso (selección múltiple)</label>
+      <div class="card" style="padding:12px; border-radius:16px;">
+        {% set floor_opts = ["OK","HUNDIDO","LEVANTADO","REVENTADO","DESLAMINADO","HUECO"] %}
+        <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px;">
+          {% for f in floor_opts %}
+            <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+              <input type="checkbox" name="floor_flags" value="{{ f }}" {% if f=="OK" %}checked{% endif %}>
+              <span style="font-weight:800;">{{ f }}</span>
+            </label>
+          {% endfor %}
+        </div>
+        <div class="hint" style="margin-top:8px;">Tip: si marcas algo distinto de OK, quita OK.</div>
+      </div>
+
+      <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px;">
+        <div>
+          <label>Astillas</label>
+          <select name="splinters">
+            <option value="NO" selected>NO</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+        <div>
+          <label>Aceite</label>
+          <select name="oil">
+            <option value="NO" selected>NO</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+        <div>
+          <label>Barrido</label>
+          <select name="swept">
+            <option value="SI" selected>SI</option>
+            <option value="NO">NO</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label>Argollas</label>
+        <select name="rings">
+          <option value="SI" selected>SI</option>
+          <option value="NO">NO</option>
+        </select>
+      </div>
+    </details>
+
+    <details open style="margin-top:14px;">
+      <summary style="cursor:pointer; font-weight:900;">Condición general del contenedor</summary>
+
+      <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:10px;">
+        <div>
+          <label>Mal olor</label>
+          <select name="bad_smell">
+            <option value="NO" selected>NO</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+        <div>
+          <label>Suciedad (transferibles)</label>
+          <select name="dirt">
+            <option value="NO" selected>NO</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+        <div>
+          <label>Manchas (transferibles)</label>
+          <select name="stains">
+            <option value="NO" selected>NO</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+        <div>
+          <label>Golpes</label>
+          <select name="hits">
+            <option value="NO" selected>NO</option>
+            <option value="LEVE">LEVE</option>
+            <option value="MEDIO">MEDIO</option>
+            <option value="GRAVE">GRAVE</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;">
+        <label>% Óxido</label>
+        <select name="rust_pct">
+          <option value="0" selected>0</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="15">15</option>
+          <option value="25">25</option>
+          <option value="40">40</option>
+          <option value="50+">50+</option>
+        </select>
+      </div>
+    </details>
+
+    <details style="margin-top:14px;">
+      <summary style="cursor:pointer; font-weight:900;">Marque si presenta o requiere</summary>
+
+      <div class="card" style="padding:12px; border-radius:16px; margin-top:10px;">
+        {% set req_opts = [
+          "HUECO/CORTE TECHO","HUECO/CORTE LATERAL","PARCHE PARED","PARCHE PISO","PARCHE TECHO",
+          "ABOLLADURA GRANDE","PEGAMENTO PAREDES","FILTRACIONES (EMPAQUE / TOP RIEL / PISO)",
+          "POLVO PISO/PAREDES","OBALADO/DEFORME","SUCIEDAD EXCESIVA","HUECOS DE CLAVOS",
+          "REMOCIÓN DE CLAVOS","TORNILLERÍA EXPUESTA","CALCAS IMO","INSECTOS/PLAGA","TELARAÑAS",
+          "DERRAME","LAVAR PARA CARGA DELICADA","CONTENEDOR CARGADO","RETORNO A CALDERA","RETORNO A LIMÓN",
+          "APTO PARA CARTÓN","NO USAR","NINGUNA"
+        ] %}
+
+        <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
+          {% for o in req_opts %}
+            <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+              <input type="checkbox" name="requires_flags" value="{{ o }}">
+              <span style="font-weight:800;">{{ o }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <div class="hint" style="margin-top:10px;">
+          Tip rápido: si marcas “NINGUNA”, desmarca las demás (lo hace automático al guardar).
+        </div>
+      </div>
+    </details>
+
+    <h3 style="margin-top:18px;">Clasificación final del contenedor</h3>
+
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+      <div>
+        <label>Clasificación (opcional)</label>
+        <select name="final_grade">
+          <option value="" selected>—</option>
+          <option value="A+">A+</option>
+          <option value="A-">A-</option>
+          <option value="B+">B+</option>
+          <option value="B-">B-</option>
+          <option value="C">C</option>
+          <option value="A2">A2</option>
+          <option value="B2">B2</option>
+          <option value="CHATARRA">CHATARRA</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Requiere servicio de taller (contenedor)</label>
+        <select id="needs_workshop" name="needs_workshop">
+          <option value="0" selected>No</option>
+          <option value="1">Sí</option>
         </select>
       </div>
     </div>
 
-    <div style="margin-top:12px;">
-      <label>% Óxido</label>
-      <select name="rust_pct">
-        <option value="0" selected>0</option>
-        <option value="5">5</option>
-        <option value="10">10</option>
-        <option value="15">15</option>
-        <option value="25">25</option>
-        <option value="40">40</option>
-        <option value="50+">50+</option>
-      </select>
-    </div>
-  </details>
-
-  <details style="margin-top:14px;">
-    <summary style="cursor:pointer; font-weight:900;">Marque si presenta o requiere</summary>
-
-    <div class="card" style="padding:12px; border-radius:16px; margin-top:10px;">
-      {% set req_opts = [
-        "HUECO/CORTE TECHO","HUECO/CORTE LATERAL","PARCHE PARED","PARCHE PISO","PARCHE TECHO",
-        "ABOLLADURA GRANDE","PEGAMENTO PAREDES","FILTRACIONES (EMPAQUE / TOP RIEL / PISO)",
-        "POLVO PISO/PAREDES","OBALADO/DEFORME","SUCIEDAD EXCESIVA","HUECOS DE CLAVOS",
-        "REMOCIÓN DE CLAVOS","TORNILLERÍA EXPUESTA","CALCAS IMO","INSECTOS/PLAGA","TELARAÑAS",
-        "DERRAME","LAVAR PARA CARGA DELICADA","CONTENEDOR CARGADO","RETORNO A CALDERA","RETORNO A LIMÓN",
-        "APTO PARA CARTÓN","NO USAR","NINGUNA"
-      ] %}
-
-      <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
-        {% for o in req_opts %}
-          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
-            <input type="checkbox" name="requires_flags" value="{{ o }}">
-            <span style="font-weight:800;">{{ o }}</span>
-          </label>
-        {% endfor %}
-      </div>
-
-      <div class="hint" style="margin-top:10px;">
-        Tip rápido: si marcas “NINGUNA”, desmarca las demás (lo hace automático al guardar).
-      </div>
-    </div>
-  </details>
-
-  <h3 style="margin-top:18px;">Clasificación final del contenedor</h3>
-
-  <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
-    <div>
-      <label>Clasificación (opcional)</label>
-      <select name="final_grade">
-        <option value="" selected>—</option>
-        <option value="A+">A+</option>
-        <option value="A-">A-</option>
-        <option value="B+">B+</option>
-        <option value="B-">B-</option>
-        <option value="C">C</option>
-        <option value="A2">A2</option>
-        <option value="B2">B2</option>
-        <option value="CHATARRA">CHATARRA</option>
-      </select>
-    </div>
-
-    <div>
-      <label>Requiere servicio de taller (contenedor)</label>
-      <select id="needs_workshop" name="needs_workshop">
-        <option value="0" selected>No</option>
-        <option value="1">Sí</option>
-      </select>
-    </div>
-  </div>
-
-  <div id="workshopBox" style="display:none; margin-top:12px;">
-    <label>Servicios de taller (selección múltiple)</label>
-    <div class="card" style="padding:12px; border-radius:16px;">
-      {% set wk_opts = [
-        "LAVADO","LAVADO ESPECIAL","SELLAR TOP RIEL","SELLAR PISO","SELLAR EMPAQUE","QUITAR CLAVOS",
-        "SOLDAR","ENDEREZAR PANEL","CORREGIR SEGURO","PINTURA PARCIAL","PINTURA TOTAL"
-      ] %}
-      <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
-        {% for w in wk_opts %}
-          <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
-            <input type="checkbox" name="workshop_services" value="{{ w }}">
-            <span style="font-weight:800;">{{ w }}</span>
-          </label>
-        {% endfor %}
+    <div id="workshopBox" style="display:none; margin-top:12px;">
+      <label>Servicios de taller (selección múltiple)</label>
+      <div class="card" style="padding:12px; border-radius:16px;">
+        {% set wk_opts = [
+          "LAVADO","LAVADO ESPECIAL","SELLAR TOP RIEL","SELLAR PISO","SELLAR EMPAQUE","QUITAR CLAVOS",
+          "SOLDAR","ENDEREZAR PANEL","CORREGIR SEGURO","PINTURA PARCIAL","PINTURA TOTAL"
+        ] %}
+        <div style="display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px;">
+          {% for w in wk_opts %}
+            <label class="chip" style="display:flex; gap:10px; align-items:center; padding:10px 12px; border-radius:14px; border:1px solid rgba(255,255,255,.08); cursor:pointer;">
+              <input type="checkbox" name="workshop_services" value="{{ w }}">
+              <span style="font-weight:800;">{{ w }}</span>
+            </label>
+          {% endfor %}
+        </div>
       </div>
     </div>
   </div>
 
-  <h3 style="margin-top:18px;">Ubicación en predio</h3>
+  <div id="yardPositionSection">
+    <h3 style="margin-top:18px;">Ubicación en predio</h3>
 
-  <label>Bloque</label>
-  <select id="blockSelect" name="block" required>
-    {% for b in blocks %}
-      <option value="{{ b.code }}">{{ b.code }}</option>
-    {% endfor %}
-  </select>
-
-  <label>Estiba (1 a 15)</label>
-  <select id="baySelect" name="bay_number" required></select>
-
-  <label>Modo de colocación</label>
-  <select id="placementMode" name="placement_mode">
-    <option value="auto" selected>Automática (primer espacio libre desde el fondo)</option>
-    <option value="manual">Manual (seleccionar fila y nivel)</option>
-  </select>
-
-  <div id="manualBox" style="display:none;">
-    <label>Fila (1 = fondo ... 20 = frente)</label>
-    <select name="depth_row">
-      {% for i in range(1, 21) %}
-        <option value="{{ i }}">{{ i }}</option>
+    <label>Bloque</label>
+    <select id="blockSelect" name="block">
+      {% for b in blocks %}
+        <option value="{{ b.code }}">{{ b.code }}</option>
       {% endfor %}
     </select>
 
-    <label>Nivel (1 a 4)</label>
-    <select name="tier">
-      {% for i in range(1, 5) %}
-        <option value="{{ i }}">{{ i }}</option>
-      {% endfor %}
+    <label>Estiba (1 a 15)</label>
+    <select id="baySelect" name="bay_number"></select>
+
+    <label>Modo de colocación</label>
+    <select id="placementMode" name="placement_mode">
+      <option value="auto" selected>Automática (primer espacio libre desde el fondo)</option>
+      <option value="manual">Manual (seleccionar fila y nivel)</option>
     </select>
+
+    <div id="manualBox" style="display:none;">
+      <label>Fila (1 = fondo ... 20 = frente)</label>
+      <select name="depth_row">
+        {% for i in range(1, 21) %}
+          <option value="{{ i }}">{{ i }}</option>
+        {% endfor %}
+      </select>
+
+      <label>Nivel (1 a 4)</label>
+      <select name="tier">
+        {% for i in range(1, 5) %}
+          <option value="{{ i }}">{{ i }}</option>
+        {% endfor %}
+      </select>
+    </div>
   </div>
 
   <h3 style="margin-top:18px;">Notas rápidas</h3>
   <label>Estado / Observaciones (compatibilidad con lo actual)</label>
   <textarea id="status_notes_textarea" name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
 
-  <h3 style="margin-top:18px;">Fotos</h3>
-<div class="card" style="padding:12px; border-radius:16px;">
-  <label>Fotos del contenedor (Gate In)</label>
-  <input type="file" name="photos" accept="image/*" multiple capture="environment">
-  <div class="hint" style="margin-top:6px;">
-    Estas fotos se verán luego desde el inventario / detalle del contenedor.
-  </div>
-</div>
-
-  <h3 style="margin-top:18px;">Resumen (copiable)</h3>
-  <div class="card" style="padding:12px; border-radius:16px;">
-    <div class="hint">Esto se genera en el frontend para la clasificación del contenedor.</div>
-    <textarea id="summaryPreview" rows="3" readonly style="margin-top:8px; width:100%;"></textarea>
-    <input type="hidden" id="summary_text" name="summary_text" value="">
+  <div id="containerPhotosSection">
+    <h3 style="margin-top:18px;">Fotos</h3>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      <label>Fotos del contenedor (Gate In)</label>
+      <input type="file" name="photos" accept="image/*" multiple capture="environment">
+      <div class="hint" style="margin-top:6px;">
+        Estas fotos se verán luego desde el inventario / detalle del contenedor.
+      </div>
+    </div>
   </div>
 
-  <button type="submit" style="margin-top:14px;">Guardar Gate In y generar ticket</button>
+  <div id="containerSummarySection">
+    <h3 style="margin-top:18px;">Resumen (copiable)</h3>
+    <div class="card" style="padding:12px; border-radius:16px;">
+      <div class="hint">Esto se genera en el frontend para la clasificación del contenedor.</div>
+      <textarea id="summaryPreview" rows="3" readonly style="margin-top:8px; width:100%;"></textarea>
+      <input type="hidden" id="summary_text" name="summary_text" value="">
+    </div>
+  </div>
+
+  <button id="submitBtn" type="submit" style="margin-top:14px;">Guardar Gate In y generar ticket</button>
 </form>
 
 <div class="modal-backdrop" id="chassisModalBackdrop" aria-hidden="true">
@@ -921,6 +1021,18 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const gateInModeRadios = Array.from(document.querySelectorAll('input[name="gate_in_mode"]'));
+  const hasChassisHidden = document.getElementById("has_chassis");
+  const hasContainerHidden = document.getElementById("has_container");
+  const containerSection = document.getElementById("containerSection");
+  const chassisSection = document.getElementById("chassisSection");
+  const containerClassificationSection = document.getElementById("containerClassificationSection");
+  const merchantSection = document.getElementById("merchantSection");
+  const yardPositionSection = document.getElementById("yardPositionSection");
+  const containerPhotosSection = document.getElementById("containerPhotosSection");
+  const containerSummarySection = document.getElementById("containerSummarySection");
+  const submitBtn = document.getElementById("submitBtn");
+
   const blockSelect = document.getElementById("blockSelect");
   const baySelect = document.getElementById("baySelect");
   const placementMode = document.getElementById("placementMode");
@@ -941,6 +1053,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const tareInput = document.getElementById("tare_kg_input");
   const classificationNotesInput = document.getElementById("classification_notes_input");
   const statusNotesTextarea = document.getElementById("status_notes_textarea");
+
+  const driverNameInput = document.getElementById("driver_name");
+  const driverIdInput = document.getElementById("driver_id_doc");
+  const truckPlateInput = document.getElementById("truck_plate");
 
   const needsWorkshop = document.getElementById("needs_workshop");
   const workshopBox = document.getElementById("workshopBox");
@@ -1014,6 +1130,83 @@ document.addEventListener("DOMContentLoaded", () => {
     return (s ?? "").toString();
   }
 
+  function getGateInMode(){
+    const checked = document.querySelector('input[name="gate_in_mode"]:checked');
+    return checked ? checked.value : "CHASSIS_CONTAINER";
+  }
+
+  function modeHasChassis(){
+    const mode = getGateInMode();
+    return mode === "CHASSIS_CONTAINER" || mode === "CHASSIS_ONLY";
+  }
+
+  function modeHasContainer(){
+    const mode = getGateInMode();
+    return mode === "CHASSIS_CONTAINER" || mode === "CONTAINER_ONLY";
+  }
+
+  function modeIsMerchant(){
+    return getGateInMode() === "CONTAINER_ONLY";
+  }
+
+  function setRequired(el, required){
+    if (!el) return;
+    if (required){
+      el.setAttribute("required", "required");
+    } else {
+      el.removeAttribute("required");
+    }
+  }
+
+  function syncGateInMode(){
+    const hasChassis = modeHasChassis();
+    const hasContainer = modeHasContainer();
+    const isMerchant = modeIsMerchant();
+
+    if (hasChassisHidden) hasChassisHidden.value = hasChassis ? "1" : "0";
+    if (hasContainerHidden) hasContainerHidden.value = hasContainer ? "1" : "0";
+
+    if (containerSection) containerSection.classList.toggle("hidden", !hasContainer);
+    if (containerClassificationSection) containerClassificationSection.classList.toggle("hidden", !hasContainer);
+    if (yardPositionSection) yardPositionSection.classList.toggle("hidden", !hasContainer);
+    if (containerPhotosSection) containerPhotosSection.classList.toggle("hidden", !hasContainer);
+    if (containerSummarySection) containerSummarySection.classList.toggle("hidden", !hasContainer);
+
+    if (chassisSection) chassisSection.classList.toggle("hidden", !hasChassis);
+    if (merchantSection) merchantSection.classList.toggle("hidden", !isMerchant);
+
+    setRequired(containerCodeInput, hasContainer);
+    setRequired(blockSelect, hasContainer);
+    setRequired(baySelect, hasContainer);
+
+    setRequired(driverNameInput, isMerchant);
+    setRequired(driverIdInput, isMerchant);
+    setRequired(truckPlateInput, isMerchant);
+
+    if (!hasChassis){
+      if (chassisSearch) chassisSearch.value = "";
+      clearChassisPanel();
+    }
+
+    if (!hasContainer){
+      if (containerCodeInput) containerCodeInput.value = "";
+      clearContainerPrefillHint();
+    }
+
+    if (submitBtn){
+      if (getGateInMode() === "CHASSIS_ONLY"){
+        submitBtn.textContent = "Guardar ingreso de chasis y generar ticket";
+      } else if (getGateInMode() === "CONTAINER_ONLY"){
+        submitBtn.textContent = "Guardar ingreso merchant y generar ticket";
+      } else {
+        submitBtn.textContent = "Guardar Gate In y generar ticket";
+      }
+    }
+
+    buildSummary();
+    syncHiddenChassisPayloads();
+  }
+
   function normalizeText(s){
     return (s || "")
       .toString()
@@ -1056,6 +1249,7 @@ document.addEventListener("DOMContentLoaded", () => {
     el.classList.remove("st-OK","st-GASTADA","st-PINCHADA","st-CAMBIAR","st-NO_APTA");
     el.classList.add(wheelStateClass(st));
   }
+
   function toggleAxles(axles){
     const show3 = Number(axles) === 3;
     if (axle3) axle3.classList.toggle("hidden", !show3);
@@ -1095,6 +1289,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function buildSummary(){
     if (!summaryPreview || !summaryHidden) return;
+
+    if (!modeHasContainer()){
+      summaryPreview.value = "";
+      summaryHidden.value = "";
+      return;
+    }
 
     let floor = getChecked("floor_flags");
     if (floor.includes("OK") && floor.length > 1){
@@ -1228,7 +1428,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function tryPrefillContainer(){
-    if (!containerCodeInput) return;
+    if (!containerCodeInput || !modeHasContainer()) return;
 
     const code = (containerCodeInput.value || "").trim().toUpperCase();
     if (!code) {
@@ -1703,6 +1903,10 @@ document.addEventListener("DOMContentLoaded", () => {
     containerCodeInput.addEventListener("blur", tryPrefillContainer);
   }
 
+  gateInModeRadios.forEach(radio => {
+    radio.addEventListener("change", syncGateInMode);
+  });
+
   document.querySelectorAll('select[name], input[name], textarea[name]').forEach(el => {
     el.addEventListener("change", buildSummary);
     el.addEventListener("input", buildSummary);
@@ -1784,7 +1988,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   if (form) {
-    form.addEventListener("submit", () => {
+    form.addEventListener("submit", (e) => {
+      syncGateInMode();
+
+      if (modeHasChassis() && !selectedChassisId){
+        e.preventDefault();
+        alert("Debes cargar un chasis para este tipo de ingreso.");
+        return;
+      }
+
+      if (modeIsMerchant()){
+        if (!driverNameInput?.value.trim() || !driverIdInput?.value.trim() || !truckPlateInput?.value.trim()){
+          e.preventDefault();
+          alert("Para ingreso Merchant debes ingresar chofer, cédula y placa.");
+          return;
+        }
+      }
+
       buildSummary();
       syncHiddenChassisPayloads();
     });
@@ -1795,6 +2015,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (blockSelect) loadBaysForBlock(blockSelect.value);
   syncMaxGross();
+  syncGateInMode();
   buildSummary();
 });
 </script>
