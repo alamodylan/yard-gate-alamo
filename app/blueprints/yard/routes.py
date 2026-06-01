@@ -1176,16 +1176,32 @@ def _format_axle_seal_difference_lines(differences):
     lines = []
 
     for d in differences:
-        side = d.get("side_code")
-        label = labels.get(side, side)
+        side = d.get("side")   # ← antes side_code
+        label = labels.get(side, side or "Desconocido")
 
         scanned = d.get("scanned") or []
-        scanned_txt = " / ".join(scanned) if scanned else "NO INGRESADO"
+        expected = d.get("expected") or []
 
-        lines.append(f"{label}: MARCHAMOS NO COINCIDEN. ESCANEADO: {scanned_txt}")
+        scanned_txt = (
+            " / ".join(str(x) for x in scanned)
+            if scanned else
+            "NO INGRESADO"
+        )
+
+        expected_txt = (
+            " / ".join(str(x) for x in expected)
+            if expected else
+            "NO CONFIGURADO"
+        )
+
+        lines.append(
+            f"{label}: MARCHAMOS NO COINCIDEN. "
+            f"ESCANEADO: {scanned_txt} | "
+            f"CONFIGURADO: {expected_txt}"
+        )
 
     return lines
-
+    
 def _enqueue_print_job(
     *,
     payload_text: str,
