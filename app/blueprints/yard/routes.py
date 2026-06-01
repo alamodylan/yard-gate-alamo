@@ -1252,3 +1252,16 @@ def _build_merchant_gate_in_ticket_text(
     lines.append("================================")
 
     return "\n".join(lines)
+
+def _send_ticket_to_print_agent(payload_text: str) -> bool:
+    import requests
+
+    try:
+        resp = requests.post(
+            "http://192.168.80.123:9109/print",
+            json={"payload": payload_text},
+            timeout=3,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False

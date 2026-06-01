@@ -41,8 +41,9 @@ from .routes import (
     _save_axle_seals_for_event,
     _compare_axle_seals,
     _format_axle_seal_difference_lines,
-    _enqueue_print_job,
     _build_merchant_gate_in_ticket_text,
+    _send_ticket_to_print_agent,
+    _enqueue_print_job,
 )
 
 
@@ -915,6 +916,8 @@ def gate_in_post():
             )
             print_job_ids.append(print_job_id)
 
+            _send_ticket_to_print_agent(chassis_classification_ticket_payload)
+
         audit_log(
             current_user.id,
             "CHASSIS_CLASSIFIED_FROM_GATE_IN",
@@ -954,6 +957,7 @@ def gate_in_post():
             summary_text=summary_text or None,
             classification_notes=classification_notes or None,
         )
+        
 
         print_job_id = _enqueue_print_job(
             payload_text=merchant_ticket_payload,
@@ -962,6 +966,8 @@ def gate_in_post():
             ticket_id=None,
         )
         print_job_ids.append(print_job_id)
+
+        _send_ticket_to_print_agent(chassis_classification_ticket_payload)
 
     # =========================
     # Fotos contenedor
