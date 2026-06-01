@@ -967,7 +967,7 @@ def gate_in_post():
         )
         print_job_ids.append(print_job_id)
 
-        _send_ticket_to_print_agent(chassis_classification_ticket_payload)
+        _send_ticket_to_print_agent(merchant_ticket_payload)
 
     # =========================
     # Fotos contenedor
