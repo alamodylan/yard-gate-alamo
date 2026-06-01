@@ -1029,10 +1029,15 @@ def _parse_axle_seals_payload(raw_value):
 def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None):
     """
     Carga marchamos por eje/lado desde tire_readings.
+
     Retorna:
     {
-        "AX1_L": {"seal_1": "...", "seal_2": "..."}
+        "AX1_L": {"seal_1": "...", "seal_2": "..."},
+        "AX1_R": {"seal_1": "...", "seal_2": "..."},
+        ...
     }
+
+    Agrupa tanto posiciones IN como OUT en el mismo eje/lado.
     """
     where_event_id = ""
     params = {
@@ -1050,7 +1055,9 @@ def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None
         SELECT
             tp.position_code,
             tr.seal_1,
-            tr.seal_2
+            tr.seal_2,
+            tr.recorded_at,
+            tr.id
         FROM yard_gate_alamo.tire_readings tr
         JOIN yard_gate_alamo.tire_positions tp
           ON tp.id = tr.tire_position_id
@@ -1062,19 +1069,61 @@ def _get_axle_seals_for_event(*, chassis_id: int, event_type: str, event_id=None
 
     rows = db.session.execute(sql, params).mappings().all()
 
-    result = {}
+    position_to_side = {
+        "AX1_L_IN": "AX1_L",
+        "AX1_L_OUT": "AX1_L",
+        "AX1_R_IN": "AX1_R",
+        "AX1_R_OUT": "AX1_R",
+
+        "AX2_L_IN": "AX2_L",
+        "AX2_L_OUT": "AX2_L",
+        "AX2_R_IN": "AX2_R",
+        "AX2_R_OUT": "AX2_R",
+
+        "AX3_L_IN": "AX3_L",
+        "AX3_L_OUT": "AX3_L",
+        "AX3_R_IN": "AX3_R",
+        "AX3_R_OUT": "AX3_R",
+
+        "A1_IN": "AX1_L",
+        "A1_OUT": "AX1_L",
+        "A2_IN": "AX2_L",
+        "A2_OUT": "AX2_L",
+        "A3_IN": "AX3_L",
+        "A3_OUT": "AX3_L",
+    }
+
+    grouped = {}
 
     for r in rows:
-        side_code = POSITION_TO_SIDE.get((r["position_code"] or "").strip().upper())
+        position_code = (r["position_code"] or "").strip().upper()
+        side_code = position_to_side.get(position_code)
+
         if not side_code:
             continue
 
-        if side_code in result:
+        seal_values = [
+            _normalize_seal_value(r["seal_1"]),
+            _normalize_seal_value(r["seal_2"]),
+        ]
+
+        seal_values = [v for v in seal_values if v]
+
+        if not seal_values:
             continue
 
+        grouped.setdefault(side_code, [])
+
+        for seal in seal_values:
+            if seal not in grouped[side_code]:
+                grouped[side_code].append(seal)
+
+    result = {}
+
+    for side_code, seals in grouped.items():
         result[side_code] = {
-            "seal_1": _normalize_seal_value(r["seal_1"]),
-            "seal_2": _normalize_seal_value(r["seal_2"]),
+            "seal_1": seals[0] if len(seals) > 0 else "",
+            "seal_2": seals[1] if len(seals) > 1 else "",
         }
 
     return result
