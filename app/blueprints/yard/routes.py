@@ -960,13 +960,6 @@ def _build_chassis_gate_in_ticket_text(
     return "\n".join(lines)
 
 def _normalize_seal_value(value):
-    """
-    Normaliza marchamos:
-    - Quita espacios al inicio/final
-    - Quita espacios internos
-    - Quita guiones
-    - Convierte a mayúscula
-    """
     if value is None:
         return ""
 
@@ -1144,39 +1137,43 @@ def _save_axle_seals_for_event(
 
 def _compare_axle_seals(expected: dict, scanned: dict):
     """
-    Compara marchamos por eje/lado sin importar el orden.
+    Compara marchamos por eje/lado sin importar orden, espacios, guiones
+    ni diferencias de formato.
 
-    Ejemplo:
-    Esperado: 123 / 456
-    Escaneado: 456 / 123
-    Resultado: OK
+    Solo marca diferencia si el conjunto real de números cambia.
     """
     differences = []
 
-    all_sides = sorted(set((expected or {}).keys()) | set((scanned or {}).keys()))
+    expected = expected or {}
+    scanned = scanned or {}
 
-    for side in all_sides:
+    for side in sorted(set(expected.keys()) | set(scanned.keys())):
         exp_row = expected.get(side) or {}
         scn_row = scanned.get(side) or {}
 
-        expected_values = [
-            _normalize_seal_value(exp_row.get("seal_1")),
-            _normalize_seal_value(exp_row.get("seal_2")),
-        ]
+        expected_values = []
+        scanned_values = []
 
-        scanned_values = [
-            _normalize_seal_value(scn_row.get("seal_1")),
-            _normalize_seal_value(scn_row.get("seal_2")),
-        ]
+        for key in ("seal_1", "seal_2"):
+            v = _normalize_seal_value(exp_row.get(key))
+            if v:
+                expected_values.append(v)
 
-        expected_values = sorted([v for v in expected_values if v])
-        scanned_values = sorted([v for v in scanned_values if v])
+        for key in ("seal_1", "seal_2"):
+            v = _normalize_seal_value(scn_row.get(key))
+            if v:
+                scanned_values.append(v)
 
-        if expected_values != scanned_values:
+        expected_set = set(expected_values)
+        scanned_set = set(scanned_values)
+
+        if expected_set != scanned_set:
             differences.append({
                 "side": side,
-                "expected": expected_values,
-                "scanned": scanned_values,
+                "expected": sorted(expected_set),
+                "scanned": sorted(scanned_set),
+                "missing": sorted(expected_set - scanned_set),
+                "extra": sorted(scanned_set - expected_set),
             })
 
     return differences
@@ -1199,13 +1196,25 @@ def _format_axle_seal_difference_lines(differences):
         label = labels.get(side, side or "Eje desconocido")
 
         scanned = d.get("scanned") or []
-        scanned_clean = [_normalize_seal_value(x) for x in scanned if _normalize_seal_value(x)]
 
-        scanned_txt = " / ".join(scanned_clean) if scanned_clean else "NO INGRESADO"
+        scanned_clean = [
+            _normalize_seal_value(x)
+            for x in scanned
+            if _normalize_seal_value(x)
+        ]
 
-        lines.append(
-            f"! {label}: MARCHAMOS NO COINCIDEN. ESCANEADO: {scanned_txt}"
+        scanned_txt = (
+            " / ".join(scanned_clean)
+            if scanned_clean
+            else "NO INGRESADO"
         )
+
+        lines.append(f"! {label}")
+        lines.append("MARCHAMOS NO COINCIDEN")
+
+        if scanned_txt:
+            lines.append(f"ESCANEADO:")
+            lines.append(scanned_txt)
 
     return lines
 
