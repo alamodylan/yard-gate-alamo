@@ -960,7 +960,26 @@ def _build_chassis_gate_in_ticket_text(
     return "\n".join(lines)
 
 def _normalize_seal_value(value):
-    return (value or "").strip().upper()
+    """
+    Normaliza marchamos:
+    - Quita espacios al inicio/final
+    - Quita espacios internos
+    - Quita guiones
+    - Convierte a mayúscula
+    """
+    if value is None:
+        return ""
+
+    return (
+        str(value)
+        .strip()
+        .upper()
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("\t", "")
+        .replace("\n", "")
+        .replace("\r", "")
+    )
 
 
 def _normalize_seal_pair(seal_1, seal_2):
@@ -1176,32 +1195,20 @@ def _format_axle_seal_difference_lines(differences):
     lines = []
 
     for d in differences:
-        side = d.get("side")   # ← antes side_code
-        label = labels.get(side, side or "Desconocido")
+        side = d.get("side") or d.get("side_code")
+        label = labels.get(side, side or "Eje desconocido")
 
         scanned = d.get("scanned") or []
-        expected = d.get("expected") or []
+        scanned_clean = [_normalize_seal_value(x) for x in scanned if _normalize_seal_value(x)]
 
-        scanned_txt = (
-            " / ".join(str(x) for x in scanned)
-            if scanned else
-            "NO INGRESADO"
-        )
-
-        expected_txt = (
-            " / ".join(str(x) for x in expected)
-            if expected else
-            "NO CONFIGURADO"
-        )
+        scanned_txt = " / ".join(scanned_clean) if scanned_clean else "NO INGRESADO"
 
         lines.append(
-            f"{label}: MARCHAMOS NO COINCIDEN. "
-            f"ESCANEADO: {scanned_txt} | "
-            f"CONFIGURADO: {expected_txt}"
+            f"! {label}: MARCHAMOS NO COINCIDEN. ESCANEADO: {scanned_txt}"
         )
 
     return lines
-    
+
 def _enqueue_print_job(
     *,
     payload_text: str,
