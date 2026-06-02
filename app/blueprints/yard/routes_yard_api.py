@@ -13,6 +13,338 @@ from app.services.yard_logic import find_first_free_slot
 
 from .routes import _ensure_active_site
 
+# =========================
+# Helpers
+# =========================
+
+def _get_vertical_blockers(*, bay_id: int, depth_row: int, tier: int, site_id: int):
+    """
+    Retorna los contenedores que están encima de una posición específica
+    dentro de la misma estiba y misma fila.
+
+    Regla:
+    Si quiero mover un contenedor en F01/N2,
+    primero deben estar libres N3, N4, etc.
+    """
+
+    blockers = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            ContainerPosition.bay_id == bay_id,
+            ContainerPosition.depth_row == depth_row,
+            ContainerPosition.tier > tier,
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+        )
+        .order_by(ContainerPosition.tier.asc())
+        .all()
+    )
+
+    return [
+        {
+            "container_id": c.id,
+            "container_code": c.code,
+            "depth_row": p.depth_row,
+            "tier": p.tier,
+        }
+        for c, p in blockers
+    ]
+
+def _has_support_below(*, bay_id: int, depth_row: int, tier: int):
+    """
+    Verifica que exista soporte debajo.
+
+    Reglas:
+
+    N1 = siempre válido.
+    N2 requiere N1.
+    N3 requiere N2.
+    N4 requiere N3.
+    """
+
+    if tier <= 1:
+        return True
+
+    below = ContainerPosition.query.filter_by(
+        bay_id=bay_id,
+        depth_row=depth_row,
+        tier=tier - 1
+    ).first()
+
+    return below is not None
+
+def _get_sidepick_access_blockers(*, bay_id: int, depth_row: int, tier: int, site_id: int):
+    """
+    Detecta contenedores que bloquean el acceso horizontal de la sidepick.
+
+    Regla actual asumida:
+    - La sidepick entra desde la fila más externa/mayor.
+    - Para llegar a F01, deben estar libres F02, F03, F04...
+    - Para llegar a F02, deben estar libres F03, F04...
+    - Para llegar a F03, debe estar libre F04...
+    - F04 es la fila más accesible.
+
+    Importante:
+    Este helper NO revisa contenedores encima.
+    Eso ya lo hace _get_vertical_blockers().
+    """
+
+    bay = YardBay.query.get(bay_id)
+    if not bay:
+        return []
+
+    max_depth_rows = int(bay.max_depth_rows or 1)
+
+    # Si está en la fila más externa, no hay bloqueo horizontal.
+    if depth_row >= max_depth_rows:
+        return []
+
+    blockers = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            ContainerPosition.bay_id == bay_id,
+            ContainerPosition.depth_row > depth_row,
+            ContainerPosition.tier >= 1,
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+        )
+        .order_by(ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
+        .all()
+    )
+
+    return [
+        {
+            "container_id": c.id,
+            "container_code": c.code,
+            "depth_row": p.depth_row,
+            "tier": p.tier,
+        }
+        for c, p in blockers
+    ]
+
+def _validate_container_can_be_removed(*, container_id: int, site_id: int):
+    """
+    Valida si un contenedor puede ser retirado/movido desde su posición actual.
+
+    Reglas:
+    1. Debe existir posición actual.
+    2. No debe tener contenedores encima.
+    3. La sidepick debe poder acceder a su fila.
+    """
+
+    current_pos = ContainerPosition.query.filter_by(
+        container_id=container_id
+    ).first()
+
+    if not current_pos:
+        return {
+            "ok": False,
+            "error": "POSITION_NOT_FOUND",
+            "message": "El contenedor no tiene posición registrada en patio.",
+            "blockers": [],
+        }
+
+    vertical_blockers = _get_vertical_blockers(
+        bay_id=current_pos.bay_id,
+        depth_row=current_pos.depth_row,
+        tier=current_pos.tier,
+        site_id=site_id,
+    )
+
+    access_blockers = _get_sidepick_access_blockers(
+        bay_id=current_pos.bay_id,
+        depth_row=current_pos.depth_row,
+        tier=current_pos.tier,
+        site_id=site_id,
+    )
+
+    blockers = []
+
+    for item in vertical_blockers:
+        blockers.append({
+            **item,
+            "reason": "VERTICAL",
+            "message": "Contenedor encima",
+        })
+
+    for item in access_blockers:
+        blockers.append({
+            **item,
+            "reason": "ACCESS",
+            "message": "Bloquea acceso de sidepick",
+        })
+
+    if blockers:
+        return {
+            "ok": False,
+            "error": "CONTAINER_BLOCKED",
+            "message": "El contenedor no puede moverse porque está bloqueado.",
+            "blockers": blockers,
+            "current_position": {
+                "bay_id": current_pos.bay_id,
+                "depth_row": current_pos.depth_row,
+                "tier": current_pos.tier,
+            },
+        }
+
+    return {
+        "ok": True,
+        "blockers": [],
+        "current_position": {
+            "bay_id": current_pos.bay_id,
+            "depth_row": current_pos.depth_row,
+            "tier": current_pos.tier,
+        },
+    }
+
+
+def _validate_container_can_be_placed_at(
+    *,
+    bay_id: int,
+    depth_row: int,
+    tier: int,
+    site_id: int,
+):
+    """
+    Valida si se puede colocar un contenedor en una posición específica.
+
+    Reglas:
+    1. La estiba debe existir.
+    2. La fila y nivel deben estar dentro del rango.
+    3. El slot debe estar libre.
+    4. No se puede colocar flotando: debe tener soporte debajo.
+    5. La sidepick debe poder acceder a esa fila.
+    """
+
+    bay = YardBay.query.filter_by(
+        id=bay_id,
+        site_id=site_id,
+        is_active=True,
+    ).first()
+
+    if not bay:
+        return {
+            "ok": False,
+            "error": "BAY_NOT_FOUND",
+            "message": "La estiba destino no existe o no pertenece al predio actual.",
+            "blockers": [],
+        }
+
+    if depth_row < 1 or depth_row > int(bay.max_depth_rows or 0):
+        return {
+            "ok": False,
+            "error": "ROW_OUT_OF_RANGE",
+            "message": "La fila destino está fuera del rango permitido.",
+            "blockers": [],
+        }
+
+    if tier < 1 or tier > int(bay.max_tiers or 0):
+        return {
+            "ok": False,
+            "error": "TIER_OUT_OF_RANGE",
+            "message": "El nivel destino está fuera del rango permitido.",
+            "blockers": [],
+        }
+
+    occupied = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            ContainerPosition.bay_id == bay_id,
+            ContainerPosition.depth_row == depth_row,
+            ContainerPosition.tier == tier,
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+        )
+        .first()
+    )
+
+    if occupied:
+        c, p = occupied
+        return {
+            "ok": False,
+            "error": "SLOT_OCCUPIED",
+            "message": "La posición destino ya está ocupada.",
+            "blockers": [
+                {
+                    "container_id": c.id,
+                    "container_code": c.code,
+                    "depth_row": p.depth_row,
+                    "tier": p.tier,
+                    "reason": "OCCUPIED",
+                    "message": "Ocupa el slot destino",
+                }
+            ],
+        }
+
+    if not _has_support_below(
+        bay_id=bay_id,
+        depth_row=depth_row,
+        tier=tier,
+    ):
+        return {
+            "ok": False,
+            "error": "NO_SUPPORT_BELOW",
+            "message": "No se puede colocar el contenedor en el aire. Debe existir un contenedor debajo.",
+            "blockers": [],
+        }
+
+    access_blockers = _get_sidepick_access_blockers(
+        bay_id=bay_id,
+        depth_row=depth_row,
+        tier=tier,
+        site_id=site_id,
+    )
+
+    if access_blockers:
+        return {
+            "ok": False,
+            "error": "DESTINATION_NOT_ACCESSIBLE",
+            "message": "La sidepick no puede acceder a la fila destino porque hay contenedores bloqueando el paso.",
+            "blockers": [
+                {
+                    **item,
+                    "reason": "ACCESS",
+                    "message": "Bloquea acceso a la fila destino",
+                }
+                for item in access_blockers
+            ],
+        }
+
+    return {
+        "ok": True,
+        "message": "Destino válido.",
+        "blockers": [],
+        "destination": {
+            "bay_id": bay.id,
+            "bay_code": bay.code,
+            "depth_row": depth_row,
+            "tier": tier,
+        },
+    }
+
+def _yard_validation_error_response(validation: dict, status_code: int = 409):
+    """
+    Convierte una validación operativa del patio en una respuesta JSON uniforme.
+
+    Sirve para:
+    - contenedor bloqueado por otro encima
+    - acceso bloqueado por sidepick
+    - destino sin soporte
+    - slot ocupado
+    - fila/nivel inválido
+    """
+
+    return jsonify({
+        "ok": False,
+        "error": validation.get("error") or "YARD_OPERATION_NOT_ALLOWED",
+        "message": validation.get("message") or "La operación no está permitida por las reglas del patio.",
+        "blockers": validation.get("blockers") or [],
+        "current_position": validation.get("current_position"),
+        "destination": validation.get("destination"),
+    }), status_code
 
 # =========================
 # APIs mapa / bandeja
@@ -294,9 +626,16 @@ def api_bay_row_suggest_tier(bay_code: str, row_number: int):
 def api_place_container():
     """
     Coloca un contenedor en una estiba.
+
     Compatibilidad:
-      - Viejo: { "container_id": 123, "to_bay_code": "A07" } -> AUTO (find_first_free_slot)
+      - Viejo: { "container_id": 123, "to_bay_code": "A07" } -> AUTO
       - Nuevo: { "container_id": 123, "to_bay_code": "A07", "to_depth_row": 10, "to_tier": 2 } -> EXACTO
+
+    Validaciones nuevas:
+      - si el contenedor ya tiene posición, valida que pueda salir
+      - valida destino con reglas sidepick
+      - valida soporte inferior
+      - valida slot ocupado
     """
     site_id = _ensure_active_site()
 
@@ -311,12 +650,38 @@ def api_place_container():
     if not c or not c.is_in_yard or c.site_id != site_id:
         return jsonify({"error": "Contenedor no existe o no está en patio (predio actual)"}), 400
 
-    to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True, site_id=site_id).first()
+    to_bay = YardBay.query.filter_by(
+        code=to_bay_code,
+        is_active=True,
+        site_id=site_id,
+    ).first()
+
     if not to_bay:
         return jsonify({"error": "Estiba destino inválida"}), 400
 
-    db.session.query(YardBay).filter(YardBay.id == to_bay.id).with_for_update().one()
+    db.session.query(YardBay).filter(
+        YardBay.id == to_bay.id
+    ).with_for_update().one()
 
+    # =========================
+    # VALIDAR ORIGEN SOLO SI YA TIENE POSICIÓN
+    # =========================
+    old_pos = ContainerPosition.query.filter_by(
+        container_id=c.id
+    ).first()
+
+    if old_pos:
+        origin_validation = _validate_container_can_be_removed(
+            container_id=c.id,
+            site_id=site_id,
+        )
+
+        if not origin_validation.get("ok"):
+            return _yard_validation_error_response(origin_validation, 409)
+
+    # =========================
+    # RESOLVER DESTINO
+    # =========================
     to_depth_row = data.get("to_depth_row")
     to_tier = data.get("to_tier")
 
@@ -326,24 +691,29 @@ def api_place_container():
             tier = int(to_tier)
         except Exception:
             return jsonify({"error": "Fila/Nivel inválidos"}), 400
-
-        if not (1 <= depth_row <= to_bay.max_depth_rows) or not (1 <= tier <= to_bay.max_tiers):
-            return jsonify({"error": "Fila/Nivel fuera de rango"}), 400
-
-        occupied = ContainerPosition.query.filter_by(
-            bay_id=to_bay.id,
-            depth_row=depth_row,
-            tier=tier
-        ).first()
-        if occupied:
-            return jsonify({"error": "Slot ocupado"}), 409
     else:
         slot = find_first_free_slot(to_bay.id)
         if not slot:
             return jsonify({"error": "Estiba llena"}), 409
+
         depth_row, tier = slot
 
-    old_pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+    # =========================
+    # VALIDAR DESTINO
+    # =========================
+    destination_validation = _validate_container_can_be_placed_at(
+        bay_id=to_bay.id,
+        depth_row=depth_row,
+        tier=tier,
+        site_id=site_id,
+    )
+
+    if not destination_validation.get("ok"):
+        return _yard_validation_error_response(destination_validation, 409)
+
+    # =========================
+    # GUARDAR POSICIÓN ANTERIOR
+    # =========================
     old = None
     if old_pos:
         old_bay = YardBay.query.get(old_pos.bay_id)
@@ -353,7 +723,13 @@ def api_place_container():
             "tier": old_pos.tier,
         }
 
-    ContainerPosition.query.filter_by(container_id=c.id).delete()
+    # =========================
+    # COLOCAR CONTENEDOR
+    # =========================
+    ContainerPosition.query.filter_by(
+        container_id=c.id
+    ).delete()
+
     db.session.add(
         ContainerPosition(
             container_id=c.id,
@@ -373,7 +749,7 @@ def api_place_container():
         depth_row=depth_row,
         tier=tier,
         created_by_user_id=current_user.id,
-        notes="PLACED_BY_BLOCK_UI",
+        notes="PLACED_BY_BLOCK_UI_VALIDATED_SIDEPICK_RULES",
     )
     db.session.add(mv)
 
@@ -384,25 +760,40 @@ def api_place_container():
         c.id,
         {
             "from": old,
-            "to": {"bay_code": to_bay.code, "depth_row": depth_row, "tier": tier},
-            "rule": "AUTO_LAST_AVAILABLE" if (to_depth_row is None or to_tier is None) else "MANUAL_EXACT",
+            "to": {
+                "bay_code": to_bay.code,
+                "depth_row": depth_row,
+                "tier": tier,
+            },
+            "rule": "AUTO_LAST_AVAILABLE_VALIDATED" if (to_depth_row is None or to_tier is None) else "MANUAL_EXACT_VALIDATED",
             "site_id": site_id,
         },
     )
 
     db.session.commit()
-    return jsonify({"ok": True, "bay_code": to_bay.code, "depth_row": depth_row, "tier": tier})
+
+    return jsonify({
+        "ok": True,
+        "bay_code": to_bay.code,
+        "depth_row": depth_row,
+        "tier": tier,
+    })
 
 
 @yard_bp.post("/api/yard/move")
 @login_required
 def api_move_container():
     """
-    Drag & drop (detalle de estiba): mueve contenedor a otra estiba.
-    Payload:
-      { "container_id": 123, "to_bay_code": "B07", "mode": "auto" }
-      o manual:
-      { "container_id": 123, "to_bay_code": "B07", "mode": "manual", "depth_row": 1, "tier": 2 }
+    Drag & drop / movimiento de contenedor.
+
+    Valida:
+    - que el contenedor exista y esté en el predio actual
+    - que pueda salir de su posición actual
+    - que el destino exista
+    - que fila/nivel sean válidos
+    - que el slot esté libre
+    - que no quede flotando
+    - que la sidepick pueda acceder al destino
     """
     site_id = _ensure_active_site()
 
@@ -418,12 +809,33 @@ def api_move_container():
     if not c or not c.is_in_yard or c.site_id != site_id:
         return jsonify({"error": "Contenedor no existe o no está en patio (predio actual)"}), 400
 
-    to_bay = YardBay.query.filter_by(code=to_bay_code, is_active=True, site_id=site_id).first()
+    # =========================
+    # VALIDAR ORIGEN
+    # =========================
+    origin_validation = _validate_container_can_be_removed(
+        container_id=c.id,
+        site_id=site_id,
+    )
+
+    if not origin_validation.get("ok"):
+        return _yard_validation_error_response(origin_validation, 409)
+
+    to_bay = YardBay.query.filter_by(
+        code=to_bay_code,
+        is_active=True,
+        site_id=site_id,
+    ).first()
+
     if not to_bay:
         return jsonify({"error": "Estiba destino inválida"}), 400
 
-    db.session.query(YardBay).filter(YardBay.id == to_bay.id).with_for_update().one()
+    db.session.query(YardBay).filter(
+        YardBay.id == to_bay.id
+    ).with_for_update().one()
 
+    # =========================
+    # RESOLVER DESTINO
+    # =========================
     if mode == "manual":
         try:
             depth_row = int(data.get("depth_row"))
@@ -431,23 +843,33 @@ def api_move_container():
         except Exception:
             return jsonify({"error": "Fila/Nivel inválidos"}), 400
 
-        if not (1 <= depth_row <= to_bay.max_depth_rows) or not (1 <= tier <= to_bay.max_tiers):
-            return jsonify({"error": "Fila/Nivel fuera de rango"}), 400
-
-        occupied = ContainerPosition.query.filter_by(
-            bay_id=to_bay.id,
-            depth_row=depth_row,
-            tier=tier
-        ).first()
-        if occupied:
-            return jsonify({"error": "Slot ocupado"}), 409
     else:
         slot = find_first_free_slot(to_bay.id)
         if not slot:
             return jsonify({"error": "Estiba llena"}), 409
+
         depth_row, tier = slot
 
-    old_pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+    # =========================
+    # VALIDAR DESTINO
+    # =========================
+    destination_validation = _validate_container_can_be_placed_at(
+        bay_id=to_bay.id,
+        depth_row=depth_row,
+        tier=tier,
+        site_id=site_id,
+    )
+
+    if not destination_validation.get("ok"):
+        return _yard_validation_error_response(destination_validation, 409)
+
+    # =========================
+    # GUARDAR POSICIÓN ANTERIOR
+    # =========================
+    old_pos = ContainerPosition.query.filter_by(
+        container_id=c.id
+    ).first()
+
     old = None
     if old_pos:
         old_bay = YardBay.query.get(old_pos.bay_id)
@@ -457,7 +879,13 @@ def api_move_container():
             "tier": old_pos.tier,
         }
 
-    ContainerPosition.query.filter_by(container_id=c.id).delete()
+    # =========================
+    # MOVER CONTENEDOR
+    # =========================
+    ContainerPosition.query.filter_by(
+        container_id=c.id
+    ).delete()
+
     db.session.add(
         ContainerPosition(
             container_id=c.id,
@@ -477,7 +905,7 @@ def api_move_container():
         depth_row=depth_row,
         tier=tier,
         created_by_user_id=current_user.id,
-        notes=None,
+        notes="MOVE_VALIDATED_SIDEPICK_RULES",
     )
     db.session.add(mv)
 
@@ -488,13 +916,25 @@ def api_move_container():
         c.id,
         {
             "from": old,
-            "to": {"bay_code": to_bay.code, "depth_row": depth_row, "tier": tier},
+            "to": {
+                "bay_code": to_bay.code,
+                "depth_row": depth_row,
+                "tier": tier,
+            },
+            "mode": mode,
+            "rule": "SIDE_PICK_VALIDATED",
             "site_id": site_id,
         },
     )
 
     db.session.commit()
-    return jsonify({"ok": True, "bay_code": to_bay.code, "depth_row": depth_row, "tier": tier})
+
+    return jsonify({
+        "ok": True,
+        "bay_code": to_bay.code,
+        "depth_row": depth_row,
+        "tier": tier,
+    })
 
 
 @yard_bp.get("/api/yard/bays/<string:bay_code>/row/<int:row_number>/containers")
