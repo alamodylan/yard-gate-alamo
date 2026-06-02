@@ -625,12 +625,13 @@ def api_bay_row_suggest_tier(bay_code: str, row_number: int):
 @login_required
 def api_yard_valid_destinations():
     """
-    Devuelve los slots realmente válidos para mover/colocar un contenedor,
-    usando las mismas reglas operativas del backend:
+    Devuelve slots realmente válidos para el contenedor seleccionado
+    dentro de un bloque completo, sin hacer consultas por cada slot.
 
+    Reglas:
     - slot libre
-    - soporte inferior
-    - acceso sidepick
+    - no flotar: N2 requiere N1, N3 requiere N2, etc.
+    - acceso sidepick: para llegar a F01, F02/F03/F04... deben estar libres
     - ignora el mismo contenedor seleccionado como bloqueador
     """
 
@@ -644,6 +645,14 @@ def api_yard_valid_destinations():
             "ok": False,
             "error": "CONTAINER_REQUIRED",
             "message": "Debe indicar el contenedor seleccionado.",
+            "destinations": [],
+        }), 400
+
+    if not block_code:
+        return jsonify({
+            "ok": False,
+            "error": "BLOCK_REQUIRED",
+            "message": "Debe indicar el bloque.",
             "destinations": [],
         }), 400
 
@@ -667,60 +676,106 @@ def api_yard_valid_destinations():
             "destinations": [],
         }), 404
 
-    query = YardBay.query.filter_by(
+    block = YardBlock.query.filter_by(
         site_id=site_id,
-        is_active=True,
+        code=block_code,
+    ).first()
+
+    if not block:
+        return jsonify({
+            "ok": False,
+            "error": "BLOCK_NOT_FOUND",
+            "message": "El bloque indicado no existe en el predio actual.",
+            "destinations": [],
+        }), 404
+
+    bays = (
+        YardBay.query
+        .filter_by(
+            site_id=site_id,
+            block_id=block.id,
+            is_active=True,
+        )
+        .order_by(YardBay.bay_number.asc())
+        .all()
     )
 
-    if block_code:
-        block = YardBlock.query.filter_by(
-            site_id=site_id,
-            code=block_code,
-        ).first()
+    bay_ids = [b.id for b in bays]
 
-        if not block:
-            return jsonify({
-                "ok": False,
-                "error": "BLOCK_NOT_FOUND",
-                "message": "El bloque indicado no existe en el predio actual.",
-                "destinations": [],
-            }), 404
+    if not bay_ids:
+        return jsonify({
+            "ok": True,
+            "container_id": container.id,
+            "block": block_code,
+            "destinations": [],
+        })
 
-        query = query.filter(YardBay.block_id == block.id)
+    occupied_rows = (
+        db.session.query(Container, ContainerPosition, YardBay)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .join(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(
+            YardBay.id.in_(bay_ids),
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+            Container.id != container.id,
+        )
+        .all()
+    )
 
-    bays = query.order_by(
-        YardBay.bay_number.asc()
-    ).all()
+    occupied = {}
+
+    for c, p, bay in occupied_rows:
+        occupied.setdefault(bay.id, {})
+        occupied[bay.id][(int(p.depth_row), int(p.tier))] = {
+            "container_id": c.id,
+            "container_code": c.code,
+            "depth_row": int(p.depth_row),
+            "tier": int(p.tier),
+        }
 
     destinations = []
 
     for bay in bays:
         max_rows = int(bay.max_depth_rows or 0)
         max_tiers = int(bay.max_tiers or 0)
+        bay_occ = occupied.get(bay.id, {})
 
         for depth_row in range(1, max_rows + 1):
             for tier in range(1, max_tiers + 1):
 
-                validation = _validate_container_can_be_placed_at(
-                    bay_id=bay.id,
-                    depth_row=depth_row,
-                    tier=tier,
-                    site_id=site_id,
-                    exclude_container_id=container.id,
-                )
+                # 1. Slot ocupado
+                if (depth_row, tier) in bay_occ:
+                    continue
 
-                if validation.get("ok"):
-                    destinations.append({
-                        "bay_id": bay.id,
-                        "bay_code": bay.code,
-                        "depth_row": depth_row,
-                        "tier": tier,
-                    })
+                # 2. No colocar flotando
+                if tier > 1 and (depth_row, tier - 1) not in bay_occ:
+                    continue
+
+                # 3. Acceso sidepick
+                # Para llegar a una fila profunda, no puede haber contenedores
+                # en filas más externas.
+                access_blocked = False
+
+                for (occ_row, occ_tier), item in bay_occ.items():
+                    if occ_row > depth_row:
+                        access_blocked = True
+                        break
+
+                if access_blocked:
+                    continue
+
+                destinations.append({
+                    "bay_id": bay.id,
+                    "bay_code": bay.code,
+                    "depth_row": depth_row,
+                    "tier": tier,
+                })
 
     return jsonify({
         "ok": True,
         "container_id": container.id,
-        "block": block_code or None,
+        "block": block_code,
         "destinations": destinations,
     })
 
