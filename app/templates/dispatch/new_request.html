@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block title %}Nueva Solicitud{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <h2 style="margin:0;">Nueva Solicitud Operativa</h2>
+  <p class="card-sub" style="margin-top:6px;">
+    Registra solicitudes de despacho o vacío para asignación de patio.
+  </p>
+</div>
+
+<form method="POST" class="card card-pad" style="margin-top:14px;">
+  <div class="grid-2">
+    <div>
+      <label>Tipo de solicitud</label>
+      <select name="request_type" required>
+        <option value="DESPACHO">Despacho</option>
+        <option value="VACIO">Vacío</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Booking</label>
+      <input type="text" name="booking" placeholder="Opcional">
+    </div>
+
+    <div>
+      <label>Naviera</label>
+      <select name="shipping_line" required>
+        <option value="">Seleccione</option>
+        {% for s in shipping_lines %}
+          <option value="{{ s.code }}">{{ s.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label>Cliente / Planta</label>
+      <input type="text" name="client_name" placeholder="Cliente o planta">
+    </div>
+
+    <div>
+      <label>Producto</label>
+      <input type="text" name="product_name" placeholder="Opcional">
+    </div>
+
+    <div>
+      <label>Chasis</label>
+      <select name="chassis_type">
+        <option value="">No especificado</option>
+        <option value="2_EJES">2 ejes</option>
+        <option value="3_EJES">3 ejes</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Puerto de salida / destino</label>
+      <select name="port_out">
+        <option value="">No especificado</option>
+        <option value="CALDERA">Caldera</option>
+        <option value="LIMON">Limón</option>
+      </select>
+    </div>
+  </div>
+
+  <div style="margin-top:14px;">
+    <label>Especificaciones especiales</label>
+    <textarea name="special_instructions" rows="3" placeholder="Ej: sale por Caldera, placa, decka, etc."></textarea>
+  </div>
+
+  <hr style="margin:18px 0; border-color:rgba(148,163,184,.18);">
+
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <h3 style="margin:0;">Detalle de solicitud</h3>
+      <p class="card-sub" style="margin-top:6px;">Puedes agregar varias fechas, cantidades o tamaños.</p>
+    </div>
+
+    <button type="button" class="btn" onclick="addLine()">+ Agregar línea</button>
+  </div>
+
+  <div id="linesBox" style="margin-top:12px;"></div>
+
+  <div style="margin-top:18px; display:flex; gap:10px;">
+    <button type="submit" class="btn success">Guardar Solicitud</button>
+    <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Cancelar</a>
+  </div>
+</form>
+
+<template id="lineTemplate">
+  <div class="dispatch-line card" style="padding:12px; margin-top:10px;">
+    <div class="grid-5">
+      <div>
+        <label>Tamaño</label>
+        <select name="line_size[]" required>
+          <option value="">Seleccione</option>
+          {% for s in sizes %}
+            <option value="{{ s.code }}">{{ s.code }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Cantidad</label>
+        <select name="line_quantity[]" required>
+          {% for n in range(1, 21) %}
+            <option value="{{ n }}">{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label>Fecha de carga</label>
+        <input type="date" name="line_date[]" required>
+      </div>
+
+      <div>
+        <label>Hora CR</label>
+        <input type="time" name="line_time[]">
+      </div>
+
+      <div>
+        <label>Condición</label>
+        <select name="line_condition[]" required>
+          <option value="CARGADO">Cargado</option>
+          <option value="VACIO">Vacío</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="margin-top:10px; text-align:right;">
+      <button type="button" class="btn danger small" onclick="removeLine(this)">Eliminar</button>
+    </div>
+  </div>
+</template>
+
+<script>
+function addLine() {
+  const tpl = document.getElementById("lineTemplate");
+  const box = document.getElementById("linesBox");
+  const clone = tpl.content.cloneNode(true);
+  box.appendChild(clone);
+}
+
+function removeLine(btn) {
+  const line = btn.closest(".dispatch-line");
+  if (line) line.remove();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  addLine();
+});
+</script>
+
+<style>
+.grid-2 {
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
+}
+
+.grid-5 {
+  display:grid;
+  grid-template-columns:1.2fr .8fr 1fr 1fr 1fr;
+  gap:10px;
+}
+
+@media (max-width: 900px) {
+  .grid-2,
+  .grid-5 {
+    grid-template-columns:1fr;
+  }
+}
+</style>
+{% endblock %}

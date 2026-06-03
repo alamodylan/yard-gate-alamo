@@ -1,0 +1,430 @@
+# app/blueprints/dispatch/routes.py
+
+from datetime import datetime, date, time
+
+from flask import render_template, request, redirect, url_for, flash, session, abort
+from flask_login import login_required, current_user
+from app.models.container import Container, ContainerPosition
+from app.models.container_classification import ContainerClassification
+from app.models.dispatch import DispatchAssignment, UserNotification
+from app.blueprints.dispatch import dispatch_bp
+from app.blueprints.yard import YardBay
+from app.extensions import db
+from app.models.site import Site, UserSite
+from app.models.dispatch import (
+    DispatchContainerSize,
+    ShippingLine,
+    DispatchRequest,
+    DispatchRequestLine,
+)
+
+
+def _allowed_sites_for_user(user):
+    if getattr(user, "role", None) == "admin":
+        return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
+
+    return (
+        db.session.query(Site)
+        .join(UserSite, UserSite.site_id == Site.id)
+        .filter(UserSite.user_id == user.id, Site.is_active == True)  # noqa: E712
+        .order_by(Site.name.asc())
+        .all()
+    )
+
+
+def _get_active_site_id():
+    return session.get("active_site_id")
+
+
+def _set_active_site_id(site_id: int):
+    session["active_site_id"] = int(site_id)
+
+
+def _ensure_active_site():
+    allowed = _allowed_sites_for_user(current_user)
+
+    if not allowed:
+        abort(403)
+
+    active_id = _get_active_site_id()
+    allowed_ids = {s.id for s in allowed}
+
+    if not active_id or active_id not in allowed_ids:
+        _set_active_site_id(allowed[0].id)
+        active_id = allowed[0].id
+
+    return active_id
+
+
+def _parse_date(value: str):
+    value = (value or "").strip()
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%d").date()
+
+
+def _parse_time(value: str):
+    value = (value or "").strip()
+    if not value:
+        return None
+    return datetime.strptime(value, "%H:%M").time()
+
+
+@dispatch_bp.get("/")
+@login_required
+def index():
+    return redirect(url_for("dispatch.pending_requests"))
+
+
+@dispatch_bp.route("/new", methods=["GET", "POST"])
+@login_required
+def new_request():
+    site_id = _ensure_active_site()
+
+    sizes = (
+        DispatchContainerSize.query
+        .filter_by(is_active=True)
+        .order_by(DispatchContainerSize.sort_order.asc())
+        .all()
+    )
+
+    shipping_lines = (
+        ShippingLine.query
+        .filter_by(is_active=True)
+        .order_by(ShippingLine.sort_order.asc())
+        .all()
+    )
+
+    if request.method == "GET":
+        return render_template(
+            "dispatch/new_request.html",
+            sizes=sizes,
+            shipping_lines=shipping_lines,
+        )
+
+    request_type = (request.form.get("request_type") or "DESPACHO").strip().upper()
+    booking = (request.form.get("booking") or "").strip().upper() or None
+    shipping_line = (request.form.get("shipping_line") or "").strip().upper()
+
+    client_name = (request.form.get("client_name") or "").strip().upper() or None
+    product_name = (request.form.get("product_name") or "").strip().upper() or None
+
+    chassis_type = (request.form.get("chassis_type") or "").strip().upper() or None
+    port_out = (request.form.get("port_out") or "").strip().upper() or None
+    special_instructions = (request.form.get("special_instructions") or "").strip().upper() or None
+
+    line_sizes = request.form.getlist("line_size[]")
+    line_quantities = request.form.getlist("line_quantity[]")
+    line_dates = request.form.getlist("line_date[]")
+    line_times = request.form.getlist("line_time[]")
+    line_conditions = request.form.getlist("line_condition[]")
+
+    if request_type not in {"DESPACHO", "VACIO"}:
+        flash("Tipo de solicitud inválido.", "danger")
+        return redirect(url_for("dispatch.new_request"))
+
+    if not shipping_line:
+        flash("Debe seleccionar una naviera.", "danger")
+        return redirect(url_for("dispatch.new_request"))
+
+    valid_sizes = {s.code for s in sizes}
+    valid_shipping_lines = {s.code for s in shipping_lines}
+
+    if shipping_line not in valid_shipping_lines:
+        flash("Naviera inválida.", "danger")
+        return redirect(url_for("dispatch.new_request"))
+
+    clean_lines = []
+
+    for idx, size_code in enumerate(line_sizes):
+        size_code = (size_code or "").strip().upper()
+
+        if not size_code:
+            continue
+
+        try:
+            quantity = int(line_quantities[idx])
+        except Exception:
+            quantity = 0
+
+        load_date = _parse_date(line_dates[idx] if idx < len(line_dates) else "")
+        load_time = _parse_time(line_times[idx] if idx < len(line_times) else "")
+        condition = (
+            line_conditions[idx]
+            if idx < len(line_conditions)
+            else ("VACIO" if request_type == "VACIO" else "CARGADO")
+        )
+        condition = (condition or "").strip().upper()
+
+        if size_code not in valid_sizes:
+            flash(f"Tamaño inválido: {size_code}", "danger")
+            return redirect(url_for("dispatch.new_request"))
+
+        if quantity < 1 or quantity > 20:
+            flash("La cantidad debe estar entre 1 y 20.", "danger")
+            return redirect(url_for("dispatch.new_request"))
+
+        if not load_date:
+            flash("Cada línea debe tener fecha de carga.", "danger")
+            return redirect(url_for("dispatch.new_request"))
+
+        if condition not in {"CARGADO", "VACIO"}:
+            condition = "VACIO" if request_type == "VACIO" else "CARGADO"
+
+        clean_lines.append({
+            "container_size": size_code,
+            "quantity": quantity,
+            "load_date": load_date,
+            "load_time": load_time,
+            "condition_type": condition,
+        })
+
+    if not clean_lines:
+        flash("Debe agregar al menos una línea de solicitud.", "danger")
+        return redirect(url_for("dispatch.new_request"))
+
+    req = DispatchRequest(
+        site_id=site_id,
+        request_type=request_type,
+        booking=booking,
+        shipping_line=shipping_line,
+        client_name=client_name,
+        product_name=product_name,
+        chassis_type=chassis_type,
+        port_out=port_out,
+        special_instructions=special_instructions,
+        status="PENDIENTE",
+        requested_by_user_id=current_user.id,
+    )
+
+    db.session.add(req)
+    db.session.flush()
+
+    for line in clean_lines:
+        db.session.add(
+            DispatchRequestLine(
+                request_id=req.id,
+                container_size=line["container_size"],
+                quantity=line["quantity"],
+                load_date=line["load_date"],
+                load_time=line["load_time"],
+                condition_type=line["condition_type"],
+                status="PENDIENTE",
+            )
+        )
+
+    db.session.commit()
+
+    flash(f"Solicitud #{req.id} creada correctamente.", "success")
+    return redirect(url_for("dispatch.pending_requests"))
+
+
+@dispatch_bp.get("/pending")
+@login_required
+def pending_requests():
+    site_id = _ensure_active_site()
+
+    requests = (
+        DispatchRequest.query
+        .filter(
+            DispatchRequest.site_id == site_id,
+            DispatchRequest.status.in_(["PENDIENTE", "PARCIAL"]),
+        )
+        .order_by(DispatchRequest.requested_at.desc())
+        .all()
+    )
+
+    return render_template(
+        "dispatch/pending_requests.html",
+        requests=requests,
+    )
+
+@dispatch_bp.get("/request/<int:request_id>")
+@login_required
+def request_detail(request_id: int):
+    site_id = _ensure_active_site()
+
+    req = DispatchRequest.query.get_or_404(request_id)
+
+    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    line_data = []
+
+    for line in req.lines:
+        assigned_count = len(line.assignments)
+        pending_count = max(int(line.quantity or 0) - assigned_count, 0)
+
+        latest_classification_subquery = (
+            db.session.query(
+                ContainerClassification.container_id,
+                db.func.max(ContainerClassification.classified_at).label("max_classified_at")
+            )
+            .filter(ContainerClassification.site_id == site_id)
+            .group_by(ContainerClassification.container_id)
+            .subquery()
+        )
+
+        available_rows = (
+            db.session.query(Container, ContainerPosition, YardBay, ContainerClassification)
+            .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
+            .outerjoin(YardBay, YardBay.id == ContainerPosition.bay_id)
+            .outerjoin(
+                latest_classification_subquery,
+                latest_classification_subquery.c.container_id == Container.id
+            )
+            .outerjoin(
+                ContainerClassification,
+                db.and_(
+                    ContainerClassification.container_id == Container.id,
+                    ContainerClassification.classified_at == latest_classification_subquery.c.max_classified_at,
+                )
+            )
+            .filter(
+                Container.site_id == site_id,
+                Container.is_in_yard == True,  # noqa: E712
+                Container.size == line.container_size,
+                db.func.coalesce(Container.dispatch_status, "NORMAL") == "NORMAL",
+            )
+            .order_by(Container.code.asc())
+            .all()
+        )
+
+        available = []
+
+        for c, pos, bay, cls in available_rows:
+            shipping_line = ((cls.shipping_line if cls else "") or "").strip().upper()
+
+            if req.shipping_line and shipping_line and shipping_line != req.shipping_line:
+                continue
+
+            available.append({
+                "id": c.id,
+                "code": c.code,
+                "size": c.size,
+                "shipping_line": shipping_line or "SIN NAVIERA",
+                "position": None if not pos else {
+                    "bay_code": bay.code if bay else None,
+                    "depth_row": pos.depth_row,
+                    "tier": pos.tier,
+                },
+            })
+
+        line_data.append({
+            "line": line,
+            "assigned_count": assigned_count,
+            "pending_count": pending_count,
+            "available": available,
+        })
+
+    return render_template(
+        "dispatch/request_detail.html",
+        req=req,
+        line_data=line_data,
+    )
+
+
+@dispatch_bp.post("/request/<int:request_id>/assign/<int:line_id>")
+@login_required
+def assign_containers(request_id: int, line_id: int):
+    site_id = _ensure_active_site()
+
+    req = DispatchRequest.query.get_or_404(request_id)
+
+    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    line = DispatchRequestLine.query.get_or_404(line_id)
+
+    if line.request_id != req.id:
+        abort(404)
+
+    selected_ids = request.form.getlist("container_ids[]")
+
+    if not selected_ids:
+        flash("Debe seleccionar al menos un contenedor.", "warning")
+        return redirect(url_for("dispatch.request_detail", request_id=req.id))
+
+    already_assigned = len(line.assignments)
+    pending_count = max(int(line.quantity or 0) - already_assigned, 0)
+
+    if pending_count <= 0:
+        flash("Esta línea ya está completamente asignada.", "info")
+        return redirect(url_for("dispatch.request_detail", request_id=req.id))
+
+    selected_ids = [int(x) for x in selected_ids if str(x).isdigit()]
+    selected_ids = selected_ids[:pending_count]
+
+    containers = (
+        Container.query
+        .filter(
+            Container.id.in_(selected_ids),
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+            Container.size == line.container_size,
+            db.func.coalesce(Container.dispatch_status, "NORMAL") == "NORMAL",
+        )
+        .all()
+    )
+
+    if not containers:
+        flash("No se encontraron contenedores válidos para asignar.", "danger")
+        return redirect(url_for("dispatch.request_detail", request_id=req.id))
+
+    assigned_codes = []
+
+    for c in containers:
+        assignment = DispatchAssignment(
+            request_line_id=line.id,
+            container_id=c.id,
+            assigned_by_user_id=current_user.id,
+            status="ASIGNADO",
+        )
+        db.session.add(assignment)
+
+        if line.condition_type == "VACIO" or req.request_type == "VACIO":
+            c.dispatch_status = "PARA_VACIO"
+        else:
+            c.dispatch_status = "PARA_DESPACHO"
+
+        c.dispatch_marked_at = datetime.utcnow()
+        c.dispatch_marked_by_user_id = current_user.id
+
+        assigned_codes.append(c.code)
+
+    db.session.flush()
+
+    total_assigned_after = len(line.assignments) + len(containers)
+
+    if total_assigned_after >= int(line.quantity or 0):
+        line.status = "ASIGNADA"
+    else:
+        line.status = "PARCIAL"
+
+    all_lines = DispatchRequestLine.query.filter_by(request_id=req.id).all()
+    assigned_lines = [l for l in all_lines if l.status == "ASIGNADA"]
+    partial_lines = [l for l in all_lines if l.status == "PARCIAL"]
+
+    if len(assigned_lines) == len(all_lines):
+        req.status = "ASIGNADA"
+    elif assigned_lines or partial_lines:
+        req.status = "PARCIAL"
+    else:
+        req.status = "PENDIENTE"
+
+    req.updated_at = datetime.utcnow()
+
+    notification = UserNotification(
+        site_id=site_id,
+        user_id=req.requested_by_user_id,
+        title=f"Solicitud #{req.id} actualizada",
+        message="Se asignaron contenedores: " + ", ".join(assigned_codes),
+        related_type="DISPATCH_REQUEST",
+        related_id=req.id,
+    )
+    db.session.add(notification)
+
+    db.session.commit()
+
+    flash(f"Se asignaron {len(containers)} contenedores correctamente.", "success")
+    return redirect(url_for("dispatch.request_detail", request_id=req.id))

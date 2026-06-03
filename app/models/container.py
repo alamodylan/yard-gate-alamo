@@ -16,7 +16,6 @@ class Container(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # 🔹 Multi-predio
     site_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.sites.id"),
@@ -24,19 +23,43 @@ class Container(db.Model):
         index=True,
     )
 
-    # Formato: AAAA-000000-0 (13 chars incluyendo guiones)
-    # ⚠️ NO unique global: debe ser único por site (ver UniqueConstraint)
     code = db.Column(db.String(13), nullable=False)
-
-    # 20ST, 40ST, 40HC, 45ST
     size = db.Column(db.String(10), nullable=False)
-
     year = db.Column(db.Integer, nullable=True)
     status_notes = db.Column(db.Text, nullable=True)
 
     is_in_yard = db.Column(db.Boolean, nullable=False, default=True)
 
+    dispatch_status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="NORMAL",
+    )
+
+    dispatch_marked_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
+    )
+
+    dispatch_marked_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.users.id"),
+        nullable=True,
+    )
+
+    mounted_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=True,
+    )
+
+    mounted_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.users.id"),
+        nullable=True,
+    )
+
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
     updated_at = db.Column(
         db.DateTime,
         nullable=False,
@@ -44,7 +67,6 @@ class Container(db.Model):
         onupdate=datetime.utcnow,
     )
 
-    # Relación 1:1 con posición actual (si está en patio)
     position = db.relationship(
         "ContainerPosition",
         back_populates="container",
@@ -53,14 +75,12 @@ class Container(db.Model):
         lazy=True,
     )
 
-    # Historial de movimientos (Gate In/Out/Moves)
     movements = db.relationship(
         "Movement",
         back_populates="container",
         lazy=True,
     )
 
-    # Relación con Site
     site = db.relationship(
         "Site",
         backref=db.backref("containers", lazy=True),
@@ -75,7 +95,6 @@ class ContainerPosition(db.Model):
         {"schema": SCHEMA},
     )
 
-    # En tu SQL: container_id es PK (1:1)
     container_id = db.Column(
         db.Integer,
         db.ForeignKey(f"{SCHEMA}.containers.id", ondelete="CASCADE"),
@@ -88,8 +107,8 @@ class ContainerPosition(db.Model):
         nullable=False,
     )
 
-    depth_row = db.Column(db.Integer, nullable=False)  # 1..20
-    tier = db.Column(db.Integer, nullable=False)       # 1..4
+    depth_row = db.Column(db.Integer, nullable=False)
+    tier = db.Column(db.Integer, nullable=False)
 
     placed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 

@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Solicitudes Pendientes{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <h2 style="margin:0;">Solicitudes Pendientes</h2>
+      <p class="card-sub" style="margin-top:6px;">
+        Solicitudes operativas creadas y pendientes de asignación por patio.
+      </p>
+    </div>
+
+    <a href="{{ url_for('dispatch.new_request') }}" class="btn success">
+      + Nueva Solicitud
+    </a>
+  </div>
+</div>
+
+<div class="card card-pad" style="margin-top:14px;">
+  {% if not requests %}
+    <div class="hint">No hay solicitudes pendientes.</div>
+  {% else %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Tipo</th>
+            <th>Booking</th>
+            <th>Naviera</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th>Chasis</th>
+            <th>Puerto</th>
+            <th>Estado</th>
+            <th>Solicitada</th>
+            <th>Detalle</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for r in requests %}
+            <tr>
+              <td><b>#{{ r.id }}</b></td>
+              <td>{{ r.request_type }}</td>
+              <td>{{ r.booking or "—" }}</td>
+              <td>{{ r.shipping_line }}</td>
+              <td>{{ r.client_name or "—" }}</td>
+              <td>{{ r.product_name or "—" }}</td>
+              <td>{{ r.chassis_type or "—" }}</td>
+              <td>{{ r.port_out or "—" }}</td>
+              <td>
+                <span class="badge badge-pending">{{ r.status }}</span>
+              </td>
+              <td>{{ r.requested_at|dt_cr("%d/%m/%Y %I:%M %p") }}</td>
+              <td>
+                <details>
+                  <summary>Ver líneas</summary>
+                  <div style="margin-top:8px;">
+                    {% for line in r.lines %}
+                      <div class="line-mini">
+                        <b>{{ line.quantity }} x {{ line.container_size }}</b>
+                        · {{ line.condition_type }}
+                        · {{ line.load_date.strftime("%d/%m/%Y") }}
+                        {% if line.load_time %}
+                          · {{ line.load_time.strftime("%I:%M %p") }}
+                        {% endif %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                </details>
+              </td>
+              <td>
+                <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
+                  Atender
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+<style>
+.table-wrap {
+  overflow:auto;
+}
+
+.table {
+  width:100%;
+  border-collapse:collapse;
+}
+
+.table th,
+.table td {
+  padding:10px;
+  border-bottom:1px solid rgba(148,163,184,.18);
+  text-align:left;
+  vertical-align:top;
+  font-size:13px;
+}
+
+.table th {
+  color:rgba(226,232,240,.9);
+  font-weight:900;
+}
+
+.badge {
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.badge-pending {
+  background:rgba(234,179,8,.16);
+  color:#fde68a;
+  border:1px solid rgba(234,179,8,.35);
+}
+
+.line-mini {
+  padding:6px 0;
+  border-bottom:1px solid rgba(148,163,184,.12);
+}
+</style>
+{% endblock %}

@@ -39,6 +39,26 @@
         {# ✅ Inventario SIEMPRE visible #}
         <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
 
+        {% if has_endpoint('dispatch.pending_requests') %}
+          <a class="navlink" href="{{ url_for('dispatch.pending_requests') }}">Solicitudes</a>
+        {% endif %}
+
+        {% if has_endpoint('dispatch.new_request') %}
+          <a class="navlink" href="{{ url_for('dispatch.new_request') }}">Nueva Solicitud</a>
+        {% endif %}
+
+        {% if has_endpoint('dispatch.agenda') %}
+          <a class="navlink" href="{{ url_for('dispatch.agenda') }}">Agenda</a>
+        {% endif %}
+
+        {% if has_endpoint('dispatch.prelist') %}
+          <a class="navlink" href="{{ url_for('dispatch.prelist') }}">Prelista</a>
+        {% endif %}
+
+        {% if has_endpoint('dispatch.mounted') %}
+          <a class="navlink" href="{{ url_for('dispatch.mounted') }}">Montado</a>
+        {% endif %}
+
         {# ✅ NUEVO: Chasis (lista principal con botones Dashboard/Import/Export) #}
         <a class="navlink" href="{{ url_for('yard.chassis_list') }}">Chasis</a>
 
