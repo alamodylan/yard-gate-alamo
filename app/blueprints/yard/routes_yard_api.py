@@ -637,8 +637,9 @@ def api_yard_valid_destinations():
     Reglas:
     - slot libre
     - no flotar: N2 requiere N1, N3 requiere N2, etc.
-    - acceso sidepick: para llegar a F01, F02/F03/F04... deben estar libres
+    - acceso sidepick al destino
     - ignora el mismo contenedor seleccionado como bloqueador
+    - si el movimiento es hacia afuera o hacia otra estiba, valida salida del origen
     """
 
     site_id = _ensure_active_site()
@@ -682,6 +683,10 @@ def api_yard_valid_destinations():
             "destinations": [],
         }), 404
 
+    current_pos = ContainerPosition.query.filter_by(
+        container_id=container.id
+    ).first()
+
     block = YardBlock.query.filter_by(
         site_id=site_id,
         code=block_code,
@@ -716,12 +721,19 @@ def api_yard_valid_destinations():
             "destinations": [],
         })
 
+    # Si el contenedor seleccionado está en otra estiba/bloque,
+    # también necesitamos cargar su estiba origen para validar salida.
+    origin_bay_id = int(current_pos.bay_id) if current_pos else None
+    all_needed_bay_ids = set(bay_ids)
+    if origin_bay_id:
+        all_needed_bay_ids.add(origin_bay_id)
+
     occupied_rows = (
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .join(YardBay, YardBay.id == ContainerPosition.bay_id)
         .filter(
-            YardBay.id.in_(bay_ids),
+            YardBay.id.in_(list(all_needed_bay_ids)),
             Container.site_id == site_id,
             Container.is_in_yard == True,  # noqa: E712
             Container.id != container.id,
@@ -732,8 +744,8 @@ def api_yard_valid_destinations():
     occupied = {}
 
     for c, p, bay in occupied_rows:
-        occupied.setdefault(bay.id, {})
-        occupied[bay.id][(int(p.depth_row), int(p.tier))] = {
+        occupied.setdefault(int(bay.id), {})
+        occupied[int(bay.id)][(int(p.depth_row), int(p.tier))] = {
             "container_id": c.id,
             "container_code": c.code,
             "depth_row": int(p.depth_row),
@@ -745,7 +757,7 @@ def api_yard_valid_destinations():
     for bay in bays:
         max_rows = int(bay.max_depth_rows or 0)
         max_tiers = int(bay.max_tiers or 0)
-        bay_occ = occupied.get(bay.id, {})
+        bay_occ = occupied.get(int(bay.id), {})
 
         for depth_row in range(1, max_rows + 1):
             for tier in range(1, max_tiers + 1):
@@ -758,9 +770,7 @@ def api_yard_valid_destinations():
                 if tier > 1 and (depth_row, tier - 1) not in bay_occ:
                     continue
 
-                # 3. Acceso sidepick
-                # Para llegar a una fila profunda, no puede haber contenedores
-                # en filas más externas.
+                # 3. Acceso sidepick al destino
                 access_blocked = False
 
                 for (occ_row, occ_tier), item in bay_occ.items():
@@ -770,6 +780,26 @@ def api_yard_valid_destinations():
 
                 if access_blocked:
                     continue
+
+                # 4. Validar salida del origen cuando corresponde
+                if current_pos:
+                    moving_to_other_bay = int(current_pos.bay_id) != int(bay.id)
+                    moving_outward_same_bay = (
+                        int(current_pos.bay_id) == int(bay.id)
+                        and depth_row > int(current_pos.depth_row)
+                    )
+
+                    if moving_to_other_bay or moving_outward_same_bay:
+                        origin_occ = occupied.get(int(current_pos.bay_id), {})
+                        origin_blocked = False
+
+                        for (occ_row, occ_tier), item in origin_occ.items():
+                            if occ_row > int(current_pos.depth_row):
+                                origin_blocked = True
+                                break
+
+                        if origin_blocked:
+                            continue
 
                 destinations.append({
                     "bay_id": bay.id,
@@ -791,22 +821,12 @@ def api_place_container():
     """
     Coloca/mueve un contenedor en una estiba.
 
-    Compatibilidad:
-      - Viejo: { "container_id": 123, "to_bay_code": "A07" } -> AUTO
-      - Nuevo: { "container_id": 123, "to_bay_code": "A07", "to_depth_row": 10, "to_tier": 2 } -> EXACTO
-
     Validaciones:
-      - contenedor existe y pertenece al predio actual
-      - estiba destino existe y pertenece al predio actual
-      - fila/nivel destino válidos
-      - slot destino libre, ignorando el mismo contenedor seleccionado
-      - soporte inferior válido, ignorando el mismo contenedor seleccionado
-      - acceso sidepick al destino, ignorando el mismo contenedor seleccionado
-
-    Nota:
-      No se bloquea el movimiento solo porque el contenedor seleccionado esté
-      actuando como bloqueo de acceso en su posición actual, ya que al levantarlo
-      deja de ocupar esa posición.
+    - contenedor existe y pertenece al predio actual
+    - estiba destino existe y pertenece al predio actual
+    - no tiene contenedor encima
+    - si se mueve hacia afuera o a otra estiba, valida salida del origen
+    - destino válido ignorando el mismo contenedor seleccionado
     """
     site_id = _ensure_active_site()
 
@@ -834,19 +854,13 @@ def api_place_container():
         YardBay.id == to_bay.id
     ).with_for_update().one()
 
-    # =========================
-    # POSICIÓN ACTUAL
-    # =========================
     old_pos = ContainerPosition.query.filter_by(
         container_id=c.id
     ).first()
 
     # =========================
-    # VALIDAR BLOQUEO VERTICAL DE ORIGEN
+    # VALIDAR BLOQUEO VERTICAL
     # =========================
-    # Si tiene un contenedor encima, no se puede levantar.
-    # Pero NO validamos bloqueo horizontal aquí, porque el mismo contenedor
-    # puede estar bloqueando el acceso y al levantarlo deja de bloquear.
     if old_pos:
         vertical_blockers = _get_vertical_blockers(
             bay_id=old_pos.bay_id,
@@ -896,6 +910,46 @@ def api_place_container():
         depth_row, tier = slot
 
     # =========================
+    # VALIDAR SALIDA HACIA AFUERA / OTRA ESTIBA
+    # =========================
+    if old_pos:
+        moving_to_other_bay = int(old_pos.bay_id) != int(to_bay.id)
+        moving_outward_same_bay = (
+            int(old_pos.bay_id) == int(to_bay.id)
+            and int(depth_row) > int(old_pos.depth_row)
+        )
+
+        if moving_to_other_bay or moving_outward_same_bay:
+            origin_access_blockers = _get_sidepick_access_blockers(
+                bay_id=old_pos.bay_id,
+                depth_row=old_pos.depth_row,
+                tier=old_pos.tier,
+                site_id=site_id,
+                exclude_container_id=c.id,
+            )
+
+            if origin_access_blockers:
+                validation = {
+                    "ok": False,
+                    "error": "ORIGIN_NOT_ACCESSIBLE",
+                    "message": "La sidepick no puede sacar el contenedor porque hay contenedores bloqueando la salida.",
+                    "blockers": [
+                        {
+                            **item,
+                            "reason": "ACCESS",
+                            "message": "Bloquea salida del contenedor",
+                        }
+                        for item in origin_access_blockers
+                    ],
+                    "current_position": {
+                        "bay_id": old_pos.bay_id,
+                        "depth_row": old_pos.depth_row,
+                        "tier": old_pos.tier,
+                    },
+                }
+                return _yard_validation_error_response(validation, 409)
+
+    # =========================
     # VALIDAR DESTINO
     # =========================
     destination_validation = _validate_container_can_be_placed_at(
@@ -909,9 +963,6 @@ def api_place_container():
     if not destination_validation.get("ok"):
         return _yard_validation_error_response(destination_validation, 409)
 
-    # =========================
-    # GUARDAR POSICIÓN ANTERIOR
-    # =========================
     old = None
     if old_pos:
         old_bay = YardBay.query.get(old_pos.bay_id)
@@ -921,9 +972,6 @@ def api_place_container():
             "tier": old_pos.tier,
         }
 
-    # =========================
-    # COLOCAR / MOVER CONTENEDOR
-    # =========================
     ContainerPosition.query.filter_by(
         container_id=c.id
     ).delete()
@@ -963,7 +1011,9 @@ def api_place_container():
                 "depth_row": depth_row,
                 "tier": tier,
             },
-            "rule": "AUTO_LAST_AVAILABLE_VALIDATED" if (to_depth_row is None or to_tier is None) else "MANUAL_EXACT_VALIDATED",
+            "rule": "AUTO_LAST_AVAILABLE_VALIDATED"
+            if (to_depth_row is None or to_tier is None)
+            else "MANUAL_EXACT_VALIDATED",
             "site_id": site_id,
         },
     )
