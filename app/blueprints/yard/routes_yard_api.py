@@ -247,7 +247,7 @@ def _validate_container_can_be_placed_at(
             "blockers": [],
         }
 
-    occupied = (
+    occupied_query = (
         db.session.query(Container, ContainerPosition)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .filter(
@@ -257,8 +257,14 @@ def _validate_container_can_be_placed_at(
             Container.site_id == site_id,
             Container.is_in_yard == True,  # noqa: E712
         )
-        .first()
     )
+
+    if exclude_container_id:
+        occupied_query = occupied_query.filter(
+            Container.id != int(exclude_container_id)
+        )
+
+    occupied = occupied_query.first()
 
     if occupied:
         c, p = occupied
@@ -783,17 +789,24 @@ def api_yard_valid_destinations():
 @login_required
 def api_place_container():
     """
-    Coloca un contenedor en una estiba.
+    Coloca/mueve un contenedor en una estiba.
 
     Compatibilidad:
       - Viejo: { "container_id": 123, "to_bay_code": "A07" } -> AUTO
       - Nuevo: { "container_id": 123, "to_bay_code": "A07", "to_depth_row": 10, "to_tier": 2 } -> EXACTO
 
-    Validaciones nuevas:
-      - si el contenedor ya tiene posición, valida que pueda salir
-      - valida destino con reglas sidepick
-      - valida soporte inferior
-      - valida slot ocupado
+    Validaciones:
+      - contenedor existe y pertenece al predio actual
+      - estiba destino existe y pertenece al predio actual
+      - fila/nivel destino válidos
+      - slot destino libre, ignorando el mismo contenedor seleccionado
+      - soporte inferior válido, ignorando el mismo contenedor seleccionado
+      - acceso sidepick al destino, ignorando el mismo contenedor seleccionado
+
+    Nota:
+      No se bloquea el movimiento solo porque el contenedor seleccionado esté
+      actuando como bloqueo de acceso en su posición actual, ya que al levantarlo
+      deja de ocupar esa posición.
     """
     site_id = _ensure_active_site()
 
@@ -822,20 +835,46 @@ def api_place_container():
     ).with_for_update().one()
 
     # =========================
-    # VALIDAR ORIGEN SOLO SI YA TIENE POSICIÓN
+    # POSICIÓN ACTUAL
     # =========================
     old_pos = ContainerPosition.query.filter_by(
         container_id=c.id
     ).first()
 
+    # =========================
+    # VALIDAR BLOQUEO VERTICAL DE ORIGEN
+    # =========================
+    # Si tiene un contenedor encima, no se puede levantar.
+    # Pero NO validamos bloqueo horizontal aquí, porque el mismo contenedor
+    # puede estar bloqueando el acceso y al levantarlo deja de bloquear.
     if old_pos:
-        origin_validation = _validate_container_can_be_removed(
-            container_id=c.id,
+        vertical_blockers = _get_vertical_blockers(
+            bay_id=old_pos.bay_id,
+            depth_row=old_pos.depth_row,
+            tier=old_pos.tier,
             site_id=site_id,
         )
 
-        if not origin_validation.get("ok"):
-            return _yard_validation_error_response(origin_validation, 409)
+        if vertical_blockers:
+            validation = {
+                "ok": False,
+                "error": "CONTAINER_BLOCKED_VERTICAL",
+                "message": "El contenedor no puede moverse porque tiene otro contenedor encima.",
+                "blockers": [
+                    {
+                        **item,
+                        "reason": "VERTICAL",
+                        "message": "Contenedor encima",
+                    }
+                    for item in vertical_blockers
+                ],
+                "current_position": {
+                    "bay_id": old_pos.bay_id,
+                    "depth_row": old_pos.depth_row,
+                    "tier": old_pos.tier,
+                },
+            }
+            return _yard_validation_error_response(validation, 409)
 
     # =========================
     # RESOLVER DESTINO
@@ -864,6 +903,7 @@ def api_place_container():
         depth_row=depth_row,
         tier=tier,
         site_id=site_id,
+        exclude_container_id=c.id,
     )
 
     if not destination_validation.get("ok"):
@@ -882,7 +922,7 @@ def api_place_container():
         }
 
     # =========================
-    # COLOCAR CONTENEDOR
+    # COLOCAR / MOVER CONTENEDOR
     # =========================
     ContainerPosition.query.filter_by(
         container_id=c.id
