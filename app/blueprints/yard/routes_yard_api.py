@@ -640,6 +640,7 @@ def api_yard_valid_destinations():
     - acceso sidepick al destino
     - ignora el mismo contenedor seleccionado como bloqueador
     - si el movimiento es hacia afuera o hacia otra estiba, valida salida del origen
+    - si el contenedor tiene otro encima, no devuelve destinos
     """
 
     site_id = _ensure_active_site()
@@ -687,6 +688,36 @@ def api_yard_valid_destinations():
         container_id=container.id
     ).first()
 
+    # =========================
+    # VALIDAR BLOQUEO VERTICAL DEL ORIGEN
+    # =========================
+    if current_pos:
+        vertical_blockers = _get_vertical_blockers(
+            bay_id=current_pos.bay_id,
+            depth_row=current_pos.depth_row,
+            tier=current_pos.tier,
+            site_id=site_id,
+        )
+
+        if vertical_blockers:
+            return jsonify({
+                "ok": True,
+                "container_id": container.id,
+                "block": block_code,
+                "destinations": [],
+                "blocked_origin": True,
+                "error": "CONTAINER_BLOCKED_VERTICAL",
+                "message": "El contenedor no puede moverse porque tiene otro contenedor encima.",
+                "blockers": [
+                    {
+                        **item,
+                        "reason": "VERTICAL",
+                        "message": "Contenedor encima",
+                    }
+                    for item in vertical_blockers
+                ],
+            })
+
     block = YardBlock.query.filter_by(
         site_id=site_id,
         code=block_code,
@@ -721,10 +752,9 @@ def api_yard_valid_destinations():
             "destinations": [],
         })
 
-    # Si el contenedor seleccionado está en otra estiba/bloque,
-    # también necesitamos cargar su estiba origen para validar salida.
     origin_bay_id = int(current_pos.bay_id) if current_pos else None
     all_needed_bay_ids = set(bay_ids)
+
     if origin_bay_id:
         all_needed_bay_ids.add(origin_bay_id)
 
