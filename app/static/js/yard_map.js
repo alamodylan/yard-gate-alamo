@@ -55,6 +55,7 @@ const IS_TOUCH = ("ontouchstart" in window) || (navigator.maxTouchPoints && navi
 let allContainers = [];
 let currentBaysList = [];
 let occupancyIndex = null; // Map<bay_code, Map<"row-tier", {id, code}>>
+let validDestinationsIndex = new Set();
 
 // Views
 const VIEW = {
@@ -190,7 +191,9 @@ function setSelectedContainer(containerId, containerCode) {
 
   // re-render racks para pintar verdes
   if (state.view === VIEW.STACKS && currentBaysList.length) {
-    renderStacksGrid(currentBaysList);
+    loadValidDestinationsForBlock(state.blockCode).then(() => {
+      renderStacksGrid(currentBaysList);
+    });
   }
 }
 
@@ -203,7 +206,7 @@ function clearSelectedContainer() {
 
   setSelectedBar(false, "");
   highlightSelectedContainerInList();
-
+  validDestinationsIndex = new Set();
   clearDestinationSelection();
 
   if (state.view === VIEW.STACKS && currentBaysList.length) {
@@ -323,11 +326,35 @@ async function openBlock(blockCode) {
     currentBaysList = bays.slice().sort((a, b) => (a.bay_number || 0) - (b.bay_number || 0));
     occupancyIndex = buildOccupancyIndexForBlock(blockCode);
 
+    await loadValidDestinationsForBlock(blockCode);
+
     renderStacksGrid(currentBaysList);
     setView(VIEW.STACKS);
   } catch (e) {
     if (stacksGrid) stacksGrid.innerHTML = `<div class="hint">Error de red cargando estibas.</div>`;
     setView(VIEW.STACKS);
+  }
+}
+
+async function loadValidDestinationsForBlock(blockCode) {
+  validDestinationsIndex = new Set();
+
+  if (!hasActiveContainer() || !blockCode) return;
+
+  try {
+    const url = `/api/yard/valid-destinations?container_id=${encodeURIComponent(state.containerId)}&block=${encodeURIComponent(blockCode)}`;
+    const r = await fetch(url);
+
+    if (!r.ok) return;
+
+    const data = await r.json();
+    const destinations = data.destinations || [];
+
+    destinations.forEach(d => {
+      validDestinationsIndex.add(`${d.bay_code}-${d.depth_row}-${d.tier}`);
+    });
+  } catch (e) {
+    validDestinationsIndex = new Set();
   }
 }
 
@@ -381,17 +408,13 @@ function renderStacksGrid(bays) {
 
         const canDrop = hasActiveContainer();
 
-        // ✅ Solo el nivel más bajo disponible debe verse verde
         let cls = "is-empty";
-        if (canDrop) {
-          // tier más bajo libre para esa columna rn en esta estiba b.code
-          const lowestFreeTier = [1, 2, 3, 4].find(t => !bayOcc.get(`${rn}-${t}`));
 
-          // solo marcamos disponible el tier que sea el más bajo libre
-          if (lowestFreeTier === tn) {
+        if (canDrop) {
+          const validKey = `${b.code}-${rn}-${tn}`;
+
+          if (validDestinationsIndex.has(validKey)) {
             cls = "is-available";
-          } else {
-            cls = "is-empty"; // no verde para niveles superiores
           }
         }
 
@@ -460,7 +483,6 @@ function renderStacksGrid(bays) {
         try { ev.dataTransfer.setData("text/plain", code || String(id)); } catch (_) {}
         setSelectedContainer(id, code);
         clearDestinationSelection();
-        renderStacksGrid(currentBaysList);
       });
     }
 
