@@ -1226,6 +1226,77 @@
     });
   }
 
+  function getScannerOrder(totalAxles) {
+    const axles = Number(totalAxles || 2);
+    const order = [];
+
+    // Baja por el lado izquierdo: Eje 1, Eje 2, Eje 3
+    for (let axle = 1; axle <= axles; axle++) {
+      order.push({
+        side: `AX${axle}_L`,
+        field: "seal_1"
+      });
+
+      order.push({
+        side: `AX${axle}_L`,
+        field: "seal_2"
+      });
+    }
+
+    // Sube por el lado derecho: Eje 3, Eje 2, Eje 1
+    // En el lado derecho empieza por marchamo 2 para seguir el recorrido físico.
+    for (let axle = axles; axle >= 1; axle--) {
+      order.push({
+        side: `AX${axle}_R`,
+        field: "seal_2"
+      });
+
+      order.push({
+        side: `AX${axle}_R`,
+        field: "seal_1"
+      });
+    }
+
+    return order;
+  }
+
+
+  function bindScannerNavigation(totalAxles) {
+    const order = getScannerOrder(totalAxles);
+
+    order.forEach((item, index) => {
+      const selector = `[data-side="${item.side}"][data-field="${item.field}"]`;
+      const input = axleSealsContainer.querySelector(selector);
+
+      if (!input) return;
+
+      input.addEventListener("keydown", function(e) {
+        if (e.key !== "Enter") return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        input.value = (input.value || "").trim();
+        syncAxleSealsHidden();
+
+        const nextItem = order[index + 1];
+
+        if (!nextItem) {
+          input.blur();
+          return;
+        }
+
+        const nextSelector = `[data-side="${nextItem.side}"][data-field="${nextItem.field}"]`;
+        const nextInput = axleSealsContainer.querySelector(nextSelector);
+
+        if (nextInput) {
+          nextInput.focus();
+          nextInput.select();
+        }
+      });
+    });
+  }
+
   function buildAxleSealEditor(axles) {
     if (!axleSealsContainer) return;
 
@@ -1272,6 +1343,7 @@
     });
 
     bindSealInputs();
+    bindScannerNavigation();
     syncAxleSealsHidden();
   }
 
