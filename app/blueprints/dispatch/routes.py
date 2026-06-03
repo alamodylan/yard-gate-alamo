@@ -8,7 +8,7 @@ from app.models.container import Container, ContainerPosition
 from app.models.container_classification import ContainerClassification
 from app.models.dispatch import DispatchAssignment, UserNotification
 from app.blueprints.dispatch import dispatch_bp
-from app.blueprints.yard import YardBay
+from app.models.yard import YardBay
 from app.extensions import db
 from app.models.site import Site, UserSite
 from app.models.dispatch import (
