@@ -239,11 +239,28 @@ def map_view():
         .all()
     )
 
-    selected_block = (request.args.get("block") or "A").upper()
-    if selected_block not in {"A", "B", "C", "D"}:
-        selected_block = "A"
+    selected_block = (request.args.get("block") or "").strip().upper()
 
-    return render_template("yard/map.html", blocks=blocks, selected_block=selected_block)
+    valid_block_codes = {b.code for b in blocks}
+
+    if not selected_block or selected_block not in valid_block_codes:
+        selected_block = blocks[0].code if blocks else ""
+
+    blocks_json = [
+        {
+            "id": b.id,
+            "code": b.code,
+            "site_id": b.site_id,
+        }
+        for b in blocks
+    ]
+
+    return render_template(
+        "yard/map.html",
+        blocks=blocks,
+        blocks_json=blocks_json,
+        selected_block=selected_block,
+    )
 
 
 @yard_bp.get("/bay/<string:bay_code>")

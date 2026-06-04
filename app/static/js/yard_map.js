@@ -154,13 +154,30 @@ let state = {
 // Config: filas visibles y dirección
 // ------------------------
 // En operación típica: F01 = entrada. Si es al revés, cambia a "DESC".
-const VISIBLE_ROWS = 10;          // F01..F10
-const ROW_DIRECTION = "ASC";      // "ASC" => F01 entrada, "DESC" => F10 entrada
+const ROW_DIRECTION = "ASC";
 
-function getRowOrderVisible() {
-  const base = [];
-  for (let i = 1; i <= VISIBLE_ROWS; i++) base.push(i);
-  return ROW_DIRECTION === "DESC" ? base.reverse() : base;
+function getRowOrderForBay(bay) {
+  const maxRows = parseInt(bay?.max_depth_rows || 1, 10);
+  const safeRows = Number.isFinite(maxRows) && maxRows > 0 ? maxRows : 1;
+
+  const rows = [];
+  for (let i = 1; i <= safeRows; i++) {
+    rows.push(i);
+  }
+
+  return ROW_DIRECTION === "DESC" ? rows.reverse() : rows;
+}
+
+function getTierOrderForBay(bay) {
+  const maxTiers = parseInt(bay?.max_tiers || 1, 10);
+  const safeTiers = Number.isFinite(maxTiers) && maxTiers > 0 ? maxTiers : 1;
+
+  const tiers = [];
+  for (let i = safeTiers; i >= 1; i--) {
+    tiers.push(i);
+  }
+
+  return tiers;
 }
 
 function fmtRow(row) {
@@ -300,15 +317,72 @@ function clearSelectedContainer() {
 // ------------------------
 // SVG blocks view
 // ------------------------
+function getDynamicBlocksLayout() {
+  const rawBlocks = Array.isArray(window.YARD_INIT?.blocks)
+    ? window.YARD_INIT.blocks
+    : [];
+
+  const blockCodes = rawBlocks
+    .map(b => String(b.code || "").trim().toUpperCase())
+    .filter(Boolean);
+
+  const uniqueCodes = [...new Set(blockCodes)];
+
+  if (uniqueCodes.length === 0) {
+    return [];
+  }
+
+  const canvasW = 1100;
+  const canvasH = 520;
+  const gap = 20;
+  const margin = 20;
+
+  const count = uniqueCodes.length;
+
+  let cols = Math.ceil(Math.sqrt(count));
+  let rows = Math.ceil(count / cols);
+
+  if (count <= 2) {
+    cols = count;
+    rows = 1;
+  }
+
+  const availableW = canvasW - margin * 2 - gap * (cols - 1);
+  const availableH = canvasH - margin * 2 - gap * (rows - 1);
+
+  const blockW = Math.floor(availableW / cols);
+  const blockH = Math.floor(availableH / rows);
+
+  return uniqueCodes.map((code, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+
+    return {
+      code,
+      x: margin + col * (blockW + gap),
+      y: margin + row * (blockH + gap),
+      w: blockW,
+      h: blockH,
+    };
+  });
+}
+
 function drawBlocks() {
   clearSvg();
 
-  const blocks = [
-    { code: "A", x: 20,  y: 20,  w: 520, h: 220 },
-    { code: "B", x: 560, y: 20,  w: 520, h: 220 },
-    { code: "C", x: 20,  y: 270, w: 520, h: 220 },
-    { code: "D", x: 560, y: 270, w: 520, h: 220 },
-  ];
+  const blocks = getDynamicBlocksLayout();
+
+  if (!blocks.length) {
+    const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    t.setAttribute("x", 30);
+    t.setAttribute("y", 50);
+    t.setAttribute("font-size", "16");
+    t.setAttribute("font-weight", "800");
+    t.setAttribute("fill", THEME.text);
+    t.textContent = "No hay bloques configurados para este predio.";
+    svg.appendChild(t);
+    return;
+  }
 
   blocks.forEach(b => {
     const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -329,7 +403,10 @@ function drawBlocks() {
       if (!hasActiveContainer()) return;
       r.classList.add("yard-block-highlight");
     });
-    r.addEventListener("dragleave", () => r.classList.remove("yard-block-highlight"));
+
+    r.addEventListener("dragleave", () => {
+      r.classList.remove("yard-block-highlight");
+    });
 
     r.addEventListener("drop", async (ev) => {
       ev.preventDefault();
@@ -461,8 +538,7 @@ function renderStacksGrid(bays) {
   }
 
   const occ = occupancyIndex || new Map();
-  const rowOrder = getRowOrderVisible();    // 10 filas
-  const tierOrder = [4, 3, 2, 1];           // 4 niveles
+
 
   const html = bays.map(b => {
     const used = b.used || 0;
