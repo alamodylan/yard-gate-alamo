@@ -45,6 +45,12 @@
           Inventario
         </a>
 
+        {% if has_endpoint('inventory.evacuation_list') %}
+          <a class="navlink" href="{{ url_for('inventory.evacuation_list') }}">
+            Lista de Vacíos
+          </a>
+        {% endif %}
+
         {% if has_endpoint('dispatch.pending_requests') %}
           <a class="navlink" href="{{ url_for('dispatch.pending_requests') }}">
             Solicitudes

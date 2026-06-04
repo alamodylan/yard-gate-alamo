@@ -2,8 +2,6 @@
 
 import os
 from io import BytesIO
-
-from flask import render_template, request, send_file, session, abort
 from flask_login import login_required, current_user
 
 import openpyxl
@@ -18,6 +16,8 @@ from app.models.container import Container, ContainerPosition
 from app.models.yard import YardBay
 from app.models.movement import Movement, MovementPhoto
 from app.models.site import Site, UserSite
+from flask import render_template, request, send_file, session, abort, redirect, url_for, flash
+from datetime import datetime
 
 
 # =========================================================
@@ -423,5 +423,92 @@ def inventory_detail(container_id: int):
         photos_by_mv=photos_by_mv,
     )
 
+@inventory_bp.post("/inventory/<int:container_id>/mark-evacuation")
+@login_required
+def mark_container_evacuation(container_id: int):
+    site_id = _ensure_active_site()
+
+    c = Container.query.get_or_404(container_id)
+
+    if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    if not c.is_in_yard:
+        flash("Solo se pueden marcar contenedores que están en patio.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    if (c.dispatch_status or "NORMAL") != "NORMAL":
+        flash("Solo se pueden marcar como evacuar contenedores disponibles.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    c.dispatch_status = "PARA_EVACUAR"
+    c.dispatch_marked_at = datetime.utcnow()
+    c.dispatch_marked_by_user_id = current_user.id
+
+    db.session.commit()
+
+    flash(f"Contenedor {c.code} marcado para evacuar.", "success")
+    return redirect(url_for("inventory.inventory_index"))
 
 
+@inventory_bp.post("/inventory/<int:container_id>/unmark-evacuation")
+@login_required
+def unmark_container_evacuation(container_id: int):
+    site_id = _ensure_active_site()
+
+    c = Container.query.get_or_404(container_id)
+
+    if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    if (c.dispatch_status or "NORMAL") != "PARA_EVACUAR":
+        flash("Solo se puede quitar evacuación a contenedores en estado Evacuar.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    c.dispatch_status = "NORMAL"
+    c.dispatch_marked_at = None
+    c.dispatch_marked_by_user_id = None
+
+    db.session.commit()
+
+    flash(f"Contenedor {c.code} volvió a Disponible.", "success")
+    return redirect(url_for("inventory.inventory_index"))
+
+@inventory_bp.get("/inventory/evacuation-list")
+@login_required
+def evacuation_list():
+    site_id = _ensure_active_site()
+
+    rows = (
+        db.session.query(Container, ContainerPosition, YardBay)
+        .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .outerjoin(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+            db.func.coalesce(Container.dispatch_status, "NORMAL") == "PARA_EVACUAR",
+        )
+        .order_by(Container.updated_at.desc())
+        .all()
+    )
+
+    items = []
+
+    for c, pos, bay in rows:
+        items.append({
+            "id": c.id,
+            "code": c.code,
+            "size": c.size,
+            "dispatch_status": c.dispatch_status or "NORMAL",
+            "dispatch_marked_at": c.dispatch_marked_at,
+            "position": None if not pos else {
+                "bay_code": bay.code if bay else None,
+                "depth_row": pos.depth_row,
+                "tier": pos.tier,
+            },
+        })
+
+    return render_template(
+        "inventory/evacuation_list.html",
+        items=items,
+    )

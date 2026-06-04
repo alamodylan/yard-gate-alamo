@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Lista de Vacíos | Yard Gate Álamo{% endblock %}
+
+{% block content %}
+<div class="card card-pad" style="margin-bottom:14px;">
+  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+    <div>
+      <h2 style="margin:0;">Lista de Vacíos / Evacuación</h2>
+      <p class="card-sub" style="margin-top:6px;">
+        Contenedores marcados para evacuar. Estos son los disponibles para solicitudes de vacío.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="overflow:auto;">
+  <table class="table" style="min-width:900px;">
+    <thead>
+      <tr>
+        <th>Contenedor</th>
+        <th>Tamaño</th>
+        <th>Estado</th>
+        <th>Posición</th>
+        <th>Marcado</th>
+        <th style="width:220px;">Acción</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for it in items %}
+        <tr>
+          <td style="font-weight:900;">
+            <a href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}" style="text-decoration:none;">
+              {{ it.code }}
+            </a>
+          </td>
+
+          <td>{{ it.size or "—" }}</td>
+
+          <td>
+            <span class="op-badge op-evac">Evacuar</span>
+          </td>
+
+          <td>
+            {% if it.position %}
+              <span class="badge">
+                {{ it.position.bay_code }}
+                · F{{ "%02d"|format(it.position.depth_row) }}
+                · N{{ it.position.tier }}
+              </span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+
+          <td>
+            {% if it.dispatch_marked_at %}
+              {{ it.dispatch_marked_at|dt_cr("%d/%m/%Y %I:%M %p") }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+
+          <td style="display:flex; gap:8px; flex-wrap:wrap;">
+            <a class="btn" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
+
+            <form method="POST" action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}" style="display:inline;">
+              <button class="btn danger" type="submit">
+                Regresar a disponible
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+
+      {% if not items %}
+        <tr>
+          <td colspan="6" style="color:rgba(229,231,235,.80);">
+            No hay contenedores en lista de evacuación.
+          </td>
+        </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+.op-badge{
+  display:inline-block;
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+  border:1px solid rgba(148,163,184,.25);
+  white-space:nowrap;
+}
+
+.op-evac{
+  background:rgba(239,68,68,.14);
+  color:#fecaca;
+  border-color:rgba(239,68,68,.45);
+}
+</style>
+{% endblock %}

@@ -8,12 +8,12 @@
       <div>
         <h2 style="margin:0;">Inventario de Contenedores</h2>
         <p class="card-sub" style="margin-top:6px;">
-          Predios (Coyol/Caldera/Limón): incluye clasificación (naviera/max gross/año) y fecha de salida (EIR) si aplica.
+          Predios (Coyol/Caldera/Limón): incluye clasificación, posición, fecha EIR y estado operativo.
         </p>
       </div>
 
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <a class="btn" href="{{ url_for('inventory.inventory_export', in_yard=in_yard, q=q) }}" title="Exportar respetando filtros">
+        <a class="btn" href="{{ url_for('inventory.inventory_export', in_yard=in_yard, q=q) }}">
           ⬇ Exportar Excel
         </a>
       </div>
@@ -37,21 +37,16 @@
 
         <div style="display:flex; gap:10px; align-items:center;">
           <button class="btn primary" type="submit">Filtrar</button>
-
           {% if in_yard or q %}
             <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Limpiar</a>
           {% endif %}
         </div>
       </div>
-
-      <div class="hint" style="margin-top:10px;">
-        Tip: el Excel se genera con exactamente el mismo filtro que ves en pantalla.
-      </div>
     </form>
   </div>
 
   <div class="card" style="overflow:auto;">
-    <table class="table" style="min-width:1500px;">
+    <table class="table" style="min-width:1650px;">
       <thead>
         <tr>
           <th>Contenedor</th>
@@ -61,14 +56,17 @@
           <th>Max Gross</th>
           <th>Fecha EIR</th>
           <th>En patio</th>
+          <th>Estado operativo</th>
           <th>Posición</th>
           <th>Notas</th>
-          <th style="width:180px;">Acción</th>
+          <th style="width:240px;">Acción</th>
         </tr>
       </thead>
 
       <tbody>
         {% for it in items %}
+          {% set ds = it.dispatch_status or "NORMAL" %}
+
           <tr>
             <td style="font-weight:900;">
               <a href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}" style="text-decoration:none;">
@@ -86,13 +84,7 @@
               {% endif %}
             </td>
 
-            <td>
-              {% if it.year %}
-                {{ it.year }}
-              {% else %}
-                —
-              {% endif %}
-            </td>
+            <td>{{ it.year or "—" }}</td>
 
             <td>
               {% if it.max_gross_kg %}
@@ -119,6 +111,22 @@
             </td>
 
             <td>
+              {% if ds == "NORMAL" %}
+                <span class="op-badge op-normal">Disponible</span>
+              {% elif ds == "PARA_DESPACHO" %}
+                <span class="op-badge op-dispatch">Asignado despacho</span>
+              {% elif ds == "PARA_EVACUAR" %}
+                <span class="op-badge op-evac">Evacuar</span>
+              {% elif ds == "EVACUAR_SOLICITADO" %}
+                <span class="op-badge op-evac-requested">Evacuar solicitado</span>
+              {% elif ds == "MONTADO" %}
+                <span class="op-badge op-mounted">Montado</span>
+              {% else %}
+                <span class="op-badge op-muted">{{ ds }}</span>
+              {% endif %}
+            </td>
+
+            <td>
               {% if it.position %}
                 <span class="badge">
                   {{ it.position.bay_code }}
@@ -137,14 +145,21 @@
             <td style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
               <a class="btn" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
 
+              {% if it.is_in_yard and ds == "NORMAL" %}
+                <form method="POST" action="{{ url_for('inventory.mark_container_evacuation', container_id=it.id) }}" style="display:inline;">
+                  <button class="btn warning" type="submit">Evacuar</button>
+                </form>
+              {% elif it.is_in_yard and ds == "PARA_EVACUAR" %}
+                <form method="POST" action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}" style="display:inline;">
+                  <button class="btn danger" type="submit">Quitar evacuar</button>
+                </form>
+              {% endif %}
+
               {% if it.status_notes %}
                 <button class="btn copy-btn" type="button" data-id="{{ it.id }}">
                   Copiar
                 </button>
-
-                <span id="copyText-{{ it.id }}" style="display:none;">
-                  {{ it.status_notes }}
-                </span>
+                <span id="copyText-{{ it.id }}" style="display:none;">{{ it.status_notes }}</span>
               {% endif %}
             </td>
           </tr>
@@ -152,7 +167,7 @@
 
         {% if not items %}
           <tr>
-            <td colspan="10" style="color:rgba(229,231,235,.80);">
+            <td colspan="11" style="color:rgba(229,231,235,.80);">
               No hay registros con ese filtro.
             </td>
           </tr>
@@ -190,7 +205,53 @@
       });
     });
   </script>
-{% endblock %}
 
+  <style>
+    .op-badge{
+      display:inline-block;
+      padding:5px 9px;
+      border-radius:999px;
+      font-size:11px;
+      font-weight:900;
+      border:1px solid rgba(148,163,184,.25);
+      white-space:nowrap;
+    }
+
+    .op-normal{
+      background:rgba(34,197,94,.12);
+      color:#bbf7d0;
+      border-color:rgba(34,197,94,.35);
+    }
+
+    .op-dispatch{
+      background:rgba(234,179,8,.16);
+      color:#fde68a;
+      border-color:rgba(234,179,8,.45);
+    }
+
+    .op-evac{
+      background:rgba(239,68,68,.14);
+      color:#fecaca;
+      border-color:rgba(239,68,68,.45);
+    }
+
+    .op-evac-requested{
+      background:rgba(185,28,28,.24);
+      color:#fee2e2;
+      border-color:rgba(248,113,113,.65);
+    }
+
+    .op-mounted{
+      background:rgba(59,130,246,.14);
+      color:#bfdbfe;
+      border-color:rgba(59,130,246,.45);
+    }
+
+    .op-muted{
+      background:rgba(148,163,184,.12);
+      color:#e5e7eb;
+    }
+  </style>
+{% endblock %}
 
 
