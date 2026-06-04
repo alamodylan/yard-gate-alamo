@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Solicitudes Asignadas{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <h2 style="margin:0;">Solicitudes Asignadas</h2>
+      <p class="card-sub" style="margin-top:6px;">
+        Solicitudes con contenedores asignados total o parcialmente.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Pendientes</a>
+      <a href="{{ url_for('dispatch.new_request') }}" class="btn success">+ Nueva Solicitud</a>
+    </div>
+  </div>
+</div>
+
+{% if not requests %}
+  <div class="card card-pad" style="margin-top:14px;">
+    <div class="hint">No hay solicitudes asignadas.</div>
+  </div>
+{% else %}
+  {% for r in requests %}
+    <div class="card card-pad" style="margin-top:14px;">
+      <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+        <div>
+          <h3 style="margin:0;">Solicitud #{{ r.id }}</h3>
+          <p class="card-sub" style="margin-top:6px;">
+            {{ r.request_type }} · {{ r.shipping_line }} · Estado: <b>{{ r.status }}</b>
+          </p>
+        </div>
+
+        <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
+          Ver / Atender
+        </a>
+      </div>
+
+      <div class="info-grid" style="margin-top:12px;">
+        <div><b>Booking:</b> {{ r.booking or "—" }}</div>
+        <div><b>Cliente:</b> {{ r.client_name or "—" }}</div>
+        <div><b>Producto:</b> {{ r.product_name or "—" }}</div>
+        <div><b>Chasis:</b> {{ r.chassis_type or "—" }}</div>
+        <div><b>Puerto:</b> {{ r.port_out or "—" }}</div>
+        <div><b>Actualizada:</b> {{ r.updated_at|dt_cr("%d/%m/%Y %I:%M %p") }}</div>
+      </div>
+
+      <div style="margin-top:12px;">
+        {% for line in r.lines %}
+          <div class="line-card">
+            <div>
+              <b>{{ line.quantity }} x {{ line.container_size }}</b>
+              · {{ line.condition_type }}
+              · {{ line.load_date.strftime("%d/%m/%Y") }}
+              {% if line.load_time %}
+                · {{ line.load_time.strftime("%I:%M %p") }}
+              {% endif %}
+              · <b>{{ line.status }}</b>
+            </div>
+
+            <div class="assigned-list">
+              {% if line.assignments %}
+                {% for a in line.assignments %}
+                  <span class="assigned-chip">{{ a.container.code }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="hint">Sin contenedores asignados.</span>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+{% endif %}
+
+<style>
+.info-grid {
+  display:grid;
+  grid-template-columns:repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+
+.line-card {
+  border-top:1px solid rgba(148,163,184,.16);
+  padding:12px 0;
+}
+
+.assigned-list {
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:8px;
+}
+
+.assigned-chip {
+  border:1px solid rgba(34,197,94,.35);
+  background:rgba(34,197,94,.12);
+  padding:5px 9px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+}
+
+@media (max-width: 900px) {
+  .info-grid {
+    grid-template-columns:1fr;
+  }
+}
+</style>
+{% endblock %}

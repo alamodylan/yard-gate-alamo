@@ -26,8 +26,13 @@
       </a>
 
       <nav class="navlinks" aria-label="Navegación principal">
+
         <a class="navlink" href="{{ url_for('yard.map_view') }}">Mapa</a>
-        <a class="navlink" href="{{ url_for('yard.gate_in_view') }}">Gate In</a>
+
+        <a class="navlink" href="{{ url_for('yard.gate_in_view') }}">
+          Gate In
+        </a>
+
         <a class="navlink" href="{{ url_for('yard.gate_out_view') }}">
           {% if active_site_key in ['COYOL', 'CALDERA', 'LIMON'] %}
             Gate Out / EIR
@@ -36,71 +41,130 @@
           {% endif %}
         </a>
 
-        {# ✅ Inventario SIEMPRE visible #}
-        <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
+        <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">
+          Inventario
+        </a>
 
         {% if has_endpoint('dispatch.pending_requests') %}
-          <a class="navlink" href="{{ url_for('dispatch.pending_requests') }}">Solicitudes</a>
+          <a class="navlink" href="{{ url_for('dispatch.pending_requests') }}">
+            Solicitudes
+          </a>
+        {% endif %}
+
+        {% if has_endpoint('dispatch.assigned_requests') %}
+          <a class="navlink" href="{{ url_for('dispatch.assigned_requests') }}">
+            Asignadas
+          </a>
         {% endif %}
 
         {% if has_endpoint('dispatch.new_request') %}
-          <a class="navlink" href="{{ url_for('dispatch.new_request') }}">Nueva Solicitud</a>
+          <a class="navlink" href="{{ url_for('dispatch.new_request') }}">
+            Nueva Solicitud
+          </a>
         {% endif %}
 
         {% if has_endpoint('dispatch.agenda') %}
-          <a class="navlink" href="{{ url_for('dispatch.agenda') }}">Agenda</a>
+          <a class="navlink" href="{{ url_for('dispatch.agenda') }}">
+            Agenda
+          </a>
         {% endif %}
 
         {% if has_endpoint('dispatch.prelist') %}
-          <a class="navlink" href="{{ url_for('dispatch.prelist') }}">Prelista</a>
+          <a class="navlink" href="{{ url_for('dispatch.prelist') }}">
+            Prelista
+          </a>
         {% endif %}
 
         {% if has_endpoint('dispatch.mounted') %}
-          <a class="navlink" href="{{ url_for('dispatch.mounted') }}">Montado</a>
+          <a class="navlink" href="{{ url_for('dispatch.mounted') }}">
+            Montado
+          </a>
         {% endif %}
 
-        {# ✅ NUEVO: Chasis (lista principal con botones Dashboard/Import/Export) #}
-        <a class="navlink" href="{{ url_for('yard.chassis_list') }}">Chasis</a>
+        <a class="navlink" href="{{ url_for('yard.chassis_list') }}">
+          Chasis
+        </a>
 
-        <a class="navlink" href="{{ url_for('yard.tires_list') }}">Llantas</a>
+        <a class="navlink" href="{{ url_for('yard.tires_list') }}">
+          Llantas
+        </a>
 
-        <a class="navlink" href="{{ url_for('yard.eir_list_view') }}">EIR</a>
+        <a class="navlink" href="{{ url_for('yard.eir_list_view') }}">
+          EIR
+        </a>
 
         {% if session.get('active_site_id') in [2, 3, 4] %}
-          <a class="navlink" href="{{ url_for('yard.reports_dashboard') }}">Reportes</a>
+          <a class="navlink" href="{{ url_for('yard.reports_dashboard') }}">
+            Reportes
+          </a>
         {% else %}
-          <a class="navlink" href="{{ url_for('yard.reports_view') }}">Reportes</a>
+          <a class="navlink" href="{{ url_for('yard.reports_view') }}">
+            Reportes
+          </a>
         {% endif %}
 
-        {# ✅ Admin menu (solo admin) #}
         {% if current_user.is_authenticated and (current_user.role|lower == 'admin') %}
-          <a class="navlink" href="{{ url_for('admin.users_view') }}">Usuarios</a>
-          <a class="navlink" href="{{ url_for('admin.audit_view') }}">Auditoría</a>
+          <a class="navlink" href="{{ url_for('admin.users_view') }}">
+            Usuarios
+          </a>
+
+          <a class="navlink" href="{{ url_for('admin.audit_view') }}">
+            Auditoría
+          </a>
         {% endif %}
 
         <div class="nav-sep" aria-hidden="true"></div>
 
         {% if current_user.is_authenticated %}
 
-          {# ✅ NUEVO: cambiar predio sin cerrar sesión #}
-          <a class="navlink" href="{{ url_for('yard.sites_dashboard') }}" title="Cambiar predio activo">
+          <a
+            class="navlink"
+            href="{{ url_for('yard.sites_dashboard') }}"
+            title="Cambiar predio activo"
+          >
             Cambiar predio
           </a>
 
-          <div class="userchip" title="{{ current_user.email if current_user.email is defined else '' }}">
+          <div
+            class="userchip"
+            title="{{ current_user.email if current_user.email is defined else '' }}"
+          >
             <span class="userchip-dot" aria-hidden="true"></span>
+
             <span class="userchip-name">
-              {{ current_user.name if current_user.name is defined else (current_user.username if current_user.username is defined else 'Usuario') }}
+              {{
+                current_user.name
+                if current_user.name is defined
+                else (
+                  current_user.username
+                  if current_user.username is defined
+                  else 'Usuario'
+                )
+              }}
             </span>
+
             {% if current_user.role is defined %}
-              <span class="badge badge-soft">{{ current_user.role|capitalize }}</span>
+              <span class="badge badge-soft">
+                {{ current_user.role|capitalize }}
+              </span>
             {% endif %}
           </div>
 
-          <a class="navlink navlink-danger" href="{{ url_for('auth.logout') }}">Salir</a>
+          <a
+            class="navlink navlink-danger"
+            href="{{ url_for('auth.logout') }}"
+          >
+            Salir
+          </a>
+
         {% else %}
-          <a class="navlink" href="{{ url_for('auth.login') }}">Ingresar</a>
+
+          <a class="navlink" href="{{ url_for('auth.login') }}">
+            Ingresar
+          </a>
+
         {% endif %}
+
       </nav>
     </div>
   </header>

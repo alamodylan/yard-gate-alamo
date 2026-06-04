@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Agenda Operativa{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+    <div>
+      <h2 style="margin:0;">Agenda Operativa</h2>
+      <p class="card-sub" style="margin-top:6px;">
+        Todas las solicitudes programadas por fecha de carga.
+      </p>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Pendientes</a>
+      <a href="{{ url_for('dispatch.assigned_requests') }}" class="btn">Asignadas</a>
+      <a href="{{ url_for('dispatch.prelist') }}" class="btn">Prelista</a>
+    </div>
+  </div>
+</div>
+
+<div class="card card-pad" style="margin-top:14px;">
+  {% if not lines %}
+    <div class="hint">No hay movimientos programados.</div>
+  {% else %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Hora CR</th>
+            <th>Solicitud</th>
+            <th>Tipo</th>
+            <th>Booking</th>
+            <th>Naviera</th>
+            <th>Cliente</th>
+            <th>Detalle</th>
+            <th>Asignados</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in lines %}
+            {% set r = line.request %}
+            <tr>
+              <td><b>{{ line.load_date.strftime("%d/%m/%Y") }}</b></td>
+              <td>
+                {% if line.load_time %}
+                  {{ line.load_time.strftime("%I:%M %p") }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}">
+                  #{{ r.id }}
+                </a>
+              </td>
+              <td>{{ r.request_type }}</td>
+              <td>{{ r.booking or "—" }}</td>
+              <td>{{ r.shipping_line }}</td>
+              <td>{{ r.client_name or "—" }}</td>
+              <td>{{ line.quantity }} x {{ line.container_size }} · {{ line.condition_type }}</td>
+              <td>
+                {{ line.assignments|length }} / {{ line.quantity }}
+              </td>
+              <td><b>{{ line.status }}</b></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</div>
+
+<style>
+.table-wrap { overflow:auto; }
+.table { width:100%; border-collapse:collapse; }
+.table th,
+.table td {
+  padding:10px;
+  border-bottom:1px solid rgba(148,163,184,.18);
+  text-align:left;
+  vertical-align:top;
+  font-size:13px;
+}
+.table th {
+  color:rgba(226,232,240,.9);
+  font-weight:900;
+}
+</style>
+{% endblock %}

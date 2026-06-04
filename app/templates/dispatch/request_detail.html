@@ -2,16 +2,41 @@
 {% block title %}Atender Solicitud #{{ req.id }}{% endblock %}
 
 {% block content %}
-<div class="card card-pad">
-  <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-    <div>
-      <h2 style="margin:0;">Solicitud #{{ req.id }}</h2>
-      <p class="card-sub" style="margin-top:6px;">
-        {{ req.request_type }} · {{ req.shipping_line }} · Estado: <b>{{ req.status }}</b>
-      </p>
-    </div>
 
-    <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Volver</a>
+<div class="card card-pad">
+  <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap;">
+
+```
+<div>
+  <h2 style="margin:0;">Solicitud #{{ req.id }}</h2>
+
+  <p class="card-sub" style="margin-top:6px;">
+    {{ req.request_type }}
+    · {{ req.shipping_line }}
+    · Estado:
+    <b>{{ req.status }}</b>
+  </p>
+</div>
+
+<div style="display:flex; gap:10px; flex-wrap:wrap;">
+  <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">
+    Pendientes
+  </a>
+
+  <a href="{{ url_for('dispatch.assigned_requests') }}" class="btn">
+    Asignadas
+  </a>
+
+  <a href="{{ url_for('dispatch.agenda') }}" class="btn">
+    Agenda
+  </a>
+
+  <a href="{{ url_for('dispatch.prelist') }}" class="btn">
+    Prelista
+  </a>
+</div>
+```
+
   </div>
 
   <div class="info-grid" style="margin-top:14px;">
@@ -23,104 +48,175 @@
     <div><b>Solicitada:</b> {{ req.requested_at|dt_cr("%d/%m/%Y %I:%M %p") }}</div>
   </div>
 
-  {% if req.special_instructions %}
-    <div style="margin-top:12px;">
-      <b>Instrucciones:</b>
-      <div class="hint" style="margin-top:6px;">{{ req.special_instructions }}</div>
-    </div>
-  {% endif %}
+{% if req.special_instructions %} <div style="margin-top:12px;"> <b>Instrucciones:</b> <div class="hint" style="margin-top:6px;">
+{{ req.special_instructions }} </div> </div>
+{% endif %}
+
 </div>
 
 {% for item in line_data %}
-  {% set line = item.line %}
-  <div class="card card-pad" style="margin-top:14px;">
-    <div style="display:flex; justify-content:space-between; gap:12px; align-items:center;">
-      <div>
-        <h3 style="margin:0;">
-          {{ line.quantity }} x {{ line.container_size }}
-        </h3>
-        <p class="card-sub" style="margin-top:6px;">
-          {{ line.condition_type }}
-          · {{ line.load_date.strftime("%d/%m/%Y") }}
-          {% if line.load_time %}
-            · {{ line.load_time.strftime("%I:%M %p") }}
-          {% endif %}
-          · Estado: <b>{{ line.status }}</b>
-        </p>
-      </div>
+{% set line = item.line %}
 
-      <div class="badge badge-soft">
-        Asignados: {{ item.assigned_count }} / {{ line.quantity }}
-      </div>
+  <div class="card card-pad" style="margin-top:14px;">
+
+```
+<div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap;">
+
+  <div>
+    <h3 style="margin:0;">
+      {{ line.quantity }} x {{ line.container_size }}
+    </h3>
+
+    <p class="card-sub" style="margin-top:6px;">
+      {{ line.condition_type }}
+
+      · {{ line.load_date.strftime("%d/%m/%Y") }}
+
+      {% if line.load_time %}
+        · {{ line.load_time.strftime("%I:%M %p") }}
+      {% endif %}
+
+      · Estado:
+      <b>{{ line.status }}</b>
+    </p>
+  </div>
+
+  <div class="badge badge-soft">
+    Asignados:
+    {{ item.assigned_count }} / {{ line.quantity }}
+  </div>
+
+</div>
+
+{% if line.assignments %}
+  <div style="margin-top:12px;">
+
+    <b>Contenedores asignados</b>
+
+    <div class="assigned-list">
+
+      {% for a in line.assignments %}
+        <span class="assigned-chip">
+          {{ a.container.code }}
+        </span>
+      {% endfor %}
+
     </div>
 
-    {% if line.assignments %}
-      <div style="margin-top:12px;">
-        <b>Contenedores asignados</b>
-        <div class="assigned-list">
-          {% for a in line.assignments %}
-            <span class="assigned-chip">{{ a.container.code }}</span>
-          {% endfor %}
-        </div>
-      </div>
-    {% endif %}
-
-    {% if item.pending_count <= 0 %}
-      <div class="hint" style="margin-top:12px;">Línea completamente asignada.</div>
-    {% else %}
-      <form method="POST" action="{{ url_for('dispatch.assign_containers', request_id=req.id, line_id=line.id) }}" style="margin-top:14px;">
-        <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
-          <b>Disponibles para asignar</b>
-          <span class="hint">Pendientes: {{ item.pending_count }}</span>
-        </div>
-
-        {% if not item.available %}
-          <div class="hint" style="margin-top:10px;">No hay contenedores disponibles para esta línea.</div>
-        {% else %}
-          <div class="available-grid" style="margin-top:10px;">
-            {% for c in item.available %}
-              <label class="available-card">
-                <input type="checkbox" name="container_ids[]" value="{{ c.id }}">
-                <div>
-                  <b>{{ c.code }}</b>
-                  <div class="hint">
-                    {{ c.size }} · {{ c.shipping_line }}
-                    {% if c.position %}
-                      · {{ c.position.bay_code }} F{{ "%02d"|format(c.position.depth_row) }} N{{ c.position.tier }}
-                    {% else %}
-                      · Sin posición
-                    {% endif %}
-                  </div>
-                </div>
-              </label>
-            {% endfor %}
-          </div>
-
-          <div style="margin-top:12px;">
-            <button type="submit" class="btn success">
-              Asignar seleccionados
-            </button>
-          </div>
-        {% endif %}
-      </form>
-    {% endif %}
   </div>
+{% endif %}
+
+{% if item.pending_count <= 0 %}
+
+  <div class="hint" style="margin-top:12px;">
+    Línea completamente asignada.
+  </div>
+
+{% else %}
+
+  <form
+    method="POST"
+    action="{{ url_for('dispatch.assign_containers', request_id=req.id, line_id=line.id) }}"
+    style="margin-top:14px;"
+  >
+
+    <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap;">
+
+      <b>
+        Disponibles para asignar
+      </b>
+
+      <span class="hint">
+        Pendientes:
+        {{ item.pending_count }}
+      </span>
+
+    </div>
+
+    {% if not item.available %}
+
+      <div class="hint" style="margin-top:10px;">
+        No hay contenedores disponibles para esta línea.
+      </div>
+
+    {% else %}
+
+      <div class="available-grid" style="margin-top:10px;">
+
+        {% for c in item.available %}
+
+          <label class="available-card">
+
+            <input
+              type="checkbox"
+              name="container_ids[]"
+              value="{{ c.id }}"
+            >
+
+            <div>
+
+              <b>{{ c.code }}</b>
+
+              <div class="hint">
+
+                {{ c.size }}
+                · {{ c.shipping_line }}
+
+                {% if c.position %}
+                  · {{ c.position.bay_code }}
+                  F{{ "%02d"|format(c.position.depth_row) }}
+                  N{{ c.position.tier }}
+                {% else %}
+                  · Sin posición
+                {% endif %}
+
+              </div>
+
+            </div>
+
+          </label>
+
+        {% endfor %}
+
+      </div>
+
+      <div style="margin-top:12px;">
+
+        <button
+          type="submit"
+          class="btn success"
+        >
+          Asignar seleccionados
+        </button>
+
+      </div>
+
+    {% endif %}
+
+  </form>
+
+{% endif %}
+```
+
+  </div>
+
 {% endfor %}
 
 <style>
-.info-grid {
+
+.info-grid{
   display:grid;
-  grid-template-columns:repeat(3, minmax(0, 1fr));
+  grid-template-columns:repeat(3,minmax(0,1fr));
   gap:10px;
 }
 
-.available-grid {
+.available-grid{
   display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
+  grid-template-columns:repeat(2,minmax(0,1fr));
   gap:10px;
 }
 
-.available-card {
+.available-card{
   display:flex;
   gap:10px;
   align-items:flex-start;
@@ -130,18 +226,18 @@
   cursor:pointer;
 }
 
-.available-card:hover {
+.available-card:hover{
   border-color:rgba(59,130,246,.5);
 }
 
-.assigned-list {
+.assigned-list{
   display:flex;
   flex-wrap:wrap;
   gap:8px;
   margin-top:8px;
 }
 
-.assigned-chip {
+.assigned-chip{
   border:1px solid rgba(34,197,94,.35);
   background:rgba(34,197,94,.12);
   padding:5px 9px;
@@ -150,11 +246,15 @@
   font-weight:900;
 }
 
-@media (max-width: 900px) {
+@media (max-width:900px){
+
   .info-grid,
-  .available-grid {
+  .available-grid{
     grid-template-columns:1fr;
   }
+
 }
+
 </style>
+
 {% endblock %}

@@ -265,6 +265,11 @@ def request_detail(request_id: int):
             .subquery()
         )
 
+        if req.request_type == "VACIO":
+            status_filter = "PARA_EVACUAR"
+        else:
+            status_filter = "NORMAL"
+
         available_rows = (
             db.session.query(Container, ContainerPosition, YardBay, ContainerClassification)
             .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -284,7 +289,7 @@ def request_detail(request_id: int):
                 Container.site_id == site_id,
                 Container.is_in_yard == True,  # noqa: E712
                 Container.size == line.container_size,
-                db.func.coalesce(Container.dispatch_status, "NORMAL") == "NORMAL",
+                db.func.coalesce(Container.dispatch_status, "NORMAL") == status_filter,
             )
             .order_by(Container.code.asc())
             .all()
@@ -303,6 +308,7 @@ def request_detail(request_id: int):
                 "code": c.code,
                 "size": c.size,
                 "shipping_line": shipping_line or "SIN NAVIERA",
+                "dispatch_status": c.dispatch_status or "NORMAL",
                 "position": None if not pos else {
                     "bay_code": bay.code if bay else None,
                     "depth_row": pos.depth_row,
@@ -315,6 +321,7 @@ def request_detail(request_id: int):
             "assigned_count": assigned_count,
             "pending_count": pending_count,
             "available": available,
+            "status_filter": status_filter,
         })
 
     return render_template(
@@ -355,6 +362,11 @@ def assign_containers(request_id: int, line_id: int):
     selected_ids = [int(x) for x in selected_ids if str(x).isdigit()]
     selected_ids = selected_ids[:pending_count]
 
+    if req.request_type == "VACIO":
+        allowed_status = "PARA_EVACUAR"
+    else:
+        allowed_status = "NORMAL"
+
     containers = (
         Container.query
         .filter(
@@ -362,7 +374,7 @@ def assign_containers(request_id: int, line_id: int):
             Container.site_id == site_id,
             Container.is_in_yard == True,  # noqa: E712
             Container.size == line.container_size,
-            db.func.coalesce(Container.dispatch_status, "NORMAL") == "NORMAL",
+            db.func.coalesce(Container.dispatch_status, "NORMAL") == allowed_status,
         )
         .all()
     )
@@ -382,8 +394,8 @@ def assign_containers(request_id: int, line_id: int):
         )
         db.session.add(assignment)
 
-        if line.condition_type == "VACIO" or req.request_type == "VACIO":
-            c.dispatch_status = "PARA_VACIO"
+        if req.request_type == "VACIO":
+            c.dispatch_status = "EVACUAR_SOLICITADO"
         else:
             c.dispatch_status = "PARA_DESPACHO"
 
@@ -394,7 +406,7 @@ def assign_containers(request_id: int, line_id: int):
 
     db.session.flush()
 
-    total_assigned_after = len(line.assignments) + len(containers)
+    total_assigned_after = already_assigned + len(containers)
 
     if total_assigned_after >= int(line.quantity or 0):
         line.status = "ASIGNADA"
@@ -428,3 +440,109 @@ def assign_containers(request_id: int, line_id: int):
 
     flash(f"Se asignaron {len(containers)} contenedores correctamente.", "success")
     return redirect(url_for("dispatch.request_detail", request_id=req.id))
+
+@dispatch_bp.get("/assigned")
+@login_required
+def assigned_requests():
+    site_id = _ensure_active_site()
+
+    requests = (
+        DispatchRequest.query
+        .filter(
+            DispatchRequest.site_id == site_id,
+            DispatchRequest.status.in_(["PARCIAL", "ASIGNADA"])
+        )
+        .order_by(
+            DispatchRequest.updated_at.desc(),
+            DispatchRequest.requested_at.desc()
+        )
+        .all()
+    )
+
+    return render_template(
+        "dispatch/assigned_requests.html",
+        requests=requests,
+    )
+
+@dispatch_bp.get("/agenda")
+@login_required
+def agenda():
+    site_id = _ensure_active_site()
+
+    lines = (
+        DispatchRequestLine.query
+        .join(
+            DispatchRequest,
+            DispatchRequest.id == DispatchRequestLine.request_id
+        )
+        .filter(
+            DispatchRequest.site_id == site_id,
+            DispatchRequest.status != "CANCELADA"
+        )
+        .order_by(
+            DispatchRequestLine.load_date.asc(),
+            DispatchRequestLine.load_time.asc()
+        )
+        .all()
+    )
+
+    return render_template(
+        "dispatch/agenda.html",
+        lines=lines,
+    )
+
+@dispatch_bp.get("/prelist")
+@login_required
+def prelist():
+    site_id = _ensure_active_site()
+
+    from datetime import datetime, timedelta
+    import pytz
+
+    cr_tz = pytz.timezone("America/Costa_Rica")
+
+    now_cr = datetime.now(cr_tz)
+
+    today = now_cr.date()
+    tomorrow = today + timedelta(days=1)
+
+    lines = (
+        DispatchRequestLine.query
+        .join(
+            DispatchRequest,
+            DispatchRequest.id == DispatchRequestLine.request_id
+        )
+        .filter(
+            DispatchRequest.site_id == site_id,
+            DispatchRequest.status != "CANCELADA"
+        )
+        .all()
+    )
+
+    prelist_lines = []
+
+    for line in lines:
+
+        if line.load_date == tomorrow:
+            prelist_lines.append(line)
+            continue
+
+        if line.load_date == today:
+
+            if line.load_time:
+                current_time = now_cr.time()
+
+                if line.load_time > current_time:
+                    prelist_lines.append(line)
+
+    prelist_lines.sort(
+        key=lambda x: (
+            x.load_date,
+            x.load_time or datetime.min.time()
+        )
+    )
+
+    return render_template(
+        "dispatch/prelist.html",
+        lines=prelist_lines,
+    )
