@@ -1824,6 +1824,80 @@ document.addEventListener("DOMContentLoaded", () => {
     syncHiddenChassisPayloads();
   }
 
+  function getGateInSealScanOrder(axles) {
+      const order = [];
+
+      // Baja por lado izquierdo
+      for (let axle = 1; axle <= axles; axle++) {
+          order.push(`AX${axle}_L|seal_1`);
+          order.push(`AX${axle}_L|seal_2`);
+      }
+
+      // Sube por lado derecho
+      for (let axle = axles; axle >= 1; axle--) {
+          order.push(`AX${axle}_R|seal_2`);
+          order.push(`AX${axle}_R|seal_1`);
+      }
+
+      return order;
+  }
+
+  function bindGateInSealScannerNavigation() {
+
+      const order = getGateInSealScanOrder(selectedChassisAxles || 2);
+
+      order.forEach((key, index) => {
+
+          const [side, field] = key.split("|");
+
+          const input = document.querySelector(
+              `[data-axle-seal-side="${side}"][data-seal-field="${field}"]`
+          );
+
+          if (!input) return;
+
+          if (input.dataset.scannerBound === "1") {
+              return;
+          }
+
+          input.dataset.scannerBound = "1";
+
+          input.addEventListener("keydown", function(e) {
+
+              if (e.key !== "Enter") return;
+
+              e.preventDefault();
+              e.stopPropagation();
+
+              input.value = (input.value || "").trim().toUpperCase();
+              syncHiddenChassisPayloads();
+
+              const next = order[index + 1];
+
+              if (!next) {
+                  input.blur();
+                  return;
+              }
+
+              const [nextSide, nextField] = next.split("|");
+
+              const nextInput = document.querySelector(
+                  `[data-axle-seal-side="${nextSide}"][data-seal-field="${nextField}"]`
+              );
+
+              if (nextInput) {
+                  nextInput.focus();
+                  nextInput.select();
+              }
+          });
+
+          input.addEventListener("input", function() {
+              input.value = (input.value || "").trim().toUpperCase();
+              syncHiddenChassisPayloads();
+          });
+      });
+  }
+
   async function loadSelectedChassisFromInput(){
     const item = findChassisByInputValue(chassisSearch?.value || "");
 
@@ -1851,6 +1925,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try{
       await loadChassisConfig(selectedChassisId);
+      bindGateInSealScannerNavigation();
     }catch(e){
       console.error("Error cargando configuración de chasis:", e);
       alert("No se pudo cargar la configuración de llantas del chasis: " + e.message);
@@ -1921,6 +1996,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!selectedChassisId) return;
       try{
         await loadChassisConfig(selectedChassisId);
+        bindGateInSealScannerNavigation();
       }catch(e){
         console.error("Error recargando configuración de chasis:", e);
         alert("No se pudo recargar la configuración del chasis: " + e.message);
