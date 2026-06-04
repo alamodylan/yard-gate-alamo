@@ -548,7 +548,6 @@ function renderStacksGrid(bays) {
 
   const occ = occupancyIndex || new Map();
 
-
   const html = bays.map(b => {
     const used = b.used || 0;
     const cap = b.capacity || 0;
@@ -556,13 +555,16 @@ function renderStacksGrid(bays) {
 
     const rowOrder = getRowOrderForBay(b);
     const tierOrder = getTierOrderForBay(b);
+    const colsCount = rowOrder.length;
 
     const badgeText = available ? "Disponible" : "Lleno";
     const badgeCls = available ? "badge-ok" : "badge-bad";
 
     const bayOcc = occ.get(b.code) || new Map();
 
-    const headerCols = rowOrder.map(rn => `<div class="rack-colhdr">${fmtRow(rn)}</div>`).join("");
+    const headerCols = rowOrder
+      .map(rn => `<div class="rack-colhdr">${fmtRow(rn)}</div>`)
+      .join("");
 
     const rowsHtml = tierOrder.map(tn => {
       const slots = rowOrder.map(rn => {
@@ -590,12 +592,10 @@ function renderStacksGrid(bays) {
         }
 
         const canDrop = hasActiveContainer();
-
         let cls = "is-empty";
 
         if (canDrop) {
           const validKey = `${b.code}-${rn}-${tn}`;
-
           if (validDestinationsIndex.has(validKey)) {
             cls = "is-available";
           }
@@ -639,7 +639,7 @@ function renderStacksGrid(bays) {
           </div>
         </div>
 
-        <div class="rack">
+        <div class="rack" style="--rack-cols:${colsCount};">
           <div class="rack-header">
             <div class="rack-corner"></div>
             ${headerCols}
@@ -652,10 +652,8 @@ function renderStacksGrid(bays) {
 
   stacksGrid.innerHTML = html;
 
-  // ✅ IMPORTANTE: no "once:true". Lo dejamos permanente.
   stacksGrid.onclick = onStacksGridClick;
 
-  // Drag/drop handlers
   stacksGrid.querySelectorAll(".rack-slot").forEach(slot => {
     const action = slot.getAttribute("data-action");
 
@@ -685,7 +683,7 @@ function renderStacksGrid(bays) {
       if (slot.getAttribute("data-action") !== "pick-destination") return;
       if (!slot.classList.contains("is-available")) return;
       ev.preventDefault();
-      await pickDestinationFromSlot(slot); // ✅ await
+      await pickDestinationFromSlot(slot);
     });
   });
 

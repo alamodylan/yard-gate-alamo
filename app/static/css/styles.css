@@ -740,8 +740,9 @@ button:not(.btn):hover{
 }
 
 /* =========================================================
-   Yard Rack View (Estibas 4x10 Visual Real)
-   ✅ SIEMPRE mostrar el código completo
+   Yard Rack View (Estibas dinámicas según BD)
+   ✅ Usa --rack-cols desde JS
+   ✅ Soporta 10, 20, 30 filas sin romper layout
    ========================================================= */
 
 .stack-card{
@@ -756,31 +757,37 @@ button:not(.btn):hover{
   margin-bottom: 12px;
 }
 
-/* Rack grid wrapper */
 .rack{
   display:flex;
   flex-direction:column;
   gap:6px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 10px;
 }
 
-/* Header row (F01–F10) */
-.rack-header{
+.rack-header,
+.rack-row{
   display:grid;
-  grid-template-columns: 70px repeat(10, 1fr);
+  grid-template-columns:
+    var(--rack-label-col, 70px)
+    repeat(var(--rack-cols, 10), minmax(var(--rack-col-min, 140px), 1fr));
+  min-width:
+    calc(
+      var(--rack-label-col, 70px)
+      + (var(--rack-cols, 10) * var(--rack-col-min, 140px))
+    );
   gap:6px;
+  align-items:center;
+}
+
+.rack-header{
   margin-bottom:6px;
 }
 
 .rack-corner{
   height: 28px;
-}
-
-/* Each tier row */
-.rack-row{
-  display:grid;
-  grid-template-columns: 70px repeat(10, 1fr);
-  gap:6px;
-  align-items:center;
 }
 
 .rack-colhdr{
@@ -797,28 +804,20 @@ button:not(.btn):hover{
   color: rgba(229,231,235,.92);
 }
 
-/* Slots (más grandes para que quepa el código) */
 .rack-slot{
   border-radius: 12px;
   border: 1px solid var(--border);
   background: rgba(255,255,255,.03);
-
   display:flex;
   align-items:center;
   justify-content:center;
-
-  /* ✅ más alto para 2 líneas */
-  min-height: 56px;
+  min-height: 60px;
   padding: 6px 8px;
-
   font-size:12px;
   font-weight:950;
-
   cursor:pointer;
   transition: all .12s ease;
   user-select:none;
-
-  /* ✅ nunca se sale del rectángulo */
   overflow:hidden;
 }
 
@@ -827,55 +826,42 @@ button:not(.btn):hover{
   background: rgba(255,255,255,.05);
 }
 
-/* Occupied slot */
 .rack-slot.is-occupied{
   background: rgba(37,99,235,.20);
   border-color: rgba(37,99,235,.40);
   color:#fff;
 }
 
-/* Available slot (green when container selected) */
 .rack-slot.is-available{
   background: rgba(22,163,74,.15);
   border-color: rgba(22,163,74,.35);
 }
+
 .rack-slot.is-available:hover{
   background: rgba(22,163,74,.22);
 }
 
-/* Selected destination (blue) */
 .rack-slot.is-selected{
   background: rgba(37,99,235,.35);
   border-color: rgba(37,99,235,.70);
   box-shadow: 0 0 0 2px rgba(37,99,235,.30);
 }
 
-/* Empty (no container, no active selection) */
 .rack-slot.is-empty{
   opacity:.5;
   cursor:default;
 }
 
-/* ✅ Code inside slot: SIEMPRE visible (2 líneas, sin ellipsis) */
 .rack-code{
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: unset;
+  display:block;
   width:100%;
-  padding: 0 6px;
-
-  white-space: normal;
-  word-break: break-word;
-
-  overflow:hidden;
-  text-overflow: clip;
-
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;  /* 2 líneas y listo */
-  line-clamp: 2;
-
-  line-height: 1.05;
-  text-align: center;
+  text-align:center;
   font-size: 12px;
   font-weight: 950;
+  line-height: 1.1;
 }
 
 /* =========================================================
