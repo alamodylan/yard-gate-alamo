@@ -13,6 +13,10 @@
       </div>
 
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <a class="btn warning" href="{{ url_for('inventory.evacuation_list') }}">
+          Lista de Vacíos
+        </a>
+
         <a class="btn" href="{{ url_for('inventory.inventory_export', in_yard=in_yard, q=q) }}">
           ⬇ Exportar Excel
         </a>
@@ -59,7 +63,7 @@
           <th>Estado operativo</th>
           <th>Posición</th>
           <th>Notas</th>
-          <th style="width:240px;">Acción</th>
+          <th style="width:260px;">Acción</th>
         </tr>
       </thead>
 
@@ -114,11 +118,15 @@
               {% if ds == "NORMAL" %}
                 <span class="op-badge op-normal">Disponible</span>
               {% elif ds == "PARA_DESPACHO" %}
-                <span class="op-badge op-dispatch">Asignado despacho</span>
+                <span class="op-badge op-dispatch">Asignado</span>
               {% elif ds == "PARA_EVACUAR" %}
                 <span class="op-badge op-evac">Evacuar</span>
               {% elif ds == "EVACUAR_SOLICITADO" %}
-                <span class="op-badge op-evac-requested">Evacuar solicitado</span>
+                <span class="op-badge op-evac-requested">Solicitado para evacuar</span>
+              {% elif ds == "DESPACHO_MONTADO" %}
+                <span class="op-badge op-mounted-dispatch">Despacho montado</span>
+              {% elif ds == "EVACUACION_MONTADA" %}
+                <span class="op-badge op-mounted-evac">Evacuación montada</span>
               {% elif ds == "MONTADO" %}
                 <span class="op-badge op-mounted">Montado</span>
               {% else %}
@@ -241,6 +249,18 @@
       border-color:rgba(248,113,113,.65);
     }
 
+    .op-mounted-dispatch{
+      background:rgba(59,130,246,.14);
+      color:#bfdbfe;
+      border-color:rgba(59,130,246,.45);
+    }
+
+    .op-mounted-evac{
+      background:rgba(168,85,247,.14);
+      color:#e9d5ff;
+      border-color:rgba(168,85,247,.45);
+    }
+
     .op-mounted{
       background:rgba(59,130,246,.14);
       color:#bfdbfe;
@@ -253,5 +273,4 @@
     }
   </style>
 {% endblock %}
-
 
