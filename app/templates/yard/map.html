@@ -5,16 +5,13 @@
 <div class="card card-pad">
   <h2 style="margin:0;">Mapa de Predio</h2>
   <p class="card-sub" style="margin-top:6px;">
-    PC: selecciona contenedor → arrastra → bloque → (rack) → elegir slot → confirmar.
+    PC: selecciona contenedor → arrastra → bloque → rack → elegir slot → confirmar.
     <br>
     Tablet/Celular: selecciona contenedor → toca bloque → toca slot verde → confirmar.
   </p>
 </div>
 
 <div class="yard-layout" style="margin-top:14px;">
-  <!-- =========================
-       LEFT: Bandeja contenedores
-       ========================= -->
   <aside class="yard-panel card card-pad">
     <div class="yard-panel-head">
       <div>
@@ -40,9 +37,16 @@
           <div class="hint" style="margin:0;">Seleccionado</div>
           <div id="selectedContainerText" style="font-weight:950;">—</div>
         </div>
-        <button type="button" id="clearSelectedBtn" class="btn small">
-          Quitar
-        </button>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button type="button" id="mountContainerBtn" class="btn success hidden">
+            🚛 Montar
+          </button>
+
+          <button type="button" id="clearSelectedBtn" class="btn small">
+            Quitar
+          </button>
+        </div>
       </div>
     </div>
 
@@ -51,11 +55,7 @@
     </div>
   </aside>
 
-  <!-- =========================
-       RIGHT: Patio Visual
-       ========================= -->
   <section class="yard-mapwrap card card-pad">
-    <!-- Toolbar / Breadcrumb -->
     <div class="yard-toolbar yard-toolbar-row">
       <div class="yard-toolbar-left">
         <button type="button" id="yardBackBtn" class="btn small hidden">
@@ -68,15 +68,17 @@
         </div>
       </div>
 
-      <div class="yard-toolbar-right">
+      <div class="yard-toolbar-right" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
         <span class="hint" style="margin:0;">Contenedor:</span>
         <b id="yardActiveContainer">—</b>
+
+        <button type="button" id="mountContainerToolbarBtn" class="btn success small hidden">
+          🚛 Montar
+        </button>
       </div>
     </div>
 
-    <!-- Mapa -->
     <div class="yard-canvas" style="margin-top:12px; position:relative;">
-      <!-- Chip flotante del contenedor seleccionado -->
       <div id="dragChip"
            class="yard-dragchip hidden"
            draggable="true"
@@ -84,13 +86,11 @@
         <span id="dragChipCode">—</span>
       </div>
 
-      <!-- SVG principal -->
       <svg id="yardSvg"
            viewBox="0 0 1100 520"
            style="width:100%; height:520px; border:1px solid rgba(148,163,184,.18); border-radius:18px; background:rgba(255,255,255,.02);">
       </svg>
 
-      <!-- Panel Estibas (RACK tipo Excel) -->
       <div id="stacksPanel" class="yard-overlay hidden">
         <div class="yard-overlay-card">
           <div class="yard-overlay-head">
@@ -99,7 +99,7 @@
                 Estibas del bloque <span id="stacksBlockCode">—</span>
               </div>
               <div class="card-sub" style="margin-top:6px;">
-                Azul = ocupado · Verde = disponible (cuando hay contenedor seleccionado) · Azul fuerte = destino seleccionado
+                Azul = ocupado · Verde = disponible · Azul fuerte = destino seleccionado
               </div>
             </div>
 
@@ -108,10 +108,8 @@
             </button>
           </div>
 
-          <!-- ✅ IMPORTANTE: ya NO usa yard-grid -->
           <div id="stacksGrid" class="stacks-list" style="margin-top:12px;"></div>
 
-          <!-- Confirmación -->
           <div id="confirmBar" class="hidden" style="margin-top:12px;">
             <div class="yard-confirm-row">
               <div style="font-size:13px;">
@@ -130,25 +128,23 @@
           </div>
 
           <div class="hint" style="margin-top:10px;">
-            Tip: puedes tocar un contenedor dentro del rack para seleccionarlo y moverlo.
+            Tip: puedes tocar un contenedor dentro del rack para seleccionarlo, moverlo o montarlo.
           </div>
         </div>
       </div>
 
-      <!-- Panel Filas (ya no se usa, lo dejamos para compatibilidad sin romper nada) -->
       <div id="rowsPanel" class="yard-overlay hidden">
         <div class="yard-overlay-card">
           <div class="yard-overlay-head">
             <div>
               <div class="card-title" style="margin:0;">Filas</div>
-              <div class="card-sub" style="margin-top:6px;">Vista antigua (no usada).</div>
+              <div class="card-sub" style="margin-top:6px;">Vista antigua no usada.</div>
             </div>
             <button type="button" id="rowsCloseBtn" class="btn small">Cerrar</button>
           </div>
           <div id="rowsGrid" class="yard-grid" style="margin-top:12px;"></div>
         </div>
       </div>
-
     </div>
   </section>
 </div>
@@ -160,6 +156,5 @@
 </script>
 <script src="{{ url_for('static', filename='js/yard_map.js') }}"></script>
 {% endblock %}
-
 
 

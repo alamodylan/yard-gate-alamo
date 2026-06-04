@@ -63,6 +63,78 @@ const VIEW = {
   STACKS: "STACKS",
   ROWS: "ROWS",
 };
+const mountContainerBtn = document.getElementById("mountContainerBtn");
+const mountContainerToolbarBtn = document.getElementById("mountContainerToolbarBtn");
+
+const MOUNTABLE_STATUSES = new Set([
+  "PARA_DESPACHO",
+  "EVACUAR_SOLICITADO",
+]);
+
+function getSelectedContainerData() {
+  return allContainers.find(c => Number(c.id) === Number(state.containerId)) || null;
+}
+
+function getDispatchStatusClass(containerOrStatus) {
+  /*
+    Puede recibir:
+    - objeto completo del contenedor: { dispatch_status, is_prelist_visible }
+    - string viejo: "PARA_DESPACHO"
+
+    Regla:
+    - Solo pinta colores si el contenedor está dentro de la prelista.
+    - Si viene string, se mantiene compatibilidad, pero NO se usa para prelista.
+  */
+
+  let status = "NORMAL";
+  let isPrelistVisible = false;
+
+  if (typeof containerOrStatus === "string") {
+    status = (containerOrStatus || "NORMAL").toUpperCase();
+    isPrelistVisible = true;
+  } else if (containerOrStatus) {
+    status = (containerOrStatus.dispatch_status || "NORMAL").toUpperCase();
+    isPrelistVisible = containerOrStatus.is_prelist_visible === true;
+  }
+
+  if (!isPrelistVisible) {
+    return "";
+  }
+
+  if (status === "PARA_DESPACHO") return "is-dispatch";
+  if (status === "PARA_EVACUAR") return "is-evac";
+  if (status === "EVACUAR_SOLICITADO") return "is-evac-requested";
+  if (status === "DESPACHO_MONTADO") return "is-mounted-dispatch";
+  if (status === "EVACUACION_MONTADA") return "is-mounted-evac";
+
+  return "";
+}
+
+function getDispatchStatusLabel(status) {
+  const s = (status || "NORMAL").toUpperCase();
+
+  if (s === "PARA_DESPACHO") return "Asignado";
+  if (s === "PARA_EVACUAR") return "Evacuar";
+  if (s === "EVACUAR_SOLICITADO") return "Solicitado evacuar";
+  if (s === "DESPACHO_MONTADO") return "Despacho montado";
+  if (s === "EVACUACION_MONTADA") return "Evacuación montada";
+
+  return "Disponible";
+}
+
+function updateMountButtons() {
+  const c = getSelectedContainerData();
+  const status = (c?.dispatch_status || "NORMAL").toUpperCase();
+  const canMount = MOUNTABLE_STATUSES.has(status);
+
+  if (mountContainerBtn) {
+    mountContainerBtn.classList.toggle("hidden", !canMount);
+  }
+
+  if (mountContainerToolbarBtn) {
+    mountContainerToolbarBtn.classList.toggle("hidden", !canMount);
+  }
+}
 
 let state = {
   view: VIEW.BLOCKS,
@@ -179,17 +251,27 @@ function setSelectedContainer(containerId, containerCode) {
   state.containerId = containerId;
   state.containerCode = containerCode;
 
-  if (yardActiveContainer) yardActiveContainer.textContent = containerCode || `#${containerId}`;
+  const c = getSelectedContainerData();
+  const statusLabel = getDispatchStatusLabel(c?.dispatch_status);
+
+  if (yardActiveContainer) {
+    yardActiveContainer.textContent = containerCode
+      ? `${containerCode} · ${statusLabel}`
+      : `#${containerId}`;
+  }
 
   if (dragChip && dragChipCode) {
     dragChipCode.textContent = containerCode || `#${containerId}`;
     dragChip.classList.remove("hidden");
   }
 
-  if (IS_TOUCH) setSelectedBar(true, `${containerCode} (#${containerId})`);
-  highlightSelectedContainerInList();
+  if (IS_TOUCH) {
+    setSelectedBar(true, `${containerCode} (#${containerId}) · ${statusLabel}`);
+  }
 
-  // re-render racks para pintar verdes
+  highlightSelectedContainerInList();
+  updateMountButtons();
+
   if (state.view === VIEW.STACKS && currentBaysList.length) {
     loadValidDestinationsForBlock(state.blockCode).then(() => {
       renderStacksGrid(currentBaysList);
@@ -208,6 +290,7 @@ function clearSelectedContainer() {
   highlightSelectedContainerInList();
   validDestinationsIndex = new Set();
   clearDestinationSelection();
+  updateMountButtons();
 
   if (state.view === VIEW.STACKS && currentBaysList.length) {
     renderStacksGrid(currentBaysList);
@@ -297,8 +380,16 @@ function buildOccupancyIndexForBlock(blockCode) {
     if (!String(bay).toUpperCase().startsWith(prefix)) continue;
 
     if (!idx.has(bay)) idx.set(bay, new Map());
-    idx.get(bay).set(`${row}-${tier}`, { id: c.id, code: c.code });
+
+    idx.get(bay).set(`${row}-${tier}`, {
+      id: c.id,
+      code: c.code,
+      dispatch_status: c.dispatch_status || "NORMAL",
+      is_prelist_visible: c.is_prelist_visible === true,
+      prelist: c.prelist || null,
+    });
   }
+
   return idx;
 }
 
@@ -391,17 +482,21 @@ function renderStacksGrid(bays) {
         const item = bayOcc.get(key);
 
         if (item) {
+          const statusClass = getDispatchStatusClass(item);
+          const statusLabel = getDispatchStatusLabel(item.dispatch_status);
+
           return `
-            <div class="rack-slot is-occupied"
-                 data-action="pick-container"
-                 data-container-id="${item.id}"
-                 data-container-code="${item.code}"
-                 data-bay="${b.code}"
-                 data-row="${rn}"
-                 data-tier="${tn}"
-                 ${IS_TOUCH ? "" : `draggable="true"`}
-                 title="${item.code} · ${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
+            <div class="rack-slot is-occupied ${statusClass}"
+                data-action="pick-container"
+                data-container-id="${item.id}"
+                data-container-code="${item.code}"
+                data-bay="${b.code}"
+                data-row="${rn}"
+                data-tier="${tn}"
+                ${IS_TOUCH ? "" : `draggable="true"`}
+                title="${item.code} · ${statusLabel} · ${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
               <span class="rack-code">${item.code}</span>
+              <span class="rack-status">${statusLabel}</span>
             </div>
           `;
         }
@@ -633,6 +728,17 @@ function renderContainersList(list) {
       ? `${item.position.bay_code} ${fmtRow(item.position.depth_row)} ${fmtTier(item.position.tier)}`
       : "Sin posición";
 
+    const statusLabel = getDispatchStatusLabel(item.dispatch_status);
+    const statusClass = getDispatchStatusClass(item);
+
+    const prelistText = item.is_prelist_visible && item.prelist
+      ? `
+        <div style="font-size:11px; margin-top:5px; color:rgba(253,224,71,.95); font-weight:900;">
+          Prelista · ${item.prelist.load_date || "—"}${item.prelist.load_time ? " · " + item.prelist.load_time : ""}
+        </div>
+      `
+      : "";
+
     return `
       <div class="container-item"
            ${IS_TOUCH ? "" : `draggable="true"`}
@@ -641,11 +747,22 @@ function renderContainersList(list) {
         <div style="display:flex; justify-content:space-between; gap:10px;">
           <div>
             <div style="font-weight:950;">${item.code}</div>
-            <div class="hint" style="margin-top:6px;">${item.size}${item.year ? " · " + item.year : ""}</div>
+
+            <div class="hint" style="margin-top:6px;">
+              ${item.size}${item.year ? " · " + item.year : ""}
+            </div>
+
+            <div class="yard-status-pill ${statusClass}">
+              ${statusLabel}
+            </div>
+
+            ${prelistText}
+
             <div style="font-size:12px; margin-top:6px; color:rgba(229,231,235,.92); font-weight:800;">
               ${pos}
             </div>
           </div>
+
           <div class="hint" style="text-align:right;">
             ${item.status_notes ? "📝" : ""}
           </div>
@@ -667,7 +784,10 @@ function renderContainersList(list) {
 
     el.addEventListener("dragstart", (ev) => {
       if (IS_TOUCH) return;
-      try { ev.dataTransfer.setData("text/plain", code || String(id)); } catch (_) {}
+      try {
+        ev.dataTransfer.setData("text/plain", code || String(id));
+      } catch (_) {}
+
       setSelectedContainer(id, code);
     });
   });
@@ -705,6 +825,66 @@ async function loadContainersInYard() {
   }
 }
 
+async function mountSelectedContainer() {
+  if (!hasActiveContainer()) {
+    alert("Primero selecciona un contenedor.");
+    return;
+  }
+
+  const c = getSelectedContainerData();
+  const status = (c?.dispatch_status || "NORMAL").toUpperCase();
+
+  if (!MOUNTABLE_STATUSES.has(status)) {
+    alert("Este contenedor no está en estado válido para montar.");
+    return;
+  }
+
+  const ok = window.confirm(
+    `¿Deseas marcar como montado el contenedor ${state.containerCode}?`
+  );
+
+  if (!ok) return;
+
+  if (mountContainerBtn) mountContainerBtn.disabled = true;
+  if (mountContainerToolbarBtn) mountContainerToolbarBtn.disabled = true;
+
+  try {
+    const r = await fetch("/api/yard/mount-container", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        container_id: state.containerId,
+      }),
+    });
+
+    const data = await r.json();
+
+    if (!r.ok) {
+      alert(data.message || data.error || "No se pudo montar el contenedor.");
+      return;
+    }
+
+    alert(`Contenedor ${data.container_code || state.containerCode} marcado como montado.`);
+
+    await loadContainersInYard();
+
+    if (state.blockCode) {
+      occupancyIndex = buildOccupancyIndexForBlock(state.blockCode);
+      renderStacksGrid(currentBaysList);
+    }
+
+    updateMountButtons();
+
+  } catch (e) {
+    alert("Error de red al montar el contenedor.");
+  } finally {
+    if (mountContainerBtn) mountContainerBtn.disabled = false;
+    if (mountContainerToolbarBtn) mountContainerToolbarBtn.disabled = false;
+  }
+}
 // ------------------------
 // Hooks
 // ------------------------
@@ -716,6 +896,14 @@ if (containerSearch) {
   containerSearch.addEventListener("input", () => {
     renderContainersList(filterContainers(containerSearch.value));
   });
+}
+
+if (mountContainerBtn) {
+  mountContainerBtn.addEventListener("click", mountSelectedContainer);
+}
+
+if (mountContainerToolbarBtn) {
+  mountContainerToolbarBtn.addEventListener("click", mountSelectedContainer);
 }
 
 if (refreshContainersBtn) refreshContainersBtn.addEventListener("click", loadContainersInYard);

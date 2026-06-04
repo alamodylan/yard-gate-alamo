@@ -991,5 +991,78 @@ button:not(.btn):hover{
   }
 }
 
+.rack-slot.is-dispatch {
+  background: rgba(234, 179, 8, .32) !important;
+  border-color: rgba(234, 179, 8, .75) !important;
+}
+
+.rack-slot.is-evac {
+  background: rgba(239, 68, 68, .22) !important;
+  border-color: rgba(239, 68, 68, .65) !important;
+}
+
+.rack-slot.is-evac-requested {
+  background: rgba(185, 28, 28, .36) !important;
+  border-color: rgba(248, 113, 113, .85) !important;
+}
+
+.rack-slot.is-mounted-dispatch {
+  background: rgba(59, 130, 246, .30) !important;
+  border-color: rgba(59, 130, 246, .75) !important;
+}
+
+.rack-slot.is-mounted-evac {
+  background: rgba(168, 85, 247, .30) !important;
+  border-color: rgba(168, 85, 247, .75) !important;
+}
+
+.rack-status {
+  display: block;
+  margin-top: 3px;
+  font-size: 9px;
+  font-weight: 900;
+  opacity: .95;
+}
+
+.yard-status-pill {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  border: 1px solid rgba(148, 163, 184, .25);
+}
+
+.yard-status-pill.is-dispatch {
+  background: rgba(234, 179, 8, .18);
+  color: #fde68a;
+  border-color: rgba(234, 179, 8, .45);
+}
+
+.yard-status-pill.is-evac {
+  background: rgba(239, 68, 68, .14);
+  color: #fecaca;
+  border-color: rgba(239, 68, 68, .45);
+}
+
+.yard-status-pill.is-evac-requested {
+  background: rgba(185, 28, 28, .24);
+  color: #fee2e2;
+  border-color: rgba(248, 113, 113, .65);
+}
+
+.yard-status-pill.is-mounted-dispatch {
+  background: rgba(59, 130, 246, .14);
+  color: #bfdbfe;
+  border-color: rgba(59, 130, 246, .45);
+}
+
+.yard-status-pill.is-mounted-evac {
+  background: rgba(168, 85, 247, .14);
+  color: #e9d5ff;
+  border-color: rgba(168, 85, 247, .45);
+}
+
 
 

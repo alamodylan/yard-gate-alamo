@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 from flask import jsonify, request
 from flask_login import login_required, current_user
@@ -10,6 +10,9 @@ from app.models.container import Container, ContainerPosition
 from app.models.movement import Movement
 from app.services.audit import audit_log
 from app.services.yard_logic import find_first_free_slot
+from zoneinfo import ZoneInfo
+
+from app.models.dispatch import DispatchAssignment, DispatchRequestLine, DispatchRequest
 
 from .routes import _ensure_active_site
 
@@ -360,22 +363,103 @@ def _yard_validation_error_response(validation: dict, status_code: int = 409):
 @login_required
 def api_containers_in_yard():
     """
-    Para bandeja (mapa):
-    Retorna contenedores en patio con su posición actual.
+    Para bandeja/mapa:
+    Retorna contenedores en patio con su posición actual, estado operativo
+    y si pertenece a la prelista del mapa.
+
+    Regla prelista mapa:
+    - Hoy completo.
+    - Mañana completo.
+    - Si se monta, NO desaparece; solo cambia de estado/color.
     """
     site_id = _ensure_active_site()
+
+    cr_tz = ZoneInfo("America/Costa_Rica")
+    today_cr = datetime.now(cr_tz).date()
+    tomorrow_cr = today_cr + timedelta(days=1)
 
     rows = (
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .join(YardBay, YardBay.id == ContainerPosition.bay_id)
-        .filter(Container.is_in_yard == True, Container.site_id == site_id)  # noqa: E712
-        .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
+        .filter(
+            Container.is_in_yard == True,  # noqa: E712
+            Container.site_id == site_id,
+        )
+        .order_by(
+            YardBay.code.asc(),
+            ContainerPosition.depth_row.asc(),
+            ContainerPosition.tier.asc(),
+        )
         .all()
     )
 
+    container_ids = [c.id for c, _, _ in rows]
+
+    prelist_by_container = {}
+
+    if container_ids:
+        prelist_rows = (
+            db.session.query(
+                DispatchAssignment.container_id,
+                DispatchRequest.id.label("request_id"),
+                DispatchRequest.request_type,
+                DispatchRequest.booking,
+                DispatchRequest.shipping_line,
+                DispatchRequest.client_name,
+                DispatchRequest.product_name,
+                DispatchRequest.chassis_type,
+                DispatchRequest.port_out,
+                DispatchRequestLine.load_date,
+                DispatchRequestLine.load_time,
+                DispatchRequestLine.container_size,
+                DispatchRequestLine.condition_type,
+            )
+            .join(
+                DispatchRequestLine,
+                DispatchRequestLine.id == DispatchAssignment.request_line_id,
+            )
+            .join(
+                DispatchRequest,
+                DispatchRequest.id == DispatchRequestLine.request_id,
+            )
+            .filter(
+                DispatchAssignment.container_id.in_(container_ids),
+                DispatchRequest.site_id == site_id,
+                DispatchRequest.status != "CANCELADA",
+                DispatchRequestLine.load_date.in_([today_cr, tomorrow_cr]),
+            )
+            .order_by(
+                DispatchRequestLine.load_date.asc(),
+                DispatchRequestLine.load_time.asc().nulls_last(),
+                DispatchAssignment.id.asc(),
+            )
+            .all()
+        )
+
+        for row in prelist_rows:
+            if row.container_id not in prelist_by_container:
+                prelist_by_container[row.container_id] = {
+                    "request_id": row.request_id,
+                    "request_type": row.request_type,
+                    "booking": row.booking,
+                    "shipping_line": row.shipping_line,
+                    "client_name": row.client_name,
+                    "product_name": row.product_name,
+                    "chassis_type": row.chassis_type,
+                    "port_out": row.port_out,
+                    "load_date": row.load_date.isoformat() if row.load_date else None,
+                    "load_time": row.load_time.strftime("%H:%M") if row.load_time else None,
+                    "container_size": row.container_size,
+                    "condition_type": row.condition_type,
+                }
+
     payload = []
+
     for c, p, bay in rows:
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+        prelist_info = prelist_by_container.get(c.id)
+
         payload.append(
             {
                 "id": c.id,
@@ -383,6 +467,12 @@ def api_containers_in_yard():
                 "size": c.size,
                 "year": c.year,
                 "status_notes": c.status_notes,
+                "dispatch_status": dispatch_status,
+
+                # True solo si el contenedor está en prelista de hoy o mañana.
+                "is_prelist_visible": bool(prelist_info),
+                "prelist": prelist_info,
+
                 "position": {
                     "bay_code": bay.code,
                     "depth_row": p.depth_row,
@@ -392,6 +482,142 @@ def api_containers_in_yard():
         )
 
     return jsonify({"rows": payload})
+
+@yard_bp.post("/api/yard/mount-container")
+@login_required
+def api_mount_container():
+    """
+    Marca un contenedor como montado.
+
+    Reglas:
+    - Debe existir y estar en patio.
+    - Debe pertenecer al predio activo.
+    - Debe poder salir físicamente según reglas sidepick:
+        * sin contenedor encima
+        * sin bloqueo de acceso
+    - Solo se puede montar si está:
+        * PARA_DESPACHO
+        * EVACUAR_SOLICITADO
+    """
+
+    site_id = _ensure_active_site()
+
+    data = request.get_json(silent=True) or {}
+    container_id = data.get("container_id")
+
+    if not container_id:
+        return jsonify({
+            "ok": False,
+            "error": "CONTAINER_REQUIRED",
+            "message": "Debe indicar el contenedor a montar.",
+        }), 400
+
+    c = Container.query.get(container_id)
+
+    if not c or not c.is_in_yard or c.site_id != site_id:
+        return jsonify({
+            "ok": False,
+            "error": "CONTAINER_NOT_FOUND",
+            "message": "El contenedor no existe o no está en patio en el predio actual.",
+        }), 404
+
+    # =========================
+    # VALIDAR ACCESIBILIDAD REAL
+    # =========================
+    validation = _validate_container_can_be_removed(
+        container_id=c.id,
+        site_id=site_id,
+    )
+
+    if not validation.get("ok"):
+        return _yard_validation_error_response(validation, 409)
+
+    # =========================
+    # VALIDAR ESTADO OPERATIVO
+    # =========================
+    old_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+    if old_status == "PARA_DESPACHO":
+        new_status = "DESPACHO_MONTADO"
+
+    elif old_status == "EVACUAR_SOLICITADO":
+        new_status = "EVACUACION_MONTADA"
+
+    else:
+        return jsonify({
+            "ok": False,
+            "error": "INVALID_STATUS",
+            "message": "Este contenedor no está en un estado válido para montar.",
+            "dispatch_status": old_status,
+        }), 409
+
+    # =========================
+    # MARCAR COMO MONTADO
+    # =========================
+    c.dispatch_status = new_status
+    c.dispatch_marked_at = datetime.utcnow()
+    c.dispatch_marked_by_user_id = current_user.id
+
+    current_pos = ContainerPosition.query.filter_by(
+        container_id=c.id
+    ).first()
+
+    bay_code = None
+    depth_row = None
+    tier = None
+
+    if current_pos:
+        bay = YardBay.query.get(current_pos.bay_id)
+        bay_code = bay.code if bay else None
+        depth_row = current_pos.depth_row
+        tier = current_pos.tier
+
+    db.session.add(
+        Movement(
+            site_id=site_id,
+            container_id=c.id,
+            movement_type="MOUNT",
+            occurred_at=datetime.utcnow(),
+            bay_code=bay_code,
+            depth_row=depth_row,
+            tier=tier,
+            created_by_user_id=current_user.id,
+            notes=f"CONTAINER_MOUNTED_FROM_{old_status}_TO_{new_status}",
+        )
+    )
+
+    audit_log(
+        current_user.id,
+        "CONTAINER_MOUNTED",
+        "container",
+        c.id,
+        {
+            "container_code": c.code,
+            "old_status": old_status,
+            "new_status": new_status,
+            "position": {
+                "bay_code": bay_code,
+                "depth_row": depth_row,
+                "tier": tier,
+            },
+            "site_id": site_id,
+        },
+    )
+
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "container_id": c.id,
+        "container_code": c.code,
+        "old_status": old_status,
+        "dispatch_status": new_status,
+        "position": {
+            "bay_code": bay_code,
+            "depth_row": depth_row,
+            "tier": tier,
+        },
+    })
 
 
 @yard_bp.get("/api/yard/bays")
