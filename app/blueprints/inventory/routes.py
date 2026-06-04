@@ -214,6 +214,10 @@ def inventory_index():
                 "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
                 "eir_trip_date": (eir.get("trip_date") if eir else None),
                 "is_in_yard": bool(c.is_in_yard),
+
+                # Estado operativo real del contenedor
+                "dispatch_status": c.dispatch_status or "NORMAL",
+
                 "status_notes": (cls.get("summary_text") if cls else (c.status_notes or "")),
                 "position": None
                 if not pos
