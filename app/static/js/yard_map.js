@@ -499,7 +499,16 @@ async function openBlock(blockCode) {
     renderStacksGrid(currentBaysList);
     setView(VIEW.STACKS);
   } catch (e) {
-    if (stacksGrid) stacksGrid.innerHTML = `<div class="hint">Error de red cargando estibas.</div>`;
+    console.error("Error cargando/renderizando estibas:", e);
+
+    if (stacksGrid) {
+      stacksGrid.innerHTML = `
+        <div class="hint">
+          Error cargando/renderizando estibas: ${e.message || e}
+        </div>
+      `;
+    }
+
     setView(VIEW.STACKS);
   }
 }
@@ -544,6 +553,9 @@ function renderStacksGrid(bays) {
     const used = b.used || 0;
     const cap = b.capacity || 0;
     const available = cap > 0 ? (used < cap) : true;
+
+    const rowOrder = getRowOrderForBay(b);
+    const tierOrder = getTierOrderForBay(b);
 
     const badgeText = available ? "Disponible" : "Lleno";
     const badgeCls = available ? "badge-ok" : "badge-bad";
