@@ -362,10 +362,14 @@ def assign_containers(request_id: int, line_id: int):
     selected_ids = [int(x) for x in selected_ids if str(x).isdigit()]
     selected_ids = selected_ids[:pending_count]
 
-    if req.request_type == "VACIO":
+    request_type = (req.request_type or "DESPACHO").strip().upper()
+
+    if request_type == "VACIO":
         allowed_status = "PARA_EVACUAR"
+        next_status = "EVACUAR_SOLICITADO"
     else:
         allowed_status = "NORMAL"
+        next_status = "PARA_DESPACHO"
 
     containers = (
         Container.query
@@ -380,7 +384,11 @@ def assign_containers(request_id: int, line_id: int):
     )
 
     if not containers:
-        flash("No se encontraron contenedores válidos para asignar.", "danger")
+        if request_type == "VACIO":
+            flash("No se encontraron contenedores en estado Evacuar para asignar a esta solicitud de vacío.", "danger")
+        else:
+            flash("No se encontraron contenedores disponibles para asignar a esta solicitud de despacho.", "danger")
+
         return redirect(url_for("dispatch.request_detail", request_id=req.id))
 
     assigned_codes = []
@@ -394,11 +402,7 @@ def assign_containers(request_id: int, line_id: int):
         )
         db.session.add(assignment)
 
-        if req.request_type == "VACIO":
-            c.dispatch_status = "EVACUAR_SOLICITADO"
-        else:
-            c.dispatch_status = "PARA_DESPACHO"
-
+        c.dispatch_status = next_status
         c.dispatch_marked_at = datetime.utcnow()
         c.dispatch_marked_by_user_id = current_user.id
 
