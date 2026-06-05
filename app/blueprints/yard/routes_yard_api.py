@@ -483,6 +483,45 @@ def api_containers_in_yard():
 
     return jsonify({"rows": payload})
 
+@yard_bp.get("/api/yard/mounted-containers")
+@login_required
+def api_mounted_containers():
+
+    site_id = _ensure_active_site()
+
+    rows = (
+        Container.query
+        .filter(
+            Container.site_id == site_id,
+            Container.is_in_yard == True,
+            Container.dispatch_status.in_([
+                "DESPACHO_MONTADO",
+                "EVACUACION_MONTADA",
+            ])
+        )
+        .order_by(Container.code.asc())
+        .all()
+    )
+
+    payload = []
+
+    for c in rows:
+        payload.append({
+            "id": c.id,
+            "code": c.code,
+            "size": c.size,
+            "dispatch_status": c.dispatch_status,
+            "mounted_at": (
+                c.mounted_at.isoformat()
+                if getattr(c, "mounted_at", None)
+                else None
+            )
+        })
+
+    return jsonify({
+        "rows": payload
+    })
+
 @yard_bp.post("/api/yard/mount-container")
 @login_required
 def api_mount_container():
@@ -492,12 +531,15 @@ def api_mount_container():
     Reglas:
     - Debe existir y estar en patio.
     - Debe pertenecer al predio activo.
-    - Debe poder salir físicamente según reglas sidepick:
-        * sin contenedor encima
-        * sin bloqueo de acceso
+    - Debe poder salir físicamente según reglas sidepick.
     - Solo se puede montar si está:
         * PARA_DESPACHO
         * EVACUAR_SOLICITADO
+    - Al montar:
+        * cambia dispatch_status a estado montado
+        * registra movimiento MOUNT con la posición anterior
+        * elimina ContainerPosition para liberar la posición física del mapa
+        * mantiene is_in_yard=True hasta que se haga Gate Out/salida real
     """
 
     site_id = _ensure_active_site()
@@ -521,9 +563,6 @@ def api_mount_container():
             "message": "El contenedor no existe o no está en patio en el predio actual.",
         }), 404
 
-    # =========================
-    # VALIDAR ACCESIBILIDAD REAL
-    # =========================
     validation = _validate_container_can_be_removed(
         container_id=c.id,
         site_id=site_id,
@@ -532,17 +571,12 @@ def api_mount_container():
     if not validation.get("ok"):
         return _yard_validation_error_response(validation, 409)
 
-    # =========================
-    # VALIDAR ESTADO OPERATIVO
-    # =========================
     old_status = (c.dispatch_status or "NORMAL").strip().upper()
 
     if old_status == "PARA_DESPACHO":
         new_status = "DESPACHO_MONTADO"
-
     elif old_status == "EVACUAR_SOLICITADO":
         new_status = "EVACUACION_MONTADA"
-
     else:
         return jsonify({
             "ok": False,
@@ -550,13 +584,6 @@ def api_mount_container():
             "message": "Este contenedor no está en un estado válido para montar.",
             "dispatch_status": old_status,
         }), 409
-
-    # =========================
-    # MARCAR COMO MONTADO
-    # =========================
-    c.dispatch_status = new_status
-    c.dispatch_marked_at = datetime.utcnow()
-    c.dispatch_marked_by_user_id = current_user.id
 
     current_pos = ContainerPosition.query.filter_by(
         container_id=c.id
@@ -572,6 +599,12 @@ def api_mount_container():
         depth_row = current_pos.depth_row
         tier = current_pos.tier
 
+    c.dispatch_status = new_status
+    c.dispatch_marked_at = datetime.utcnow()
+    c.dispatch_marked_by_user_id = current_user.id
+
+    db.session.add(c)
+
     db.session.add(
         Movement(
             site_id=site_id,
@@ -582,9 +615,12 @@ def api_mount_container():
             depth_row=depth_row,
             tier=tier,
             created_by_user_id=current_user.id,
-            notes=f"CONTAINER_MOUNTED_FROM_{old_status}_TO_{new_status}",
+            notes=f"CONTAINER_MOUNTED_FROM_{old_status}_TO_{new_status}_POSITION_RELEASED",
         )
     )
+
+    if current_pos:
+        db.session.delete(current_pos)
 
     audit_log(
         current_user.id,
@@ -595,7 +631,8 @@ def api_mount_container():
             "container_code": c.code,
             "old_status": old_status,
             "new_status": new_status,
-            "position": {
+            "position_released": True,
+            "previous_position": {
                 "bay_code": bay_code,
                 "depth_row": depth_row,
                 "tier": tier,
@@ -612,7 +649,8 @@ def api_mount_container():
         "container_code": c.code,
         "old_status": old_status,
         "dispatch_status": new_status,
-        "position": {
+        "position_released": True,
+        "previous_position": {
             "bay_code": bay_code,
             "depth_row": depth_row,
             "tier": tier,

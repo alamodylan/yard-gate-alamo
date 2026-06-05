@@ -14,6 +14,7 @@ const svg = document.getElementById("yardSvg");
 
 // Left panel
 const containersList = document.getElementById("containersList");
+const mountedContainersList = document.getElementById("mountedContainersList");
 const containerSearch = document.getElementById("containerSearch");
 const refreshContainersBtn = document.getElementById("refreshContainersBtn");
 const touchHint = document.getElementById("touchHint");
@@ -53,6 +54,7 @@ const IS_TOUCH = ("ontouchstart" in window) || (navigator.maxTouchPoints && navi
 
 // Data cache
 let allContainers = [];
+let mountedContainers = [];
 let currentBaysList = [];
 let occupancyIndex = null; // Map<bay_code, Map<"row-tier", {id, code}>>
 let validDestinationsIndex = new Set();
@@ -881,6 +883,99 @@ function renderContainersList(list) {
   highlightSelectedContainerInList();
 }
 
+function renderMountedContainersList(list) {
+  if (!mountedContainersList) return;
+
+  if (!list || list.length === 0) {
+    mountedContainersList.innerHTML = `
+      <div class="hint">
+        No hay contenedores montados.
+      </div>
+    `;
+    return;
+  }
+
+  const html = list.map(item => {
+
+    const status =
+      item.dispatch_status === "EVACUACION_MONTADA"
+        ? "Evacuación montada"
+        : "Despacho montado";
+
+    const cls =
+      item.dispatch_status === "EVACUACION_MONTADA"
+        ? "is-mounted-evac"
+        : "is-mounted-dispatch";
+
+    return `
+      <div class="container-item">
+
+        <div style="display:flex; justify-content:space-between; gap:10px;">
+
+          <div>
+
+            <div style="font-weight:950;">
+              ${item.code}
+            </div>
+
+            <div class="hint" style="margin-top:6px;">
+              ${item.size || ""}
+            </div>
+
+            <div class="yard-status-pill ${cls}">
+              ${status}
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    `;
+  }).join("");
+
+  mountedContainersList.innerHTML = html;
+}
+
+async function loadMountedContainers() {
+
+  if (!mountedContainersList) return;
+
+  mountedContainersList.innerHTML = `
+    <div class="hint">
+      Cargando montados...
+    </div>
+  `;
+
+  try {
+
+    const r = await fetch("/api/yard/mounted-containers");
+
+    if (!r.ok) {
+      mountedContainersList.innerHTML = `
+        <div class="hint">
+          Error cargando montados.
+        </div>
+      `;
+      return;
+    }
+
+    const data = await r.json();
+
+    mountedContainers = data.rows || [];
+
+    renderMountedContainersList(mountedContainers);
+
+  } catch (e) {
+
+    mountedContainersList.innerHTML = `
+      <div class="hint">
+        Error de red cargando montados.
+      </div>
+    `;
+  }
+}
+
 function filterContainers(query) {
   const q = (query || "").trim().toUpperCase();
   if (!q) return allContainers;
@@ -956,6 +1051,7 @@ async function mountSelectedContainer() {
     alert(`Contenedor ${data.container_code || state.containerCode} marcado como montado.`);
 
     await loadContainersInYard();
+    await loadMountedContainers();
 
     if (state.blockCode) {
       occupancyIndex = buildOccupancyIndexForBlock(state.blockCode);
@@ -1037,6 +1133,7 @@ if (rowsCloseBtn) rowsCloseBtn.addEventListener("click", () => {
 setView(VIEW.BLOCKS);
 drawBlocks();
 loadContainersInYard();
+loadMountedContainers();
 
 // Bloque preseleccionado (si existe)
 if (window.YARD_INIT && window.YARD_INIT.block) {
