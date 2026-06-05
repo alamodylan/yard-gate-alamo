@@ -607,20 +607,41 @@
           <select name="container_id" id="container_id">
             <option value="">— Selecciona contenedor —</option>
             {% for row in containers %}
-                {% set c = row.container %}
-                {% set p = row.position %}
-                {% set b = row.bay %}
-                <option
-                    value="{{ c.id }}"
-                    data-code="{{ c.code }}"
-                    data-size="{{ c.size or '' }}"
-                    data-bay="{{ b.code }}"
-                    data-row="{{ p.depth_row }}"
-                    data-tier="{{ p.tier }}"
-                    data-shipping-line="{{ row.shipping_line or '' }}"
-                >
-                    {{ c.code }} · {{ c.size }} · {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
-                </option>
+              {% set c = row.container %}
+              {% set p = row.position %}
+              {% set b = row.bay %}
+              {% set dispatch_status = row.dispatch_status or c.dispatch_status or 'NORMAL' %}
+
+              <option
+                value="{{ c.id }}"
+                data-code="{{ c.code }}"
+                data-size="{{ c.size or '' }}"
+                data-bay="{{ b.code if b else '' }}"
+                data-row="{{ p.depth_row if p else '' }}"
+                data-tier="{{ p.tier if p else '' }}"
+                data-dispatch-status="{{ dispatch_status }}"
+                data-shipping-line="{{ row.shipping_line or '' }}"
+              >
+                {{ c.code }} · {{ c.size }}
+                ·
+                {% if b and p %}
+                  {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
+                {% else %}
+                  Montado / sin posición física
+                {% endif %}
+                ·
+                {% if dispatch_status == 'PARA_DESPACHO' %}
+                  Asignado para despacho
+                {% elif dispatch_status == 'EVACUAR_SOLICITADO' %}
+                  Solicitado para evacuar
+                {% elif dispatch_status == 'DESPACHO_MONTADO' %}
+                  Despacho montado
+                {% elif dispatch_status == 'EVACUACION_MONTADA' %}
+                  Evacuación montada
+                {% else %}
+                  {{ dispatch_status }}
+                {% endif %}
+              </option>
             {% endfor %}
           </select>
           <div class="field-help">Solo se muestran contenedores activos en patio de este predio.</div>
@@ -1444,7 +1465,9 @@
 
     containerCodeView.value = code;
     containerSizeView.value = size;
-    containerPositionView.value = bay ? `${bay} F${String(row).padStart(2, "0")} N${tier}` : "";
+    containerPositionView.value = bay
+      ? `${bay} F${String(row).padStart(2, "0")} N${tier}`
+      : "Montado / sin posición física";
 
     if (shippingLineInput) {
       shippingLineInput.value = shippingLine;

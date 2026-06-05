@@ -44,32 +44,68 @@ def gate_out_view():
             WHERE cc.site_id = :site_id
             ORDER BY cc.container_id, cc.classified_at DESC NULLS LAST, cc.id DESC
         """)
-        class_rows = db.session.execute(sql_last_class, {"site_id": site_id}).mappings().all()
-        shipping_line_map = {int(r["container_id"]): (r["shipping_line"] or "").strip().upper() for r in class_rows}
+
+        class_rows = db.session.execute(
+            sql_last_class,
+            {"site_id": site_id},
+        ).mappings().all()
+
+        shipping_line_map = {
+            int(r["container_id"]): (r["shipping_line"] or "").strip().upper()
+            for r in class_rows
+        }
+
+        allowed_gate_out_statuses = {
+            "PARA_DESPACHO",
+            "EVACUAR_SOLICITADO",
+            "DESPACHO_MONTADO",
+            "EVACUACION_MONTADA",
+        }
 
         containers_raw = (
             db.session.query(Container, ContainerPosition, YardBay)
-            .join(ContainerPosition, ContainerPosition.container_id == Container.id)
-            .join(YardBay, YardBay.id == ContainerPosition.bay_id)
-            .filter(Container.is_in_yard == True, Container.site_id == site_id)  # noqa: E712
-            .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
+            .outerjoin(
+                ContainerPosition,
+                ContainerPosition.container_id == Container.id,
+            )
+            .outerjoin(
+                YardBay,
+                YardBay.id == ContainerPosition.bay_id,
+            )
+            .filter(
+                Container.is_in_yard == True,  # noqa: E712
+                Container.site_id == site_id,
+                Container.dispatch_status.in_(list(allowed_gate_out_statuses)),
+            )
+            .order_by(
+                Container.dispatch_status.asc(),
+                YardBay.code.asc().nulls_last(),
+                ContainerPosition.depth_row.asc().nulls_last(),
+                ContainerPosition.tier.asc().nulls_last(),
+                Container.code.asc(),
+            )
             .all()
         )
 
         containers = []
+
         for c, p, b in containers_raw:
+            dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+
             containers.append({
                 "container": c,
                 "position": p,
                 "bay": b,
                 "shipping_line": shipping_line_map.get(c.id, ""),
+                "is_mounted": dispatch_status in allowed_gate_out_statuses,
+                "dispatch_status": dispatch_status,
             })
 
         chassis_rows = (
             Chassis.query
             .filter(
                 Chassis.site_id == site_id,
-                Chassis.is_in_yard == True  # noqa: E712
+                Chassis.is_in_yard == True,  # noqa: E712
             )
             .order_by(Chassis.chassis_number.asc())
             .all()
@@ -94,11 +130,22 @@ def gate_out_view():
         db.session.query(Container, ContainerPosition, YardBay)
         .join(ContainerPosition, ContainerPosition.container_id == Container.id)
         .join(YardBay, YardBay.id == ContainerPosition.bay_id)
-        .filter(Container.is_in_yard == True, Container.site_id == site_id)  # noqa: E712
-        .order_by(YardBay.code.asc(), ContainerPosition.depth_row.asc(), ContainerPosition.tier.asc())
+        .filter(
+            Container.is_in_yard == True,  # noqa: E712
+            Container.site_id == site_id,
+        )
+        .order_by(
+            YardBay.code.asc(),
+            ContainerPosition.depth_row.asc(),
+            ContainerPosition.tier.asc(),
+        )
         .all()
     )
-    return render_template("yard/gate_out.html", rows=containers)
+
+    return render_template(
+        "yard/gate_out.html",
+        rows=containers,
+    )
 
 
 @yard_bp.post("/gate-out")
