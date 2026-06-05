@@ -1364,3 +1364,233 @@ def _send_ticket_to_print_agent(payload_text: str) -> bool:
         return resp.status_code == 200
     except Exception:
         return False
+
+def _is_admin_user():
+    return current_user.is_authenticated and (current_user.role or "").lower() == "admin"
+
+
+def _require_admin():
+    if not _is_admin_user():
+        abort(403)
+
+
+def _bay_has_positions_outside_limits(bay_id: int, max_depth_rows: int, max_tiers: int):
+    return (
+        ContainerPosition.query
+        .filter(
+            ContainerPosition.bay_id == bay_id,
+            db.or_(
+                ContainerPosition.depth_row > max_depth_rows,
+                ContainerPosition.tier > max_tiers,
+            )
+        )
+        .first()
+    )
+
+
+@yard_bp.get("/map/config")
+@login_required
+def map_config_view():
+    _require_admin()
+    site_id = _ensure_active_site()
+
+    blocks = (
+        YardBlock.query
+        .filter_by(site_id=site_id)
+        .order_by(YardBlock.code.asc())
+        .all()
+    )
+
+    bays = (
+        YardBay.query
+        .filter_by(site_id=site_id)
+        .order_by(YardBay.code.asc(), YardBay.bay_number.asc())
+        .all()
+    )
+
+    counts = dict(
+        db.session.query(
+            ContainerPosition.bay_id,
+            db.func.count(ContainerPosition.container_id)
+        )
+        .join(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(YardBay.site_id == site_id)
+        .group_by(ContainerPosition.bay_id)
+        .all()
+    )
+
+    return render_template(
+        "yard/map_config.html",
+        blocks=blocks,
+        bays=bays,
+        counts=counts,
+    )
+
+
+@yard_bp.post("/map/config/block/create")
+@login_required
+def map_config_create_block():
+    _require_admin()
+    site_id = _ensure_active_site()
+
+    code = (request.form.get("code") or "").strip().upper()
+
+    if not code or len(code) > 1:
+        flash("El código del bloque debe ser una sola letra. Ejemplo: A, B, C.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    exists = YardBlock.query.filter_by(site_id=site_id, code=code).first()
+    if exists:
+        flash(f"El bloque {code} ya existe en este predio.", "warning")
+        return redirect(url_for("yard.map_config_view"))
+
+    block = YardBlock(
+        site_id=site_id,
+        code=code,
+    )
+    db.session.add(block)
+    db.session.commit()
+
+    flash(f"Bloque {code} creado correctamente.", "success")
+    return redirect(url_for("yard.map_config_view"))
+
+
+@yard_bp.post("/map/config/bay/create")
+@login_required
+def map_config_create_bay():
+    _require_admin()
+    site_id = _ensure_active_site()
+
+    block_id_raw = request.form.get("block_id")
+    bay_number_raw = request.form.get("bay_number")
+    max_depth_rows_raw = request.form.get("max_depth_rows")
+    max_tiers_raw = request.form.get("max_tiers")
+
+    try:
+        block_id = int(block_id_raw)
+        bay_number = int(bay_number_raw)
+        max_depth_rows = int(max_depth_rows_raw)
+        max_tiers = int(max_tiers_raw)
+    except Exception:
+        flash("Datos inválidos para crear la estiba.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    if bay_number < 1:
+        flash("El número de estiba debe ser mayor a 0.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    if max_depth_rows < 1 or max_tiers < 1:
+        flash("Filas y niveles deben ser mayores a 0.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    block = YardBlock.query.filter_by(
+        id=block_id,
+        site_id=site_id,
+    ).first()
+
+    if not block:
+        flash("Bloque inválido para este predio.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    bay_code = f"{block.code}{str(bay_number).zfill(2)}"
+
+    exists = YardBay.query.filter_by(
+        site_id=site_id,
+        code=bay_code,
+    ).first()
+
+    if exists:
+        flash(f"La estiba {bay_code} ya existe en este predio.", "warning")
+        return redirect(url_for("yard.map_config_view"))
+
+    bay = YardBay(
+        site_id=site_id,
+        block_id=block.id,
+        bay_number=bay_number,
+        code=bay_code,
+        max_depth_rows=max_depth_rows,
+        max_tiers=max_tiers,
+        x=0,
+        y=0,
+        w=50,
+        h=50,
+        is_active=True,
+    )
+
+    db.session.add(bay)
+    db.session.commit()
+
+    flash(f"Estiba {bay_code} creada correctamente.", "success")
+    return redirect(url_for("yard.map_config_view"))
+
+
+@yard_bp.post("/map/config/bay/<int:bay_id>/update")
+@login_required
+def map_config_update_bay(bay_id):
+    _require_admin()
+    site_id = _ensure_active_site()
+
+    bay = YardBay.query.filter_by(
+        id=bay_id,
+        site_id=site_id,
+    ).first_or_404()
+
+    try:
+        max_depth_rows = int(request.form.get("max_depth_rows"))
+        max_tiers = int(request.form.get("max_tiers"))
+    except Exception:
+        flash("Filas o niveles inválidos.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    if max_depth_rows < 1 or max_tiers < 1:
+        flash("Filas y niveles deben ser mayores a 0.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    blocked_position = _bay_has_positions_outside_limits(
+        bay.id,
+        max_depth_rows,
+        max_tiers,
+    )
+
+    if blocked_position:
+        flash(
+            f"No se puede reducir {bay.code}. Hay contenedores ubicados fuera del nuevo rango permitido.",
+            "danger",
+        )
+        return redirect(url_for("yard.map_config_view"))
+
+    bay.max_depth_rows = max_depth_rows
+    bay.max_tiers = max_tiers
+
+    db.session.commit()
+
+    flash(f"Estiba {bay.code} actualizada correctamente.", "success")
+    return redirect(url_for("yard.map_config_view"))
+
+
+@yard_bp.post("/map/config/bay/<int:bay_id>/toggle")
+@login_required
+def map_config_toggle_bay(bay_id):
+    _require_admin()
+    site_id = _ensure_active_site()
+
+    bay = YardBay.query.filter_by(
+        id=bay_id,
+        site_id=site_id,
+    ).first_or_404()
+
+    if bay.is_active:
+        has_containers = ContainerPosition.query.filter_by(
+            bay_id=bay.id
+        ).first()
+
+        if has_containers:
+            flash(f"No se puede desactivar {bay.code} porque tiene contenedores posicionados.", "danger")
+            return redirect(url_for("yard.map_config_view"))
+
+    bay.is_active = not bay.is_active
+    db.session.commit()
+
+    estado = "activada" if bay.is_active else "desactivada"
+    flash(f"Estiba {bay.code} {estado} correctamente.", "success")
+    return redirect(url_for("yard.map_config_view"))

@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Configuración de Patio{% endblock %}
+
+{% block content %}
+
+<div class="card card-pad">
+  <h2 style="margin:0;">Configuración de Patio</h2>
+  <p class="card-sub" style="margin-top:6px;">
+    Administra bloques, estibas, filas y niveles del predio activo.
+  </p>
+</div>
+
+<div class="grid grid-2" style="margin-top:16px;">
+
+  <!-- CREAR BLOQUE -->
+
+  <div class="card card-pad">
+    <h3 style="margin-top:0;">Crear Bloque</h3>
+
+```
+<form method="post"
+      action="{{ url_for('yard.map_config_create_block') }}">
+
+  <label>Código Bloque</label>
+  <input
+    type="text"
+    name="code"
+    maxlength="1"
+    placeholder="A"
+    required
+  >
+
+  <button type="submit" class="btn success" style="margin-top:12px;">
+    Crear Bloque
+  </button>
+</form>
+```
+
+  </div>
+
+  <!-- CREAR ESTIBA -->
+
+  <div class="card card-pad">
+    <h3 style="margin-top:0;">Crear Estiba</h3>
+
+```
+<form method="post"
+      action="{{ url_for('yard.map_config_create_bay') }}">
+
+  <label>Bloque</label>
+  <select name="block_id" required>
+    {% for block in blocks %}
+      <option value="{{ block.id }}">
+        {{ block.code }}
+      </option>
+    {% endfor %}
+  </select>
+
+  <label>Número Estiba</label>
+  <input
+    type="number"
+    min="1"
+    name="bay_number"
+    required
+  >
+
+  <label>Filas</label>
+  <input
+    type="number"
+    min="1"
+    value="20"
+    name="max_depth_rows"
+    required
+  >
+
+  <label>Niveles</label>
+  <input
+    type="number"
+    min="1"
+    value="4"
+    name="max_tiers"
+    required
+  >
+
+  <button type="submit" class="btn success" style="margin-top:12px;">
+    Crear Estiba
+  </button>
+</form>
+```
+
+  </div>
+
+</div>
+
+<div class="card card-pad" style="margin-top:16px;">
+
+  <h3 style="margin-top:0;">Bloques del Predio</h3>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Bloque</th>
+      </tr>
+    </thead>
+
+```
+<tbody>
+  {% for block in blocks %}
+  <tr>
+    <td>{{ block.id }}</td>
+    <td>{{ block.code }}</td>
+  </tr>
+  {% endfor %}
+</tbody>
+```
+
+  </table>
+
+</div>
+
+<div class="card card-pad" style="margin-top:16px;">
+
+  <h3 style="margin-top:0;">Estibas</h3>
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Estiba</th>
+        <th>Filas</th>
+        <th>Niveles</th>
+        <th>Capacidad</th>
+        <th>Usados</th>
+        <th>Estado</th>
+        <th style="width:340px;">Acciones</th>
+      </tr>
+    </thead>
+
+```
+<tbody>
+
+  {% for bay in bays %}
+
+  <tr>
+
+    <td>
+      <b>{{ bay.code }}</b>
+    </td>
+
+    <td>{{ bay.max_depth_rows }}</td>
+
+    <td>{{ bay.max_tiers }}</td>
+
+    <td>
+      {{ bay.max_depth_rows * bay.max_tiers }}
+    </td>
+
+    <td>
+      {{ counts.get(bay.id, 0) }}
+    </td>
+
+    <td>
+      {% if bay.is_active %}
+        <span class="badge success">
+          Activa
+        </span>
+      {% else %}
+        <span class="badge danger">
+          Inactiva
+        </span>
+      {% endif %}
+    </td>
+
+    <td>
+
+      <form
+        method="post"
+        action="{{ url_for('yard.map_config_update_bay', bay_id=bay.id) }}"
+        style="display:flex; gap:8px; flex-wrap:wrap;"
+      >
+
+        <input
+          type="number"
+          min="1"
+          name="max_depth_rows"
+          value="{{ bay.max_depth_rows }}"
+          style="width:90px;"
+          required
+        >
+
+        <input
+          type="number"
+          min="1"
+          name="max_tiers"
+          value="{{ bay.max_tiers }}"
+          style="width:90px;"
+          required
+        >
+
+        <button
+          type="submit"
+          class="btn primary small"
+        >
+          Guardar
+        </button>
+
+      </form>
+
+      <form
+        method="post"
+        action="{{ url_for('yard.map_config_toggle_bay', bay_id=bay.id) }}"
+        style="margin-top:8px;"
+      >
+
+        {% if bay.is_active %}
+          <button type="submit" class="btn danger small">
+            Desactivar
+          </button>
+        {% else %}
+          <button type="submit" class="btn success small">
+            Activar
+          </button>
+        {% endif %}
+
+      </form>
+
+    </td>
+
+  </tr>
+
+  {% endfor %}
+
+</tbody>
+```
+
+  </table>
+
+</div>
+
+{% endblock %}

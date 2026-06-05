@@ -110,6 +110,10 @@
         {% endif %}
 
         {% if current_user.is_authenticated and (current_user.role|lower == 'admin') %}
+          <a class="navlink" href="{{ url_for('yard.map_config_view') }}">
+            Configuración Patio
+          </a>
+
           <a class="navlink" href="{{ url_for('admin.users_view') }}">
             Usuarios
           </a>

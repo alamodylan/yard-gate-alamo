@@ -372,28 +372,34 @@ def gate_in_post():
                 flash("Año inválido.", "danger")
                 return redirect(url_for("yard.gate_in_view"))
 
-        if block_code not in {"A", "B", "C", "D"}:
-            flash("Bloque inválido.", "danger")
+        block = YardBlock.query.filter_by(
+            code=block_code,
+            site_id=site_id,
+        ).first()
+
+        if not block:
+            flash("Bloque inválido para este predio.", "danger")
             return redirect(url_for("yard.gate_in_view"))
 
         try:
             bay_number = int(bay_number_raw)
-            if not (1 <= bay_number <= 15):
-                raise ValueError()
         except ValueError:
-            flash("Estiba inválida (1..15).", "danger")
+            flash("Número de estiba inválido.", "danger")
             return redirect(url_for("yard.gate_in_view"))
 
-        block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
         bay = (
             YardBay.query
-            .filter_by(block_id=block.id, bay_number=bay_number, is_active=True, site_id=site_id)
+            .filter_by(
+                block_id=block.id,
+                bay_number=bay_number,
+                is_active=True,
+                site_id=site_id,
+            )
             .first()
-            if block else None
         )
 
         if not bay:
-            flash("Estiba no encontrada.", "danger")
+            flash("Estiba no encontrada o inactiva en este predio.", "danger")
             return redirect(url_for("yard.gate_in_view"))
 
         db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()

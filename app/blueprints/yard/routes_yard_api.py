@@ -1477,3 +1477,132 @@ def api_bay_row_containers(bay_code: str, row_number: int):
         })
 
     return jsonify({"ok": True, "bay_code": bay.code, "depth_row": row_number, "containers": items})
+
+@yard_bp.get("/api/yard/free-slots")
+@login_required
+def api_yard_free_slots():
+    """
+    Devuelve espacios disponibles reales para Gate In manual.
+
+    Reglas:
+    - Estiba activa.
+    - Slot libre.
+    - No flotar: N2 requiere N1 ocupado.
+    - Sidepick debe poder llegar: no debe haber contenedores en filas más hacia afuera.
+    - Orden: más adentro primero.
+    """
+    site_id = _ensure_active_site()
+
+    block_code = (request.args.get("block") or "").strip().upper()
+    bay_number_raw = (request.args.get("bay_number") or "").strip()
+
+    if not block_code:
+        return jsonify({
+            "ok": False,
+            "error": "BLOCK_REQUIRED",
+            "slots": [],
+        }), 400
+
+    try:
+        bay_number = int(bay_number_raw)
+    except Exception:
+        return jsonify({
+            "ok": False,
+            "error": "INVALID_BAY_NUMBER",
+            "slots": [],
+        }), 400
+
+    block = YardBlock.query.filter_by(
+        site_id=site_id,
+        code=block_code,
+    ).first()
+
+    if not block:
+        return jsonify({
+            "ok": False,
+            "error": "BLOCK_NOT_FOUND",
+            "slots": [],
+        }), 404
+
+    bay = YardBay.query.filter_by(
+        site_id=site_id,
+        block_id=block.id,
+        bay_number=bay_number,
+        is_active=True,
+    ).first()
+
+    if not bay:
+        return jsonify({
+            "ok": False,
+            "error": "BAY_NOT_FOUND",
+            "slots": [],
+        }), 404
+
+    max_rows = int(bay.max_depth_rows or 0)
+    max_tiers = int(bay.max_tiers or 0)
+
+    if max_rows < 1 or max_tiers < 1:
+        return jsonify({
+            "ok": True,
+            "bay_code": bay.code,
+            "slots": [],
+        })
+
+    occupied_rows = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            ContainerPosition.bay_id == bay.id,
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+        )
+        .all()
+    )
+
+    occupied = {}
+
+    for c, p in occupied_rows:
+        occupied[(int(p.depth_row), int(p.tier))] = {
+            "container_id": c.id,
+            "container_code": c.code,
+            "depth_row": int(p.depth_row),
+            "tier": int(p.tier),
+        }
+
+    slots = []
+
+    for depth_row in range(max_rows, 0, -1):
+        for tier in range(1, max_tiers + 1):
+
+            if (depth_row, tier) in occupied:
+                continue
+
+            if tier > 1 and (depth_row, tier - 1) not in occupied:
+                continue
+
+            access_blocked = False
+
+            for (occ_row, occ_tier), item in occupied.items():
+                if occ_row > depth_row:
+                    access_blocked = True
+                    break
+
+            if access_blocked:
+                continue
+
+            slots.append({
+                "bay_id": bay.id,
+                "bay_code": bay.code,
+                "depth_row": depth_row,
+                "tier": tier,
+                "label": f"{bay.code} · F{str(depth_row).zfill(2)} · N{tier}",
+            })
+
+    return jsonify({
+        "ok": True,
+        "bay_id": bay.id,
+        "bay_code": bay.code,
+        "max_depth_rows": max_rows,
+        "max_tiers": max_tiers,
+        "slots": slots,
+    })

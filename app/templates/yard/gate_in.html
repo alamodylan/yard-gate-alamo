@@ -887,19 +887,18 @@
     </select>
 
     <div id="manualBox" style="display:none;">
-      <label>Fila (1 = fondo ... 20 = frente)</label>
-      <select name="depth_row">
-        {% for i in range(1, 21) %}
-          <option value="{{ i }}">{{ i }}</option>
-        {% endfor %}
+      <label>Espacio disponible</label>
+
+      <select id="freeSlotSelect">
+        <option value="">Selecciona una estiba primero...</option>
       </select>
 
-      <label>Nivel (1 a 4)</label>
-      <select name="tier">
-        {% for i in range(1, 5) %}
-          <option value="{{ i }}">{{ i }}</option>
-        {% endfor %}
-      </select>
+      <input type="hidden" id="depthRowInput" name="depth_row" value="">
+      <input type="hidden" id="tierInput" name="tier" value="">
+
+      <div id="freeSlotHint" class="hint" style="margin-top:6px;">
+        Solo se muestran espacios libres donde la sidepick puede llegar.
+      </div>
     </div>
   </div>
 
@@ -1015,10 +1014,10 @@
 
 <script>
   const API_BAYS_URL = "{{ url_for('yard.api_bays_by_block') }}";
+  const API_FREE_SLOTS_URL = "{{ url_for('yard.api_yard_free_slots') }}";
   const API_CHASSIS_TIRES_URL_TEMPLATE = "{{ url_for('yard.api_chassis_tires_get', chassis_id=999999) }}";
   const API_CONTAINER_PREFILL_TEMPLATE = "{{ url_for('yard.api_container_prefill', code='CONT_CODE_PLACEHOLDER') }}";
 </script>
-
 <script>
 document.addEventListener("DOMContentLoaded", () => {
   const gateInModeRadios = Array.from(document.querySelectorAll('input[name="gate_in_mode"]'));
@@ -1037,6 +1036,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const baySelect = document.getElementById("baySelect");
   const placementMode = document.getElementById("placementMode");
   const manualBox = document.getElementById("manualBox");
+  const freeSlotSelect = document.getElementById("freeSlotSelect");
+  const depthRowInput = document.getElementById("depthRowInput");
+  const tierInput = document.getElementById("tierInput");
+  const freeSlotHint = document.getElementById("freeSlotHint");
 
   const shipSel = document.getElementById("shipping_line");
   const shipOtherBox = document.getElementById("shipOtherBox");
@@ -1278,6 +1281,88 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+
+  function syncSelectedFreeSlot() {
+    if (!freeSlotSelect || !depthRowInput || !tierInput) return;
+
+    const value = freeSlotSelect.value || "";
+
+    if (!value) {
+      depthRowInput.value = "";
+      tierInput.value = "";
+      return;
+    }
+
+    const [depthRow, tier] = value.split("|");
+
+    depthRowInput.value = depthRow || "";
+    tierInput.value = tier || "";
+  }
+
+  async function loadFreeSlotsForSelectedBay() {
+    if (!blockSelect || !baySelect || !freeSlotSelect) return;
+
+    freeSlotSelect.innerHTML = `<option value="">Cargando espacios disponibles...</option>`;
+
+    if (depthRowInput) depthRowInput.value = "";
+    if (tierInput) tierInput.value = "";
+
+    const blockCode = blockSelect.value || "";
+    const bayNumber = baySelect.value || "";
+
+    if (!blockCode || !bayNumber) {
+      freeSlotSelect.innerHTML = `<option value="">Selecciona bloque y estiba...</option>`;
+      return;
+    }
+
+    try {
+      const url = `${API_FREE_SLOTS_URL}?block=${encodeURIComponent(blockCode)}&bay_number=${encodeURIComponent(bayNumber)}`;
+      const r = await fetch(url, {
+        headers: {
+          "Accept": "application/json",
+        },
+      });
+
+      const data = await r.json();
+
+      if (!r.ok || !data.ok) {
+        freeSlotSelect.innerHTML = `<option value="">No se pudieron cargar espacios.</option>`;
+        if (freeSlotHint) {
+          freeSlotHint.textContent = data.error || "Error cargando espacios disponibles.";
+        }
+        return;
+      }
+
+      const slots = data.slots || [];
+
+      if (!slots.length) {
+        freeSlotSelect.innerHTML = `<option value="">No hay espacios libres accesibles.</option>`;
+        if (freeSlotHint) {
+          freeSlotHint.textContent = "La estiba no tiene espacios libres accesibles para la sidepick.";
+        }
+        return;
+      }
+
+      freeSlotSelect.innerHTML = slots.map(slot => {
+        return `<option value="${slot.depth_row}|${slot.tier}">${slot.label}</option>`;
+      }).join("");
+
+      if (freeSlotHint) {
+        freeSlotHint.textContent = `Espacios disponibles accesibles: ${slots.length}.`;
+      }
+
+      syncSelectedFreeSlot();
+
+    } catch (err) {
+      console.error("Error cargando espacios libres:", err);
+
+      freeSlotSelect.innerHTML = `<option value="">Error de red cargando espacios.</option>`;
+
+      if (freeSlotHint) {
+        freeSlotHint.textContent = "No se pudieron consultar los espacios disponibles.";
+      }
+    }
+  }
   function getChecked(name){
     return Array.from(document.querySelectorAll(`input[name="${name}"]:checked`)).map(x => x.value);
   }
@@ -1943,12 +2028,38 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (placementMode && manualBox) {
     placementMode.addEventListener("change", () => {
-      manualBox.style.display = (placementMode.value === "manual") ? "block" : "none";
+      const isManual = placementMode.value === "manual";
+      manualBox.style.display = isManual ? "block" : "none";
+
+      if (isManual) {
+        loadFreeSlotsForSelectedBay();
+      } else {
+        if (depthRowInput) depthRowInput.value = "";
+        if (tierInput) tierInput.value = "";
+      }
     });
   }
 
   if (blockSelect) {
-    blockSelect.addEventListener("change", () => loadBaysForBlock(blockSelect.value));
+    blockSelect.addEventListener("change", async () => {
+      await loadBaysForBlock(blockSelect.value);
+
+      if (placementMode && placementMode.value === "manual") {
+        await loadFreeSlotsForSelectedBay();
+      }
+    });
+  }
+
+  if (baySelect) {
+    baySelect.addEventListener("change", async () => {
+      if (placementMode && placementMode.value === "manual") {
+        await loadFreeSlotsForSelectedBay();
+      }
+    });
+  }
+
+  if (freeSlotSelect) {
+    freeSlotSelect.addEventListener("change", syncSelectedFreeSlot);
   }
 
   if (shipSel && shipOtherBox) {
@@ -2089,7 +2200,13 @@ document.addEventListener("DOMContentLoaded", () => {
   preloadChassisRows();
   clearChassisPanel();
 
-  if (blockSelect) loadBaysForBlock(blockSelect.value);
+  if (blockSelect) {
+    loadBaysForBlock(blockSelect.value).then(() => {
+      if (placementMode && placementMode.value === "manual") {
+        loadFreeSlotsForSelectedBay();
+      }
+    });
+  }
   syncMaxGross();
   syncGateInMode();
   buildSummary();
