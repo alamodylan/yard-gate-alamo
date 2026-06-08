@@ -518,37 +518,122 @@ function renderMountedContainersBlock() {
   if (!mountedContainers.length) {
     stacksGrid.innerHTML = `
       <div class="stack-card">
-        <div class="hint">No hay contenedores montados actualmente.</div>
+        <div class="hint">No hay contenedores en Montados actualmente.</div>
       </div>
     `;
     return;
   }
 
-  const html = mountedContainers.map(item => {
-    const label = getDispatchStatusLabel(item.dispatch_status);
-    const cls = item.dispatch_status === "EVACUACION_MONTADA"
-      ? "is-mounted-evac"
-      : "is-mounted-dispatch";
+  const cols = 4;
+  const total = mountedContainers.length;
+  const rows = Math.ceil(total / cols);
 
-    return `
-      <div class="stack-card">
-        <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
-          <div>
-            <div style="font-weight:950; font-size:16px;">${item.code}</div>
-            <div class="hint" style="margin-top:6px;">${item.size || ""}</div>
-            <div class="yard-status-pill ${cls}" style="margin-top:8px;">
-              ${label}
-            </div>
-            <div class="hint" style="margin-top:8px;">
-              Montado / sin posición física en mapa
-            </div>
-          </div>
+  const slots = [];
+
+  for (let i = 0; i < rows * cols; i++) {
+    const item = mountedContainers[i];
+
+    if (!item) {
+      slots.push(`
+        <div class="rack-slot is-empty"
+             title="Espacio vacío en Montados">
+          <span class="rack-code"></span>
         </div>
+      `);
+      continue;
+    }
+
+    let statusClass = "";
+
+    if (item.visual_type === "pending_location") {
+      statusClass = "is-mounted-pending";
+    } else if (item.visual_type === "mounted_evac") {
+      statusClass = "is-mounted-evac";
+    } else if (item.visual_type === "mounted_dispatch") {
+      statusClass = "is-mounted-dispatch";
+    }
+
+    const label = item.visual_label || getDispatchStatusLabel(item.dispatch_status);
+
+    slots.push(`
+      <div class="rack-slot is-occupied ${statusClass}"
+           data-action="pick-container"
+           data-container-id="${item.id}"
+           data-container-code="${item.code}"
+           ${IS_TOUCH ? "" : `draggable="true"`}
+           title="${item.code} · ${label}">
+        <span class="rack-code">${item.code}</span>
+        <span class="rack-status">${label}</span>
+      </div>
+    `);
+  }
+
+  let rowsHtml = "";
+
+  for (let r = 0; r < rows; r++) {
+    const rowSlots = slots.slice(r * cols, r * cols + cols).join("");
+
+    rowsHtml += `
+      <div class="rack-row">
+        <div class="rack-tierlbl">M${r + 1}</div>
+        ${rowSlots}
       </div>
     `;
+  }
+
+  const headerCols = Array.from({ length: cols }, (_, i) => {
+    return `<div class="rack-colhdr">C${i + 1}</div>`;
   }).join("");
 
-  stacksGrid.innerHTML = html;
+  stacksGrid.innerHTML = `
+    <div class="stack-card">
+      <div class="stack-card-head">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+          <div>
+            <div style="font-weight:950; font-size:16px;">Estiba virtual Montados</div>
+            <div class="hint" style="margin-top:6px;">
+              ${mountedContainers.length} contenedor(es) sin posición física
+            </div>
+          </div>
+          <div class="badge-ok" style="font-size:11px; font-weight:900;">
+            Virtual
+          </div>
+        </div>
+
+        <div class="hint" style="margin-top:8px;">
+          Toca un contenedor para seleccionarlo. Luego entra a un bloque real y colócalo en un slot verde.
+        </div>
+      </div>
+
+      <div class="rack" style="--rack-cols:${cols};">
+        <div class="rack-header">
+          <div class="rack-corner"></div>
+          ${headerCols}
+        </div>
+        ${rowsHtml}
+      </div>
+    </div>
+  `;
+
+  stacksGrid.onclick = onStacksGridClick;
+
+  stacksGrid.querySelectorAll(".rack-slot").forEach(slot => {
+    const action = slot.getAttribute("data-action");
+
+    if (!IS_TOUCH && action === "pick-container") {
+      slot.addEventListener("dragstart", (ev) => {
+        const id = parseInt(slot.getAttribute("data-container-id"), 10);
+        const code = slot.getAttribute("data-container-code");
+
+        try {
+          ev.dataTransfer.setData("text/plain", code || String(id));
+        } catch (_) {}
+
+        setSelectedContainer(id, code);
+        clearDestinationSelection();
+      });
+    }
+  });
 }
 
 // ------------------------

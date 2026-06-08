@@ -207,7 +207,9 @@ def gate_in_post():
     block_code = (request.form.get("block") or "").strip().upper()
     bay_number_raw = (request.form.get("bay_number") or "").strip()
 
-    placement_mode = (request.form.get("placement_mode") or "auto").strip().lower()
+    placement_mode = (request.form.get("placement_mode") or "pending").strip().lower()
+    pending_location = True
+
     depth_row_raw = (request.form.get("depth_row") or "").strip()
     tier_raw = (request.form.get("tier") or "").strip()
 
@@ -372,42 +374,6 @@ def gate_in_post():
                 flash("Año inválido.", "danger")
                 return redirect(url_for("yard.gate_in_view"))
 
-        pending_location = (
-            request.form.get("pending_location", "1").strip() == "1"
-        )
-
-        block = YardBlock.query.filter_by(
-            code=block_code,
-            site_id=site_id,
-        ).first()
-
-        if not block:
-            flash("Bloque inválido para este predio.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-
-        try:
-            bay_number = int(bay_number_raw)
-        except ValueError:
-            flash("Número de estiba inválido.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-
-        bay = (
-            YardBay.query
-            .filter_by(
-                block_id=block.id,
-                bay_number=bay_number,
-                is_active=True,
-                site_id=site_id,
-            )
-            .first()
-        )
-
-        if not bay:
-            flash("Estiba no encontrada o inactiva en este predio.", "danger")
-            return redirect(url_for("yard.gate_in_view"))
-
-        db.session.query(YardBay).filter(YardBay.id == bay.id).with_for_update().one()
-
         existing_here = Container.query.filter_by(site_id=site_id, code=code).first()
 
         other_in_yard = (
@@ -446,12 +412,22 @@ def gate_in_post():
                 status_notes=final_status_notes or None,
                 is_in_yard=True,
                 site_id=site_id,
+                dispatch_status="NORMAL",
             )
             db.session.add(c)
             db.session.flush()
         else:
             c.site_id = site_id
             c.is_in_yard = True
+            c.dispatch_status = "NORMAL"
+            c.dispatch_marked_at = None
+            c.dispatch_marked_by_user_id = None
+
+            if hasattr(c, "mounted_at"):
+                c.mounted_at = None
+
+            if hasattr(c, "mounted_by_user_id"):
+                c.mounted_by_user_id = None
 
             if size:
                 c.size = size
@@ -500,56 +476,24 @@ def gate_in_post():
                 "notes": (classification_notes or None),
             })
 
-        if placement_mode == "manual":
-            try:
-                depth_row = int(depth_row_raw)
-                tier = int(tier_raw)
-            except ValueError:
-                db.session.rollback()
-                flash("Fila/Nivel inválidos.", "danger")
-                return redirect(url_for("yard.gate_in_view"))
-
-            if not (1 <= depth_row <= bay.max_depth_rows) or not (1 <= tier <= bay.max_tiers):
-                db.session.rollback()
-                flash("Fila/Nivel fuera de rango.", "danger")
-                return redirect(url_for("yard.gate_in_view"))
-
-            occupied = ContainerPosition.query.filter_by(
-                bay_id=bay.id,
-                depth_row=depth_row,
-                tier=tier,
-            ).first()
-
-            if occupied:
-                db.session.rollback()
-                flash("Ese slot ya está ocupado.", "danger")
-                return redirect(url_for("yard.gate_in_view"))
-        else:
-            slot = find_first_free_slot(bay.id)
-            if not slot:
-                db.session.rollback()
-                flash(f"La estiba {bay.code} está llena.", "danger")
-                return redirect(url_for("yard.gate_in_view"))
-            depth_row, tier = slot
-
+        # =========================
+        # NUEVA REGLA:
+        # Gate In NO ubica físicamente el contenedor.
+        # El contenedor queda en patio, sin ContainerPosition,
+        # y aparecerá en el bloque Montados/Pendiente ubicar.
+        # =========================
         ContainerPosition.query.filter_by(container_id=c.id).delete()
-        db.session.add(
-            ContainerPosition(
-                container_id=c.id,
-                bay_id=bay.id,
-                depth_row=depth_row,
-                tier=tier,
-                placed_by_user_id=current_user.id,
-            )
-        )
 
-        bay_code = bay.code
+        bay = None
+        bay_code = None
+        depth_row = None
+        tier = None
 
     # =========================
     # Crear movimiento
     # =========================
     if has_container:
-        movement_notes = final_status_notes or None
+        movement_notes = final_status_notes or "PENDIENTE_UBICAR_EN_PATIO"
     elif has_chassis:
         movement_notes = f"INGRESO SOLO CHASIS: {selected_chassis.chassis_number}"
     else:
@@ -572,6 +516,13 @@ def gate_in_post():
     )
     db.session.add(mv)
     db.session.flush()
+
+    # DESDE AQUÍ DEJA TODO IGUAL A COMO LO TIENES:
+    # Procesar clasificación de chasis
+    # Ticket Merchant
+    # Fotos contenedor
+    # audit_log
+    # db.session.commit()
 
     # =========================
     # Procesar clasificación de chasis
