@@ -372,6 +372,10 @@ def gate_in_post():
                 flash("Año inválido.", "danger")
                 return redirect(url_for("yard.gate_in_view"))
 
+        pending_location = (
+            request.form.get("pending_location", "1").strip() == "1"
+        )
+
         block = YardBlock.query.filter_by(
             code=block_code,
             site_id=site_id,

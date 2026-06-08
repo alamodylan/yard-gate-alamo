@@ -867,41 +867,6 @@
     </div>
   </div>
 
-  <div id="yardPositionSection">
-    <h3 style="margin-top:18px;">Ubicación en predio</h3>
-
-    <label>Bloque</label>
-    <select id="blockSelect" name="block">
-      {% for b in blocks %}
-        <option value="{{ b.code }}">{{ b.code }}</option>
-      {% endfor %}
-    </select>
-
-    <label>Estiba (1 a 15)</label>
-    <select id="baySelect" name="bay_number"></select>
-
-    <label>Modo de colocación</label>
-    <select id="placementMode" name="placement_mode">
-      <option value="auto" selected>Automática (primer espacio libre desde el fondo)</option>
-      <option value="manual">Manual (seleccionar fila y nivel)</option>
-    </select>
-
-    <div id="manualBox" style="display:none;">
-      <label>Espacio disponible</label>
-
-      <select id="freeSlotSelect">
-        <option value="">Selecciona una estiba primero...</option>
-      </select>
-
-      <input type="hidden" id="depthRowInput" name="depth_row" value="">
-      <input type="hidden" id="tierInput" name="tier" value="">
-
-      <div id="freeSlotHint" class="hint" style="margin-top:6px;">
-        Solo se muestran espacios libres donde la sidepick puede llegar.
-      </div>
-    </div>
-  </div>
-
   <h3 style="margin-top:18px;">Notas rápidas</h3>
   <label>Estado / Observaciones (compatibilidad con lo actual)</label>
   <textarea id="status_notes_textarea" name="status_notes" rows="3" placeholder="Si quieres algo extra fuera del resumen..."></textarea>
@@ -1013,8 +978,6 @@
 <script src="{{ url_for('static', filename='js/container_mask.js') }}"></script>
 
 <script>
-  const API_BAYS_URL = "{{ url_for('yard.api_bays_by_block') }}";
-  const API_FREE_SLOTS_URL = "{{ url_for('yard.api_yard_free_slots') }}";
   const API_CHASSIS_TIRES_URL_TEMPLATE = "{{ url_for('yard.api_chassis_tires_get', chassis_id=999999) }}";
   const API_CONTAINER_PREFILL_TEMPLATE = "{{ url_for('yard.api_container_prefill', code='CONT_CODE_PLACEHOLDER') }}";
 </script>
@@ -1027,7 +990,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const chassisSection = document.getElementById("chassisSection");
   const containerClassificationSection = document.getElementById("containerClassificationSection");
   const merchantSection = document.getElementById("merchantSection");
-  const yardPositionSection = document.getElementById("yardPositionSection");
   const containerPhotosSection = document.getElementById("containerPhotosSection");
   const containerSummarySection = document.getElementById("containerSummarySection");
   const submitBtn = document.getElementById("submitBtn");
@@ -1179,8 +1141,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (merchantSection) merchantSection.classList.toggle("hidden", !isMerchant);
 
     setRequired(containerCodeInput, hasContainer);
-    setRequired(blockSelect, hasContainer);
-    setRequired(baySelect, hasContainer);
+
 
     setRequired(driverNameInput, isMerchant);
     setRequired(driverIdInput, isMerchant);

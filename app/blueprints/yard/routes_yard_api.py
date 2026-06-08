@@ -486,40 +486,70 @@ def api_containers_in_yard():
 @yard_bp.get("/api/yard/mounted-containers")
 @login_required
 def api_mounted_containers():
+    """
+    Devuelve contenedores en patio que NO tienen posición física.
 
+    Incluye:
+    - Contenedores recién ingresados por Gate In pendientes de ubicar.
+    - Contenedores montados para despacho/evacuación.
+    """
     site_id = _ensure_active_site()
 
     rows = (
         Container.query
+        .outerjoin(
+            ContainerPosition,
+            ContainerPosition.container_id == Container.id,
+        )
         .filter(
             Container.site_id == site_id,
-            Container.is_in_yard == True,
-            Container.dispatch_status.in_([
-                "DESPACHO_MONTADO",
-                "EVACUACION_MONTADA",
-            ])
+            Container.is_in_yard == True,  # noqa: E712
+            ContainerPosition.container_id.is_(None),
         )
-        .order_by(Container.code.asc())
+        .order_by(
+            Container.dispatch_status.asc(),
+            Container.code.asc(),
+        )
         .all()
     )
 
     payload = []
 
     for c in rows:
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+        if dispatch_status == "DESPACHO_MONTADO":
+            visual_status = "DESPACHO_MONTADO"
+            visual_label = "Despacho montado"
+            visual_type = "mounted_dispatch"
+
+        elif dispatch_status == "EVACUACION_MONTADA":
+            visual_status = "EVACUACION_MONTADA"
+            visual_label = "Evacuación montada"
+            visual_type = "mounted_evac"
+
+        else:
+            visual_status = dispatch_status
+            visual_label = "Pendiente ubicar"
+            visual_type = "pending_location"
+
         payload.append({
             "id": c.id,
             "code": c.code,
             "size": c.size,
-            "dispatch_status": c.dispatch_status,
+            "dispatch_status": dispatch_status,
+            "visual_status": visual_status,
+            "visual_label": visual_label,
+            "visual_type": visual_type,
             "mounted_at": (
                 c.mounted_at.isoformat()
                 if getattr(c, "mounted_at", None)
                 else None
-            )
+            ),
         })
 
     return jsonify({
-        "rows": payload
+        "rows": payload,
     })
 
 @yard_bp.post("/api/yard/mount-container")
@@ -1118,9 +1148,11 @@ def api_place_container():
     Validaciones:
     - contenedor existe y pertenece al predio actual
     - estiba destino existe y pertenece al predio actual
-    - no tiene contenedor encima
+    - si tiene posición actual, valida que no tenga contenedor encima
     - si se mueve hacia afuera o a otra estiba, valida salida del origen
     - destino válido ignorando el mismo contenedor seleccionado
+    - si viene desde bloque Montados/sin posición física y estaba montado,
+      pierde asignación y vuelve a NORMAL
     """
     site_id = _ensure_active_site()
 
@@ -1152,8 +1184,12 @@ def api_place_container():
         container_id=c.id
     ).first()
 
+    old_dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+
     # =========================
     # VALIDAR BLOQUEO VERTICAL
+    # Solo aplica si tiene posición física actual.
+    # Si viene de Montados / Pendiente ubicar, old_pos será None.
     # =========================
     if old_pos:
         vertical_blockers = _get_vertical_blockers(
@@ -1205,6 +1241,7 @@ def api_place_container():
 
     # =========================
     # VALIDAR SALIDA HACIA AFUERA / OTRA ESTIBA
+    # Solo aplica si tenía posición física previa.
     # =========================
     if old_pos:
         moving_to_other_bay = int(old_pos.bay_id) != int(to_bay.id)
@@ -1266,10 +1303,16 @@ def api_place_container():
             "tier": old_pos.tier,
         }
 
+    # =========================
+    # ELIMINAR POSICIÓN ANTERIOR SI EXISTE
+    # =========================
     ContainerPosition.query.filter_by(
         container_id=c.id
     ).delete()
 
+    # =========================
+    # CREAR NUEVA POSICIÓN FÍSICA
+    # =========================
     db.session.add(
         ContainerPosition(
             container_id=c.id,
@@ -1280,16 +1323,51 @@ def api_place_container():
         )
     )
 
+    # =========================
+    # SI VIENE DE MONTADO, PIERDE ASIGNACIÓN
+    # =========================
+    returned_from_mounted = (
+        old_pos is None
+        and old_dispatch_status in {
+            "DESPACHO_MONTADO",
+            "EVACUACION_MONTADA",
+        }
+    )
+
+    if returned_from_mounted:
+        c.dispatch_status = "NORMAL"
+        c.dispatch_marked_at = None
+        c.dispatch_marked_by_user_id = None
+
+        if hasattr(c, "mounted_at"):
+            c.mounted_at = None
+
+        if hasattr(c, "mounted_by_user_id"):
+            c.mounted_by_user_id = None
+
+        db.session.add(c)
+
+    # =========================
+    # MOVIMIENTO PRINCIPAL
+    # =========================
+    movement_type = "RETURN_FROM_MOUNTED" if returned_from_mounted else "MOVE"
+
+    movement_notes = (
+        f"RETURNED_FROM_{old_dispatch_status}_TO_NORMAL"
+        if returned_from_mounted
+        else "PLACED_BY_BLOCK_UI_VALIDATED_SIDEPICK_RULES"
+    )
+
     mv = Movement(
         site_id=site_id,
         container_id=c.id,
-        movement_type="MOVE",
+        movement_type=movement_type,
         occurred_at=datetime.utcnow(),
         bay_code=to_bay.code,
         depth_row=depth_row,
         tier=tier,
         created_by_user_id=current_user.id,
-        notes="PLACED_BY_BLOCK_UI_VALIDATED_SIDEPICK_RULES",
+        notes=movement_notes,
     )
     db.session.add(mv)
 
@@ -1305,6 +1383,9 @@ def api_place_container():
                 "depth_row": depth_row,
                 "tier": tier,
             },
+            "old_dispatch_status": old_dispatch_status,
+            "new_dispatch_status": c.dispatch_status,
+            "returned_from_mounted": returned_from_mounted,
             "rule": "AUTO_LAST_AVAILABLE_VALIDATED"
             if (to_depth_row is None or to_tier is None)
             else "MANUAL_EXACT_VALIDATED",
@@ -1319,6 +1400,8 @@ def api_place_container():
         "bay_code": to_bay.code,
         "depth_row": depth_row,
         "tier": tier,
+        "dispatch_status": c.dispatch_status,
+        "returned_from_mounted": returned_from_mounted,
     })
 
 
