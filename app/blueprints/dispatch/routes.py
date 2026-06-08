@@ -473,6 +473,12 @@ def assigned_requests():
 def agenda():
     site_id = _ensure_active_site()
 
+    from datetime import datetime
+    import pytz
+
+    cr_tz = pytz.timezone("America/Costa_Rica")
+    today = datetime.now(cr_tz).date()
+
     lines = (
         DispatchRequestLine.query
         .join(
@@ -481,7 +487,8 @@ def agenda():
         )
         .filter(
             DispatchRequest.site_id == site_id,
-            DispatchRequest.status != "CANCELADA"
+            DispatchRequest.status != "CANCELADA",
+            DispatchRequestLine.load_date >= today
         )
         .order_by(
             DispatchRequestLine.load_date.asc(),
