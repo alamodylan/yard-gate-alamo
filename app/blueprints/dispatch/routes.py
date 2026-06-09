@@ -511,11 +511,11 @@ def prelist():
     import pytz
 
     cr_tz = pytz.timezone("America/Costa_Rica")
-
     now_cr = datetime.now(cr_tz)
 
     today = now_cr.date()
     tomorrow = today + timedelta(days=1)
+    current_time = now_cr.time()
 
     lines = (
         DispatchRequestLine.query
@@ -525,7 +525,12 @@ def prelist():
         )
         .filter(
             DispatchRequest.site_id == site_id,
-            DispatchRequest.status != "CANCELADA"
+            DispatchRequest.status != "CANCELADA",
+            DispatchRequestLine.load_date.in_([today, tomorrow])
+        )
+        .order_by(
+            DispatchRequestLine.load_date.asc(),
+            DispatchRequestLine.load_time.asc()
         )
         .all()
     )
@@ -533,18 +538,13 @@ def prelist():
     prelist_lines = []
 
     for line in lines:
-
         if line.load_date == tomorrow:
             prelist_lines.append(line)
             continue
 
         if line.load_date == today:
-
-            if line.load_time:
-                current_time = now_cr.time()
-
-                if line.load_time > current_time:
-                    prelist_lines.append(line)
+            if line.load_time is None or line.load_time > current_time:
+                prelist_lines.append(line)
 
     prelist_lines.sort(
         key=lambda x: (
@@ -553,7 +553,19 @@ def prelist():
         )
     )
 
+    dispatch_lines = [
+        line for line in prelist_lines
+        if ((line.request.request_type or "").strip().upper() == "DESPACHO")
+    ]
+
+    empty_lines = [
+        line for line in prelist_lines
+        if ((line.request.request_type or "").strip().upper() == "VACIO")
+    ]
+
     return render_template(
         "dispatch/prelist.html",
         lines=prelist_lines,
+        dispatch_lines=dispatch_lines,
+        empty_lines=empty_lines,
     )

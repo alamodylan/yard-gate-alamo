@@ -18,9 +18,12 @@
   </div>
 </div>
 
+{% macro render_prelist_table(title, rows) %}
 <div class="card card-pad" style="margin-top:14px;">
-  {% if not lines %}
-    <div class="hint">No hay cargas en prelista.</div>
+  <h3 style="margin:0 0 12px 0;">{{ title }}</h3>
+
+  {% if not rows %}
+    <div class="hint">No hay registros en esta sección.</div>
   {% else %}
     <div class="table-wrap">
       <table class="table">
@@ -38,14 +41,17 @@
             <th>Puerto</th>
             <th>Detalle</th>
             <th>Asignados</th>
+            <th>Status</th>
             <th>Contenedores</th>
           </tr>
         </thead>
+
         <tbody>
-          {% for line in lines %}
+          {% for line in rows %}
             {% set r = line.request %}
             <tr>
               <td><b>{{ line.load_date.strftime("%d/%m/%Y") }}</b></td>
+
               <td>
                 {% if line.load_time %}
                   {{ line.load_time.strftime("%I:%M %p") }}
@@ -53,11 +59,13 @@
                   —
                 {% endif %}
               </td>
+
               <td>
                 <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}">
                   #{{ r.id }}
                 </a>
               </td>
+
               <td>{{ r.request_type }}</td>
               <td>{{ r.booking or "—" }}</td>
               <td>{{ r.shipping_line }}</td>
@@ -67,6 +75,25 @@
               <td>{{ r.port_out or "—" }}</td>
               <td>{{ line.quantity }} x {{ line.container_size }} · {{ line.condition_type }}</td>
               <td>{{ line.assignments|length }} / {{ line.quantity }}</td>
+
+              <td>
+                {% if line.assignments %}
+                  <div class="chips">
+                    {% for a in line.assignments %}
+                      {% set ds = (a.container.dispatch_status or "NORMAL")|upper %}
+
+                      {% if ds in ["DESPACHO_MONTADO", "EVACUACION_MONTADA"] %}
+                        <span class="chip chip-mounted">MONTADO</span>
+                      {% else %}
+                        <span class="chip chip-assigned">ASIGNADO</span>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+
               <td>
                 {% if line.assignments %}
                   <div class="chips">
@@ -85,10 +112,25 @@
     </div>
   {% endif %}
 </div>
+{% endmacro %}
+
+{% if not lines %}
+  <div class="card card-pad" style="margin-top:14px;">
+    <div class="hint">No hay cargas en prelista.</div>
+  </div>
+{% else %}
+  {{ render_prelist_table("Despachos", dispatch_lines) }}
+  {{ render_prelist_table("Vacíos", empty_lines) }}
+{% endif %}
 
 <style>
 .table-wrap { overflow:auto; }
-.table { width:100%; border-collapse:collapse; }
+
+.table {
+  width:100%;
+  border-collapse:collapse;
+}
+
 .table th,
 .table td {
   padding:10px;
@@ -97,15 +139,18 @@
   vertical-align:top;
   font-size:13px;
 }
+
 .table th {
   color:rgba(226,232,240,.9);
   font-weight:900;
 }
+
 .chips {
   display:flex;
   flex-wrap:wrap;
   gap:6px;
 }
+
 .chip {
   border:1px solid rgba(34,197,94,.35);
   background:rgba(34,197,94,.12);
@@ -113,6 +158,19 @@
   border-radius:999px;
   font-size:11px;
   font-weight:900;
+  white-space:nowrap;
+}
+
+.chip-assigned {
+  border-color:rgba(59,130,246,.45);
+  background:rgba(59,130,246,.16);
+  color:#bfdbfe;
+}
+
+.chip-mounted {
+  border-color:rgba(168,85,247,.55);
+  background:rgba(168,85,247,.18);
+  color:#e9d5ff;
 }
 </style>
 {% endblock %}
