@@ -77,18 +77,9 @@ function getSelectedContainerData() {
 }
 
 function getDispatchStatusClass(containerOrStatus) {
-  /*
-    Puede recibir:
-    - objeto completo del contenedor: { dispatch_status, is_prelist_visible }
-    - string viejo: "PARA_DESPACHO"
-
-    Regla:
-    - Solo pinta colores si el contenedor está dentro de la prelista.
-    - Si viene string, se mantiene compatibilidad, pero NO se usa para prelista.
-  */
-
   let status = "NORMAL";
   let isPrelistVisible = false;
+  let isPendingLocation = false;
 
   if (typeof containerOrStatus === "string") {
     status = (containerOrStatus || "NORMAL").toUpperCase();
@@ -96,7 +87,17 @@ function getDispatchStatusClass(containerOrStatus) {
   } else if (containerOrStatus) {
     status = (containerOrStatus.dispatch_status || "NORMAL").toUpperCase();
     isPrelistVisible = containerOrStatus.is_prelist_visible === true;
+
+    isPendingLocation =
+      status === "NORMAL" &&
+      (
+        containerOrStatus.visual_type === "pending_location" ||
+        containerOrStatus.position === null ||
+        containerOrStatus.position === undefined
+      );
   }
+
+  if (isPendingLocation) return "is-mounted-pending";
 
   if (!isPrelistVisible) {
     return "";
@@ -184,9 +185,42 @@ function getTierOrderForBay(bay) {
 function fmtRow(row) {
   return `F${String(row).padStart(2, "0")}`;
 }
+
 function fmtTier(tier) {
   return `N${tier}`;
 }
+
+function getContainerSizeClass(size) {
+  const s = String(size || "").toUpperCase();
+
+  if (s.startsWith("20")) return "is-size-20";
+
+  if (
+    s.startsWith("40") ||
+    s.startsWith("45")
+  ) {
+    return "is-size-40";
+  }
+
+  return "";
+}
+
+function getBayRackVisualVars(bayType) {
+  const t = String(bayType || "40").toUpperCase();
+
+  if (t === "20") {
+    return {
+      colMin: "95px",
+      slotMinHeight: "52px",
+    };
+  }
+
+  return {
+    colMin: "180px",
+    slotMinHeight: "72px",
+  };
+}
+
 function hasActiveContainer() {
   return !!state.containerId;
 }
@@ -270,7 +304,11 @@ function setSelectedContainer(containerId, containerCode) {
   state.containerCode = containerCode;
 
   const c = getSelectedContainerData();
-  const statusLabel = getDispatchStatusLabel(c?.dispatch_status);
+  const mountedC = mountedContainers.find(x => Number(x.id) === Number(containerId)) || null;
+
+  const statusLabel = getDispatchStatusLabel(
+    c?.dispatch_status || mountedC?.dispatch_status || "NORMAL"
+  );
 
   if (yardActiveContainer) {
     yardActiveContainer.textContent = containerCode
@@ -290,10 +328,14 @@ function setSelectedContainer(containerId, containerCode) {
   highlightSelectedContainerInList();
   updateMountButtons();
 
-  if (state.view === VIEW.STACKS && currentBaysList.length) {
+  if (state.view === VIEW.STACKS && state.blockCode && state.blockCode !== "__MOUNTED__" && currentBaysList.length) {
     loadValidDestinationsForBlock(state.blockCode).then(() => {
       renderStacksGrid(currentBaysList);
     });
+  }
+
+  if (state.view === VIEW.STACKS && state.blockCode === "__MOUNTED__") {
+    renderMountedContainersBlock();
   }
 }
 
@@ -722,6 +764,7 @@ function renderStacksGrid(bays) {
 
     const bayType = String(b.container_size_type || "40").toUpperCase();
     const bayTypeClass = bayType === "20" ? "is-bay-20" : "is-bay-40";
+    const visual = getBayRackVisualVars(bayType);
 
     const rowOrder = getRowOrderForBay(b);
     const tierOrder = getTierOrderForBay(b);
@@ -807,6 +850,7 @@ function renderStacksGrid(bays) {
             </div>
             <div class="${badgeCls}" style="font-size:11px; font-weight:900;">${badgeText}</div>
           </div>
+
           <div class="hint" style="margin-top:8px;">
             ${hasActiveContainer()
               ? "Toca un espacio verde para destino. Solo se habilitan estibas compatibles con el tamaño del contenedor."
@@ -815,7 +859,10 @@ function renderStacksGrid(bays) {
           </div>
         </div>
 
-        <div class="rack" style="--rack-cols:${colsCount};">
+        <div
+          class="rack"
+          style="--rack-cols:${colsCount}; --rack-col-min:${visual.colMin}; --rack-slot-min-height:${visual.slotMinHeight};"
+        >
           <div class="rack-header">
             <div class="rack-corner"></div>
             ${headerCols}
@@ -837,7 +884,11 @@ function renderStacksGrid(bays) {
       slot.addEventListener("dragstart", (ev) => {
         const id = parseInt(slot.getAttribute("data-container-id"), 10);
         const code = slot.getAttribute("data-container-code");
-        try { ev.dataTransfer.setData("text/plain", code || String(id)); } catch (_) {}
+
+        try {
+          ev.dataTransfer.setData("text/plain", code || String(id));
+        } catch (_) {}
+
         setSelectedContainer(id, code);
         clearDestinationSelection();
       });
@@ -847,17 +898,22 @@ function renderStacksGrid(bays) {
       if (!hasActiveContainer()) return;
       if (slot.getAttribute("data-action") !== "pick-destination") return;
       if (!slot.classList.contains("is-available")) return;
+
       ev.preventDefault();
       slot.classList.add("yard-block-highlight");
     });
 
-    slot.addEventListener("dragleave", () => slot.classList.remove("yard-block-highlight"));
+    slot.addEventListener("dragleave", () => {
+      slot.classList.remove("yard-block-highlight");
+    });
 
     slot.addEventListener("drop", async (ev) => {
       slot.classList.remove("yard-block-highlight");
+
       if (!hasActiveContainer()) return;
       if (slot.getAttribute("data-action") !== "pick-destination") return;
       if (!slot.classList.contains("is-available")) return;
+
       ev.preventDefault();
       await pickDestinationFromSlot(slot);
     });
@@ -865,7 +921,10 @@ function renderStacksGrid(bays) {
 
   if (state.suggested) {
     setSuggestionText(`${state.suggested.bay_code} · ${fmtRow(state.suggested.depth_row)} · ${fmtTier(state.suggested.tier)}`);
-    if (confirmBar) confirmBar.classList.remove("hidden");
+
+    if (confirmBar) {
+      confirmBar.classList.remove("hidden");
+    }
   }
 }
 
@@ -878,16 +937,24 @@ async function onStacksGridClick(ev) {
   if (action === "pick-container") {
     const id = parseInt(slot.getAttribute("data-container-id"), 10);
     const code = slot.getAttribute("data-container-code");
+
     setSelectedContainer(id, code);
     clearDestinationSelection();
-    renderStacksGrid(currentBaysList);
+
+    if (state.blockCode === "__MOUNTED__") {
+      renderMountedContainersBlock();
+    } else {
+      renderStacksGrid(currentBaysList);
+    }
+
     return;
   }
 
   if (action === "pick-destination") {
     if (!hasActiveContainer()) return;
     if (!slot.classList.contains("is-available")) return;
-    await pickDestinationFromSlot(slot); // ✅ await
+
+    await pickDestinationFromSlot(slot);
     return;
   }
 }
