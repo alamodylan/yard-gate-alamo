@@ -1174,8 +1174,10 @@ def api_place_container():
     - si tiene posición actual, valida que no tenga contenedor encima
     - si se mueve hacia afuera o a otra estiba, valida salida del origen
     - destino válido ignorando el mismo contenedor seleccionado
-    - si viene desde bloque Montados/sin posición física y estaba montado,
+    - si viene desde Montados/sin posición física y estaba montado,
       pierde asignación y vuelve a NORMAL
+    - si viene desde Gate In / pendiente de ubicar sin posición física,
+      al ubicarse en mapa también vuelve a NORMAL
     """
     site_id = _ensure_active_site()
 
@@ -1209,11 +1211,6 @@ def api_place_container():
 
     old_dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
 
-    # =========================
-    # VALIDAR BLOQUEO VERTICAL
-    # Solo aplica si tiene posición física actual.
-    # Si viene de Montados / Pendiente ubicar, old_pos será None.
-    # =========================
     if old_pos:
         vertical_blockers = _get_vertical_blockers(
             bay_id=old_pos.bay_id,
@@ -1243,9 +1240,6 @@ def api_place_container():
             }
             return _yard_validation_error_response(validation, 409)
 
-    # =========================
-    # RESOLVER DESTINO
-    # =========================
     to_depth_row = data.get("to_depth_row")
     to_tier = data.get("to_tier")
 
@@ -1262,10 +1256,6 @@ def api_place_container():
 
         depth_row, tier = slot
 
-    # =========================
-    # VALIDAR SALIDA HACIA AFUERA / OTRA ESTIBA
-    # Solo aplica si tenía posición física previa.
-    # =========================
     if old_pos:
         moving_to_other_bay = int(old_pos.bay_id) != int(to_bay.id)
         moving_outward_same_bay = (
@@ -1303,9 +1293,6 @@ def api_place_container():
                 }
                 return _yard_validation_error_response(validation, 409)
 
-    # =========================
-    # VALIDAR DESTINO
-    # =========================
     destination_validation = _validate_container_can_be_placed_at(
         container_id=c.id,
         bay_id=to_bay.id,
@@ -1327,16 +1314,10 @@ def api_place_container():
             "tier": old_pos.tier,
         }
 
-    # =========================
-    # ELIMINAR POSICIÓN ANTERIOR SI EXISTE
-    # =========================
     ContainerPosition.query.filter_by(
         container_id=c.id
     ).delete()
 
-    # =========================
-    # CREAR NUEVA POSICIÓN FÍSICA
-    # =========================
     db.session.add(
         ContainerPosition(
             container_id=c.id,
@@ -1347,9 +1328,6 @@ def api_place_container():
         )
     )
 
-    # =========================
-    # SI VIENE DE MONTADO, PIERDE ASIGNACIÓN
-    # =========================
     returned_from_mounted = (
         old_pos is None
         and old_dispatch_status in {
@@ -1358,7 +1336,12 @@ def api_place_container():
         }
     )
 
-    if returned_from_mounted:
+    placed_from_pending_location = (
+        old_pos is None
+        and not returned_from_mounted
+    )
+
+    if returned_from_mounted or placed_from_pending_location:
         c.dispatch_status = "NORMAL"
         c.dispatch_marked_at = None
         c.dispatch_marked_by_user_id = None
@@ -1371,16 +1354,15 @@ def api_place_container():
 
         db.session.add(c)
 
-    # =========================
-    # MOVIMIENTO PRINCIPAL
-    # =========================
-    movement_type = "RETURN_FROM_MOUNTED" if returned_from_mounted else "MOVE"
-
-    movement_notes = (
-        f"RETURNED_FROM_{old_dispatch_status}_TO_NORMAL"
-        if returned_from_mounted
-        else "PLACED_BY_BLOCK_UI_VALIDATED_SIDEPICK_RULES"
-    )
+    if returned_from_mounted:
+        movement_type = "RETURN_FROM_MOUNTED"
+        movement_notes = f"RETURNED_FROM_{old_dispatch_status}_TO_NORMAL"
+    elif placed_from_pending_location:
+        movement_type = "PLACE_FROM_PENDING_LOCATION"
+        movement_notes = f"PLACED_FROM_PENDING_LOCATION_{old_dispatch_status}_TO_NORMAL"
+    else:
+        movement_type = "MOVE"
+        movement_notes = "PLACED_BY_BLOCK_UI_VALIDATED_SIDEPICK_RULES"
 
     mv = Movement(
         site_id=site_id,
@@ -1410,6 +1392,7 @@ def api_place_container():
             "old_dispatch_status": old_dispatch_status,
             "new_dispatch_status": c.dispatch_status,
             "returned_from_mounted": returned_from_mounted,
+            "placed_from_pending_location": placed_from_pending_location,
             "rule": "AUTO_LAST_AVAILABLE_VALIDATED"
             if (to_depth_row is None or to_tier is None)
             else "MANUAL_EXACT_VALIDATED",
@@ -1426,6 +1409,7 @@ def api_place_container():
         "tier": tier,
         "dispatch_status": c.dispatch_status,
         "returned_from_mounted": returned_from_mounted,
+        "placed_from_pending_location": placed_from_pending_location,
     })
 
 

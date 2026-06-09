@@ -79,25 +79,24 @@ function getSelectedContainerData() {
 function getDispatchStatusClass(containerOrStatus) {
   let status = "NORMAL";
   let isPrelistVisible = false;
-  let isPendingLocation = false;
 
   if (typeof containerOrStatus === "string") {
     status = (containerOrStatus || "NORMAL").toUpperCase();
     isPrelistVisible = true;
   } else if (containerOrStatus) {
+
+    const hasPhysicalLocation =
+      containerOrStatus.bay_code &&
+      containerOrStatus.depth_row &&
+      containerOrStatus.tier;
+
+    if (hasPhysicalLocation) {
+      return "";
+    }
+
     status = (containerOrStatus.dispatch_status || "NORMAL").toUpperCase();
     isPrelistVisible = containerOrStatus.is_prelist_visible === true;
-
-    isPendingLocation =
-      status === "NORMAL" &&
-      (
-        containerOrStatus.visual_type === "pending_location" ||
-        containerOrStatus.position === null ||
-        containerOrStatus.position === undefined
-      );
   }
-
-  if (isPendingLocation) return "is-mounted-pending";
 
   if (!isPrelistVisible) {
     return "";
@@ -105,9 +104,6 @@ function getDispatchStatusClass(containerOrStatus) {
 
   if (status === "PARA_DESPACHO") return "is-dispatch";
   if (status === "PARA_EVACUAR") return "is-evac";
-  if (status === "EVACUAR_SOLICITADO") return "is-evac-requested";
-  if (status === "DESPACHO_MONTADO") return "is-mounted-dispatch";
-  if (status === "EVACUACION_MONTADA") return "is-mounted-evac";
 
   return "";
 }
