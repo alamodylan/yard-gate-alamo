@@ -1464,6 +1464,7 @@ def map_config_create_bay():
     block_id_raw = request.form.get("block_id")
     bay_number_raw = request.form.get("bay_number")
     bay_side = (request.form.get("bay_side") or "").strip().upper()
+    container_size_type = (request.form.get("container_size_type") or "40").strip()
     max_depth_rows_raw = request.form.get("max_depth_rows")
     max_tiers_raw = request.form.get("max_tiers")
 
@@ -1482,6 +1483,10 @@ def map_config_create_bay():
 
     if bay_side not in {"", "E", "S"}:
         flash("El lado de estiba debe ser Entrada, Salida o Sin lado.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    if container_size_type not in {"20", "40"}:
+        flash("El tipo de estiba debe ser 20 o 40.", "danger")
         return redirect(url_for("yard.map_config_view"))
 
     if max_depth_rows < 1 or max_tiers < 1:
@@ -1526,6 +1531,7 @@ def map_config_create_bay():
         code=bay_code,
         max_depth_rows=max_depth_rows,
         max_tiers=max_tiers,
+        container_size_type=container_size_type,
         x=0,
         y=0,
         w=50,
@@ -1536,9 +1542,8 @@ def map_config_create_bay():
     db.session.add(bay)
     db.session.commit()
 
-    flash(f"Estiba {bay_code} creada correctamente.", "success")
+    flash(f"Estiba {bay_code} para contenedores {container_size_type} creada correctamente.", "success")
     return redirect(url_for("yard.map_config_view"))
-
 
 @yard_bp.post("/map/config/bay/<int:bay_id>/update")
 @login_required
@@ -1551,11 +1556,17 @@ def map_config_update_bay(bay_id):
         site_id=site_id,
     ).first_or_404()
 
+    container_size_type = (request.form.get("container_size_type") or bay.container_size_type or "40").strip()
+
     try:
         max_depth_rows = int(request.form.get("max_depth_rows"))
         max_tiers = int(request.form.get("max_tiers"))
     except Exception:
         flash("Filas o niveles inválidos.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
+    if container_size_type not in {"20", "40"}:
+        flash("El tipo de estiba debe ser 20 o 40.", "danger")
         return redirect(url_for("yard.map_config_view"))
 
     if max_depth_rows < 1 or max_tiers < 1:
@@ -1575,8 +1586,20 @@ def map_config_update_bay(bay_id):
         )
         return redirect(url_for("yard.map_config_view"))
 
+    has_containers = ContainerPosition.query.filter_by(
+        bay_id=bay.id
+    ).first()
+
+    if has_containers and container_size_type != bay.container_size_type:
+        flash(
+            f"No se puede cambiar el tipo de {bay.code} porque ya tiene contenedores posicionados.",
+            "danger",
+        )
+        return redirect(url_for("yard.map_config_view"))
+
     bay.max_depth_rows = max_depth_rows
     bay.max_tiers = max_tiers
+    bay.container_size_type = container_size_type
 
     db.session.commit()
 

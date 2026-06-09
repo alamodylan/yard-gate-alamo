@@ -6,25 +6,18 @@
 <div class="card card-pad">
   <h2 style="margin:0;">Configuración de Patio</h2>
   <p class="card-sub" style="margin-top:6px;">
-    Administra bloques, estibas, filas y niveles del predio activo.
+    Administra bloques, estibas, filas, niveles y tipo de contenedor permitido por estiba.
   </p>
 </div>
 
 <div class="grid grid-2" style="margin-top:16px;">
 
-  <!-- CREAR BLOQUE -->
   <div class="card card-pad">
     <h3 style="margin-top:0;">Crear Bloque</h3>
 
     <form method="post" action="{{ url_for('yard.map_config_create_block') }}">
       <label>Código Bloque</label>
-      <input
-        type="text"
-        name="code"
-        maxlength="1"
-        placeholder="A"
-        required
-      >
+      <input type="text" name="code" maxlength="1" placeholder="A" required>
 
       <button type="submit" class="btn success" style="margin-top:12px;">
         Crear Bloque
@@ -32,7 +25,6 @@
     </form>
   </div>
 
-  <!-- CREAR ESTIBA -->
   <div class="card card-pad">
     <h3 style="margin-top:0;">Crear Estiba</h3>
 
@@ -40,21 +32,12 @@
       <label>Bloque</label>
       <select name="block_id" required>
         {% for block in blocks %}
-          <option value="{{ block.id }}">
-            {{ block.code }}
-          </option>
+          <option value="{{ block.id }}">{{ block.code }}</option>
         {% endfor %}
       </select>
 
       <label>Número Estiba</label>
-      <input
-        type="number"
-        min="1"
-        max="99"
-        name="bay_number"
-        placeholder="Ej: 1, 2, 3"
-        required
-      >
+      <input type="number" min="1" max="99" name="bay_number" placeholder="Ej: 1, 2, 3" required>
 
       <label>Lado de estiba</label>
       <select name="bay_side">
@@ -64,29 +47,20 @@
       </select>
 
       <div class="hint" style="margin-top:6px;">
-        Usar solo para estibas ubicadas en medio con dos lados.
-        Ejemplo: Bloque A + Estiba 2 + Entrada = <b>A2E</b>.
-        Bloque A + Estiba 2 + Salida = <b>A2S</b>.
-        Si eliges “Sin lado”, se creará como <b>A02</b>.
+        Ejemplo: Bloque A + Estiba 2 + Entrada = <b>A2E</b>. Sin lado = <b>A02</b>.
       </div>
 
+      <label>Tipo de contenedor permitido</label>
+      <select name="container_size_type" required>
+        <option value="40" selected>40 pies</option>
+        <option value="20">20 pies</option>
+      </select>
+
       <label>Filas</label>
-      <input
-        type="number"
-        min="1"
-        value="20"
-        name="max_depth_rows"
-        required
-      >
+      <input type="number" min="1" value="20" name="max_depth_rows" required>
 
       <label>Niveles</label>
-      <input
-        type="number"
-        min="1"
-        value="4"
-        name="max_tiers"
-        required
-      >
+      <input type="number" min="1" value="4" name="max_tiers" required>
 
       <button type="submit" class="btn success" style="margin-top:12px;">
         Crear Estiba
@@ -106,7 +80,6 @@
         <th>Bloque</th>
       </tr>
     </thead>
-
     <tbody>
       {% for block in blocks %}
         <tr>
@@ -125,43 +98,38 @@
     <thead>
       <tr>
         <th>Estiba</th>
+        <th>Tipo</th>
         <th>Filas</th>
         <th>Niveles</th>
         <th>Capacidad</th>
         <th>Usados</th>
         <th>Estado</th>
-        <th style="width:340px;">Acciones</th>
+        <th style="width:460px;">Acciones</th>
       </tr>
     </thead>
 
     <tbody>
       {% for bay in bays %}
+        {% set bay_type = bay.container_size_type or "40" %}
         <tr>
+          <td><b>{{ bay.code }}</b></td>
+
           <td>
-            <b>{{ bay.code }}</b>
+            <span class="badge {% if bay_type == '20' %}warning{% else %}success{% endif %}">
+              {{ bay_type }} pies
+            </span>
           </td>
 
           <td>{{ bay.max_depth_rows }}</td>
-
           <td>{{ bay.max_tiers }}</td>
-
-          <td>
-            {{ bay.max_depth_rows * bay.max_tiers }}
-          </td>
-
-          <td>
-            {{ counts.get(bay.id, 0) }}
-          </td>
+          <td>{{ bay.max_depth_rows * bay.max_tiers }}</td>
+          <td>{{ counts.get(bay.id, 0) }}</td>
 
           <td>
             {% if bay.is_active %}
-              <span class="badge success">
-                Activa
-              </span>
+              <span class="badge success">Activa</span>
             {% else %}
-              <span class="badge danger">
-                Inactiva
-              </span>
+              <span class="badge danger">Inactiva</span>
             {% endif %}
           </td>
 
@@ -169,7 +137,7 @@
             <form
               method="post"
               action="{{ url_for('yard.map_config_update_bay', bay_id=bay.id) }}"
-              style="display:flex; gap:8px; flex-wrap:wrap;"
+              style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;"
             >
               <input
                 type="number"
@@ -189,10 +157,12 @@
                 required
               >
 
-              <button
-                type="submit"
-                class="btn primary small"
-              >
+              <select name="container_size_type" style="width:115px;" required>
+                <option value="40" {% if bay_type == "40" %}selected{% endif %}>40 pies</option>
+                <option value="20" {% if bay_type == "20" %}selected{% endif %}>20 pies</option>
+              </select>
+
+              <button type="submit" class="btn primary small">
                 Guardar
               </button>
             </form>
@@ -203,13 +173,9 @@
               style="margin-top:8px;"
             >
               {% if bay.is_active %}
-                <button type="submit" class="btn danger small">
-                  Desactivar
-                </button>
+                <button type="submit" class="btn danger small">Desactivar</button>
               {% else %}
-                <button type="submit" class="btn success small">
-                  Activar
-                </button>
+                <button type="submit" class="btn success small">Activar</button>
               {% endif %}
             </form>
           </td>

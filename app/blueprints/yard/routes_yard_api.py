@@ -203,23 +203,13 @@ def _validate_container_can_be_removed(*, container_id: int, site_id: int):
 
 def _validate_container_can_be_placed_at(
     *,
+    container_id: int,
     bay_id: int,
     depth_row: int,
     tier: int,
     site_id: int,
     exclude_container_id: int | None = None,
 ):
-    """
-    Valida si se puede colocar un contenedor en una posición específica.
-
-    Reglas:
-    1. La estiba debe existir.
-    2. La fila y nivel deben estar dentro del rango.
-    3. El slot debe estar libre.
-    4. No se puede colocar flotando: debe tener soporte debajo.
-    5. La sidepick debe poder acceder a esa fila.
-    """
-
     bay = YardBay.query.filter_by(
         id=bay_id,
         site_id=site_id,
@@ -231,6 +221,37 @@ def _validate_container_can_be_placed_at(
             "ok": False,
             "error": "BAY_NOT_FOUND",
             "message": "La estiba destino no existe o no pertenece al predio actual.",
+            "blockers": [],
+        }
+
+    container = Container.query.get(container_id)
+
+    if not container or container.site_id != site_id:
+        return {
+            "ok": False,
+            "error": "CONTAINER_NOT_FOUND",
+            "message": "Contenedor inválido para el predio actual.",
+            "blockers": [],
+        }
+
+    container_size = str(container.size or "").upper()
+    bay_size = str(bay.container_size_type or "40").upper()
+
+    if bay_size == "20" and not container_size.startswith("20"):
+        return {
+            "ok": False,
+            "error": "INVALID_CONTAINER_SIZE",
+            "message": "Esta estiba solo acepta contenedores de 20 pies.",
+            "blockers": [],
+        }
+
+    if bay_size == "40" and not (
+        container_size.startswith("40") or container_size.startswith("45")
+    ):
+        return {
+            "ok": False,
+            "error": "INVALID_CONTAINER_SIZE",
+            "message": "Esta estiba solo acepta contenedores de 40/45 pies.",
             "blockers": [],
         }
 
@@ -332,6 +353,7 @@ def _validate_container_can_be_placed_at(
             "bay_code": bay.code,
             "depth_row": depth_row,
             "tier": tier,
+            "container_size_type": bay_size,
         },
     }
 
@@ -709,25 +731,26 @@ def api_bays_by_block():
 @yard_bp.get("/api/yard/map")
 @login_required
 def api_yard_map():
-    """
-    Devuelve las estibas del bloque con conteo (used/capacity).
-    Ideal: incluye x,y,w,h y límites para permitir layout visual real en frontend.
-    """
     site_id = _ensure_active_site()
 
     block_code = (request.args.get("block") or "A").upper()
     block = YardBlock.query.filter_by(code=block_code, site_id=site_id).first()
+
     if not block:
         return jsonify({"error": "Bloque inválido"}), 400
 
     bays = (
-        YardBay.query.filter_by(block_id=block.id, is_active=True, site_id=site_id)
-        .order_by(YardBay.bay_number.asc())
+        YardBay.query
+        .filter_by(block_id=block.id, is_active=True, site_id=site_id)
+        .order_by(YardBay.bay_number.asc(), YardBay.code.asc())
         .all()
     )
 
     counts = dict(
-        db.session.query(ContainerPosition.bay_id, db.func.count(ContainerPosition.container_id))
+        db.session.query(
+            ContainerPosition.bay_id,
+            db.func.count(ContainerPosition.container_id)
+        )
         .join(YardBay, YardBay.id == ContainerPosition.bay_id)
         .filter(YardBay.site_id == site_id)
         .group_by(ContainerPosition.bay_id)
@@ -735,14 +758,18 @@ def api_yard_map():
     )
 
     payload = []
+
     for b in bays:
-        capacity = b.max_depth_rows * b.max_tiers
+        capacity = int(b.max_depth_rows or 0) * int(b.max_tiers or 0)
         used = int(counts.get(b.id, 0))
+        container_size_type = str(b.container_size_type or "40").upper()
+
         payload.append(
             {
                 "id": b.id,
                 "code": b.code,
                 "bay_number": b.bay_number,
+                "container_size_type": container_size_type,
                 "used": used,
                 "capacity": capacity,
                 "max_depth_rows": b.max_depth_rows,
@@ -754,7 +781,10 @@ def api_yard_map():
             }
         )
 
-    return jsonify({"block": block_code, "bays": payload})
+    return jsonify({
+        "block": block_code,
+        "bays": payload,
+    })
 
 
 @yard_bp.get("/api/yard/block/<string:block_code>/availability")
@@ -924,19 +954,6 @@ def api_bay_row_suggest_tier(bay_code: str, row_number: int):
 @yard_bp.get("/api/yard/valid-destinations")
 @login_required
 def api_yard_valid_destinations():
-    """
-    Devuelve slots realmente válidos para el contenedor seleccionado
-    dentro de un bloque completo, sin hacer consultas por cada slot.
-
-    Reglas:
-    - slot libre
-    - no flotar: N2 requiere N1, N3 requiere N2, etc.
-    - acceso sidepick al destino
-    - ignora el mismo contenedor seleccionado como bloqueador
-    - si el movimiento es hacia afuera o hacia otra estiba, valida salida del origen
-    - si el contenedor tiene otro encima, no devuelve destinos
-    """
-
     site_id = _ensure_active_site()
 
     container_id_raw = request.args.get("container_id")
@@ -978,13 +995,12 @@ def api_yard_valid_destinations():
             "destinations": [],
         }), 404
 
+    container_size = str(container.size or "").upper()
+
     current_pos = ContainerPosition.query.filter_by(
         container_id=container.id
     ).first()
 
-    # =========================
-    # VALIDAR BLOQUEO VERTICAL DEL ORIGEN
-    # =========================
     if current_pos:
         vertical_blockers = _get_vertical_blockers(
             bay_id=current_pos.bay_id,
@@ -1032,7 +1048,7 @@ def api_yard_valid_destinations():
             block_id=block.id,
             is_active=True,
         )
-        .order_by(YardBay.bay_number.asc())
+        .order_by(YardBay.bay_number.asc(), YardBay.code.asc())
         .all()
     )
 
@@ -1079,6 +1095,16 @@ def api_yard_valid_destinations():
     destinations = []
 
     for bay in bays:
+        bay_size = str(bay.container_size_type or "40").upper()
+
+        if bay_size == "20" and not container_size.startswith("20"):
+            continue
+
+        if bay_size == "40" and not (
+            container_size.startswith("40") or container_size.startswith("45")
+        ):
+            continue
+
         max_rows = int(bay.max_depth_rows or 0)
         max_tiers = int(bay.max_tiers or 0)
         bay_occ = occupied.get(int(bay.id), {})
@@ -1086,15 +1112,12 @@ def api_yard_valid_destinations():
         for depth_row in range(1, max_rows + 1):
             for tier in range(1, max_tiers + 1):
 
-                # 1. Slot ocupado
                 if (depth_row, tier) in bay_occ:
                     continue
 
-                # 2. No colocar flotando
                 if tier > 1 and (depth_row, tier - 1) not in bay_occ:
                     continue
 
-                # 3. Acceso sidepick al destino
                 access_blocked = False
 
                 for (occ_row, occ_tier), item in bay_occ.items():
@@ -1105,7 +1128,6 @@ def api_yard_valid_destinations():
                 if access_blocked:
                     continue
 
-                # 4. Validar salida del origen cuando corresponde
                 if current_pos:
                     moving_to_other_bay = int(current_pos.bay_id) != int(bay.id)
                     moving_outward_same_bay = (
@@ -1128,6 +1150,7 @@ def api_yard_valid_destinations():
                 destinations.append({
                     "bay_id": bay.id,
                     "bay_code": bay.code,
+                    "container_size_type": bay_size,
                     "depth_row": depth_row,
                     "tier": tier,
                 })
@@ -1284,6 +1307,7 @@ def api_place_container():
     # VALIDAR DESTINO
     # =========================
     destination_validation = _validate_container_can_be_placed_at(
+        container_id=c.id,
         bay_id=to_bay.id,
         depth_row=depth_row,
         tier=tier,
@@ -1479,6 +1503,7 @@ def api_move_container():
     # VALIDAR DESTINO
     # =========================
     destination_validation = _validate_container_can_be_placed_at(
+        container_id=c.id,
         bay_id=to_bay.id,
         depth_row=depth_row,
         tier=tier,

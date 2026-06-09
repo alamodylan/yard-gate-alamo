@@ -474,6 +474,7 @@ function buildOccupancyIndexForBlock(blockCode) {
     idx.get(bay).set(`${row}-${tier}`, {
       id: c.id,
       code: c.code,
+      size: c.size || "",
       dispatch_status: c.dispatch_status || "NORMAL",
       is_prelist_visible: c.is_prelist_visible === true,
       prelist: c.prelist || null,
@@ -719,6 +720,9 @@ function renderStacksGrid(bays) {
     const cap = b.capacity || 0;
     const available = cap > 0 ? (used < cap) : true;
 
+    const bayType = String(b.container_size_type || "40").toUpperCase();
+    const bayTypeClass = bayType === "20" ? "is-bay-20" : "is-bay-40";
+
     const rowOrder = getRowOrderForBay(b);
     const tierOrder = getTierOrderForBay(b);
     const colsCount = rowOrder.length;
@@ -740,9 +744,10 @@ function renderStacksGrid(bays) {
         if (item) {
           const statusClass = getDispatchStatusClass(item);
           const statusLabel = getDispatchStatusLabel(item.dispatch_status);
+          const sizeClass = getContainerSizeClass(item.size);
 
           return `
-            <div class="rack-slot is-occupied ${statusClass}"
+            <div class="rack-slot is-occupied ${statusClass} ${sizeClass}"
                 data-action="pick-container"
                 data-container-id="${item.id}"
                 data-container-code="${item.code}"
@@ -750,9 +755,9 @@ function renderStacksGrid(bays) {
                 data-row="${rn}"
                 data-tier="${tn}"
                 ${IS_TOUCH ? "" : `draggable="true"`}
-                title="${item.code} · ${statusLabel} · ${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
+                title="${item.code} · ${item.size || ""} · ${statusLabel} · ${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
               <span class="rack-code">${item.code}</span>
-              <span class="rack-status">${statusLabel}</span>
+              <span class="rack-status">${item.size || ""} · ${statusLabel}</span>
             </div>
           `;
         }
@@ -773,7 +778,7 @@ function renderStacksGrid(bays) {
               data-bay="${b.code}"
               data-row="${rn}"
               data-tier="${tn}"
-              title="${b.code} · ${fmtRow(rn)} · ${fmtTier(tn)}">
+              title="${b.code} · ${bayType} pies · ${fmtRow(rn)} · ${fmtTier(tn)}">
             <span class="rack-code"></span>
           </div>
         `;
@@ -788,18 +793,23 @@ function renderStacksGrid(bays) {
     }).join("");
 
     return `
-      <div class="stack-card" data-baycard="${b.code}">
+      <div class="stack-card ${bayTypeClass}" data-baycard="${b.code}">
         <div class="stack-card-head">
           <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
             <div>
-              <div style="font-weight:950; font-size:16px;">Estiba ${b.code}</div>
-              <div class="hint" style="margin-top:6px;">${cap ? `${used}/${cap}` : `${used} usados`}</div>
+              <div style="font-weight:950; font-size:16px;">
+                Estiba ${b.code}
+                <span class="yard-size-pill">${bayType} pies</span>
+              </div>
+              <div class="hint" style="margin-top:6px;">
+                ${cap ? `${used}/${cap}` : `${used} usados`}
+              </div>
             </div>
             <div class="${badgeCls}" style="font-size:11px; font-weight:900;">${badgeText}</div>
           </div>
           <div class="hint" style="margin-top:8px;">
             ${hasActiveContainer()
-              ? "Toca un espacio verde para destino (o arrastra en PC)."
+              ? "Toca un espacio verde para destino. Solo se habilitan estibas compatibles con el tamaño del contenedor."
               : "Toca un contenedor para seleccionarlo y moverlo."
             }
           </div>
