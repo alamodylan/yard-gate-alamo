@@ -1463,6 +1463,7 @@ def map_config_create_bay():
 
     block_id_raw = request.form.get("block_id")
     bay_number_raw = request.form.get("bay_number")
+    bay_side = (request.form.get("bay_side") or "").strip().upper()
     max_depth_rows_raw = request.form.get("max_depth_rows")
     max_tiers_raw = request.form.get("max_tiers")
 
@@ -1479,6 +1480,10 @@ def map_config_create_bay():
         flash("El número de estiba debe ser mayor a 0.", "danger")
         return redirect(url_for("yard.map_config_view"))
 
+    if bay_side not in {"", "E", "S"}:
+        flash("El lado de estiba debe ser Entrada, Salida o Sin lado.", "danger")
+        return redirect(url_for("yard.map_config_view"))
+
     if max_depth_rows < 1 or max_tiers < 1:
         flash("Filas y niveles deben ser mayores a 0.", "danger")
         return redirect(url_for("yard.map_config_view"))
@@ -1492,7 +1497,18 @@ def map_config_create_bay():
         flash("Bloque inválido para este predio.", "danger")
         return redirect(url_for("yard.map_config_view"))
 
-    bay_code = f"{block.code}{str(bay_number).zfill(2)}"
+    if bay_side:
+        bay_code = f"{block.code}{bay_number}{bay_side}"
+    else:
+        bay_code = f"{block.code}{str(bay_number).zfill(2)}"
+
+    if len(bay_code) > 3:
+        flash(
+            "El código de estiba supera el máximo permitido de 3 caracteres. "
+            "Para usar Entrada/Salida, utiliza números de estiba del 1 al 9.",
+            "danger",
+        )
+        return redirect(url_for("yard.map_config_view"))
 
     exists = YardBay.query.filter_by(
         site_id=site_id,
