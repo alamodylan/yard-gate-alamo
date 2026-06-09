@@ -1358,7 +1358,7 @@ def api_place_container():
         movement_type = "RETURN_FROM_MOUNTED"
         movement_notes = f"RETURNED_FROM_{old_dispatch_status}_TO_NORMAL"
     elif placed_from_pending_location:
-        movement_type = "PLACE_FROM_PENDING_LOCATION"
+        movement_type = "MOVE"
         movement_notes = f"PLACED_FROM_PENDING_LOCATION_{old_dispatch_status}_TO_NORMAL"
     else:
         movement_type = "MOVE"
