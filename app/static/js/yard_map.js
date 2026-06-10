@@ -510,12 +510,17 @@ function buildOccupancyIndexForBlock(blockCode) {
     if (!idx.has(bay)) idx.set(bay, new Map());
 
     idx.get(bay).set(`${row}-${tier}`, {
-      id: c.id,
-      code: c.code,
-      size: c.size || "",
-      dispatch_status: c.dispatch_status || "NORMAL",
-      is_prelist_visible: c.is_prelist_visible === true,
-      prelist: c.prelist || null,
+        id: c.id,
+        code: c.code,
+        size: c.size || "",
+
+        bay_code: bay,
+        depth_row: row,
+        tier: tier,
+
+        dispatch_status: c.dispatch_status || "NORMAL",
+        is_prelist_visible: c.is_prelist_visible === true,
+        prelist: c.prelist || null,
     });
   }
 

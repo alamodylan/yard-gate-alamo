@@ -78,13 +78,41 @@
       <tr>
         <th>ID</th>
         <th>Bloque</th>
+        <th>Estado</th>
+        <th style="width:180px;">Acciones</th>
       </tr>
     </thead>
+
     <tbody>
       {% for block in blocks %}
         <tr>
           <td>{{ block.id }}</td>
-          <td>{{ block.code }}</td>
+          <td><b>{{ block.code }}</b></td>
+
+          <td>
+            {% if block.is_active %}
+              <span class="badge success">Activo</span>
+            {% else %}
+              <span class="badge danger">Inactivo</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <form
+              method="post"
+              action="{{ url_for('yard.map_config_toggle_block', block_id=block.id) }}"
+            >
+              {% if block.is_active %}
+                <button type="submit" class="btn danger small">
+                  Desactivar
+                </button>
+              {% else %}
+                <button type="submit" class="btn success small">
+                  Activar
+                </button>
+              {% endif %}
+            </form>
+          </td>
         </tr>
       {% endfor %}
     </tbody>

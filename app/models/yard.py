@@ -7,14 +7,15 @@ SCHEMA = "yard_gate_alamo"
 class YardBlock(db.Model):
     __tablename__ = "yard_blocks"
     __table_args__ = (
-        # En BD: UNIQUE (site_id, code)
         db.UniqueConstraint("site_id", "code", name="uq_yard_blocks_site_code"),
         {"schema": SCHEMA},
     )
 
     id = db.Column(db.Integer, primary_key=True)
 
-    code = db.Column(db.String(1), nullable=False)  # A,B,C,D (se repite por predio)
+    code = db.Column(db.String(1), nullable=False)
+
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
 
     site_id = db.Column(
         db.Integer,
@@ -22,7 +23,6 @@ class YardBlock(db.Model):
         nullable=False
     )
 
-    # Mantiene tu relación existente, pero ahora con sitio
     site = db.relationship("Site")
 
 

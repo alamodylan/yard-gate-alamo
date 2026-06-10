@@ -234,7 +234,10 @@ def map_view():
 
     blocks = (
         YardBlock.query
-        .filter_by(site_id=site_id)
+        .filter_by(
+            site_id=site_id,
+            is_active=True,
+        )
         .order_by(YardBlock.code.asc())
         .all()
     )
@@ -1426,6 +1429,41 @@ def map_config_view():
         counts=counts,
     )
 
+@yard_bp.post("/map/config/block/<int:block_id>/toggle")
+@login_required
+def map_config_toggle_block(block_id):
+    _require_admin()
+    site_id = _ensure_active_site()
+
+    block = YardBlock.query.filter_by(
+        id=block_id,
+        site_id=site_id,
+    ).first_or_404()
+
+    if block.is_active:
+        has_containers = (
+            db.session.query(ContainerPosition)
+            .join(YardBay, YardBay.id == ContainerPosition.bay_id)
+            .filter(
+                YardBay.block_id == block.id,
+                YardBay.site_id == site_id,
+            )
+            .first()
+        )
+
+        if has_containers:
+            flash(
+                f"No se puede desactivar el bloque {block.code} porque tiene contenedores ubicados.",
+                "danger",
+            )
+            return redirect(url_for("yard.map_config_view"))
+
+    block.is_active = not block.is_active
+    db.session.commit()
+
+    estado = "activado" if block.is_active else "desactivado"
+    flash(f"Bloque {block.code} {estado} correctamente.", "success")
+    return redirect(url_for("yard.map_config_view"))
 
 @yard_bp.post("/map/config/block/create")
 @login_required
