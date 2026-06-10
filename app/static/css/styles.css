@@ -8,9 +8,9 @@
   --panel:#ffffff;
   --card:#ffffff;
   --card2:#f8fafc;
-  --muted:#7a8798;
-  --text:#475569;
-  --text2:#64748b;
+  --muted:#64748b;
+  --text:#172033;
+  --text2:#334155;
   --border:#dbe4f0;
 
   --primary:#1d4ed8;
@@ -34,8 +34,8 @@
   --radius2:20px;
 
   --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  --topbar:#34465f;
-  --topbar2:#40536d;
+  --topbar:#10223f;
+  --topbar2:#0f1e36;
 
   --rack-label-col: 70px;
   --rack-col-min: 140px;
@@ -47,11 +47,24 @@ html,body{ height:100%; }
 body{
   margin:0;
   font-family:var(--font);
+
   background:
-    linear-gradient(180deg, #f8fbff 0%, #f3f6fb 38%, #eef3f8 100%);
+    radial-gradient(
+      circle at top left,
+      rgba(37,99,235,.04),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at top right,
+      rgba(59,130,246,.04),
+      transparent 25%
+    ),
+    #f4f7fb;
+
   color:var(--text);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
 }
 
 a{ color:inherit; text-decoration:none; }
@@ -205,10 +218,12 @@ a{ color:inherit; text-decoration:none; }
    Cards
    ====================== */
 .card{
-  background:var(--card);
-  border:1px solid var(--border);
-  border-radius:var(--radius2);
-  box-shadow:var(--shadow);
+  background:#ffffff;
+  border:1px solid #e2e8f0;
+  border-radius:22px;
+  box-shadow:
+    0 2px 8px rgba(15,23,42,.03),
+    0 12px 30px rgba(15,23,42,.05);
 }
 
 .card-pad{ padding:16px; }
@@ -232,7 +247,7 @@ label{
   display:block;
   margin-top:10px;
   font-weight:900;
-  color:#64748b;
+  color:#334155;
   font-size:13px;
 }
 
@@ -241,12 +256,13 @@ input, select, textarea{
   padding:10px 12px;
   margin-top:6px;
   border-radius:13px;
-  border:1px solid var(--border);
+  border:1px solid #d6dee8;
   background:#fff;
   color:var(--text);
   font-weight:800;
   outline:none;
   box-shadow:0 1px 0 rgba(15,23,42,.02);
+  transition:all .15s ease;
 }
 
 input::placeholder, textarea::placeholder{
@@ -274,7 +290,7 @@ button{
   appearance:none;
   border:1px solid var(--border);
   background:#fff;
-  color:#64748b;
+  color:#1e293b;
   font-weight:950;
   font-size:13px;
   padding:10px 12px;
@@ -398,7 +414,7 @@ button:not(.btn):hover{
   border-bottom:1px solid #eef2f7;
   font-size:13px;
   vertical-align:top;
-  color:#64748b;
+  color:#334155;
 }
 
 .table th{
@@ -429,7 +445,7 @@ button:not(.btn):hover{
   font-weight:900;
   background:#fff;
   box-shadow:var(--shadow);
-  color:#64748b;
+  color:#334155;
 }
 
 .flash-dot{
@@ -484,7 +500,7 @@ button:not(.btn):hover{
   border-radius:999px;
   background:#f8fafc;
   border:1px solid #e2e8f0;
-  color:#64748b;
+  color:#1e293b;
   font-weight:950;
   display:inline-flex;
   gap:8px;
@@ -496,7 +512,7 @@ button:not(.btn):hover{
   border-radius:14px;
   background:#fff;
   border:1px solid var(--border);
-  color:#64748b;
+  color:#1e293b;
   font-weight:950;
   letter-spacing:.4px;
   box-shadow:var(--shadow2);
@@ -559,7 +575,7 @@ button:not(.btn):hover{
   background:#fff;
   cursor:pointer;
   transition:transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-  color:#64748b;
+  color:#1e293b;
   font-weight:950;
   box-shadow:0 1px 2px rgba(15,23,42,.03);
 }
@@ -590,11 +606,11 @@ button:not(.btn):hover{
 }
 
 .yard-cell > div > div:first-child{
-  color:#475569;
+  color:#172033;
   font-size:15px;
   letter-spacing:.2px;
 }
-.yard-cell div{ color:#64748b; }
+.yard-cell div{ color:#334155; }
 
 .yard-cell .badge-ok{ color:#15803d; font-weight:950; }
 .yard-cell .badge-bad{ color:#b91c1c; font-weight:950; }
@@ -618,9 +634,12 @@ button:not(.btn):hover{
 }
 
 .container-item:hover{
-  transform:translateY(-1px);
-  box-shadow:0 12px 24px rgba(15,23,42,.08);
+  transform:translateY(-2px);
   background:#f8fbff;
+  border-color:#bfd5ff;
+  box-shadow:
+    0 8px 18px rgba(15,23,42,.05),
+    0 16px 36px rgba(29,78,216,.08);
 }
 
 .selected-bar{
@@ -704,7 +723,7 @@ button:not(.btn):hover{
 @media print {
   html, body{
     background:#fff !important;
-    color:#475569 !important;
+    color:#000 !important;
     width:80mm;
     margin:0 auto !important;
     font-size:13px;
@@ -739,13 +758,13 @@ button:not(.btn):hover{
   .ticket-dt .dt-date{
     font-size:15px !important;
     font-weight:1000 !important;
-    color:#475569 !important;
+    color:#000 !important;
     line-height:1.05 !important;
   }
   .ticket-dt .dt-time{
     font-size:17px !important;
     font-weight:1000 !important;
-    color:#475569 !important;
+    color:#000 !important;
     letter-spacing:.3px !important;
     line-height:1.05 !important;
   }
@@ -753,14 +772,14 @@ button:not(.btn):hover{
   .ticket-m{
     font-size:14px !important;
     font-weight:1000 !important;
-    color:#475569 !important;
+    color:#000 !important;
     line-height:1.1 !important;
   }
 
   .ticket-k{
     font-size:12px !important;
     font-weight:950 !important;
-    color:#475569 !important;
+    color:#000 !important;
   }
 
   .ticket-card, .card, body{
@@ -827,7 +846,7 @@ button:not(.btn):hover{
   font-size:12px;
   font-weight:950;
   text-align:center;
-  color:#64748b;
+  color:#334155;
 }
 
 .rack-slot{
@@ -845,7 +864,7 @@ button:not(.btn):hover{
   transition:all .12s ease;
   user-select:none;
   overflow:hidden;
-  color:#475569;
+  color:#172033;
 }
 
 .rack-slot:hover{
@@ -856,7 +875,7 @@ button:not(.btn):hover{
 .rack-slot.is-occupied{
   background:#dbeafe;
   border-color:#93c5fd;
-  color:#31547f;
+  color:#1e3a8a;
 }
 
 .rack-slot.is-available{
@@ -1030,7 +1049,7 @@ button:not(.btn):hover{
 
 .yard-status-pill.is-mounted-dispatch{
   background:#dbeafe;
-  color:#31547f;
+  color:#1e3a8a;
   border-color:#60a5fa;
 }
 
@@ -1096,95 +1115,99 @@ button:not(.btn):hover{
 }
 
 /* =========================================================
-   Corporate Gray Overrides
-   - Reduce negro brusco en interfaz clara
-   - Mantiene jerarquía visual con grises profesionales
+   Professional Polish Overrides
+   - Jerarquía visual
+   - Cards más premium
+   - Inputs más suaves
+   - Hover empresarial
    ========================================================= */
 
-h1, h2, h3, h4, h5, h6,
-.card-title,
-.yard-breadcrumb,
-#yardCrumbLevel,
-#yardActiveContainer,
-.container-item strong,
-.container-item b,
-.stack-card b,
-.table th,
-label {
-  color: #475569 !important;
+h1{
+  font-size:34px;
+  font-weight:900;
+  letter-spacing:-.025em;
 }
 
-.card-sub,
-.hint,
-.yard-crumb-detail,
-.table td,
-.rack-colhdr,
-.rack-tierlbl,
-.rack-status {
-  color: #7a8798 !important;
+h2{
+  font-size:28px;
+  font-weight:900;
+  letter-spacing:-.02em;
 }
 
-.container-item div,
-.yard-cell,
-.yard-cell div,
-.rack-slot,
-.rack-code {
-  color: #64748b !important;
+h3{
+  font-size:22px;
+  font-weight:900;
+  letter-spacing:-.015em;
 }
 
-.rack-slot.is-occupied .rack-code,
-.rack-slot.is-occupied .rack-status {
-  color: #31547f !important;
+.card{
+  background:#ffffff;
+  border:1px solid #e2e8f0;
+  border-radius:22px;
+  box-shadow:
+    0 2px 8px rgba(15,23,42,.03),
+    0 12px 30px rgba(15,23,42,.05);
 }
 
-/* Textos dentro de bloques SVG del mapa */
-#yardSvg text {
-  fill: #64748b !important;
+.card-pad{
+  padding:18px;
 }
 
-#yardSvg text:first-of-type {
-  fill: #475569 !important;
+input,
+select,
+textarea{
+  border:1px solid #d6dee8;
+  transition:all .15s ease;
 }
 
-/* Bloques del mapa: azul suave, texto gris */
-.yard-block-dropzone {
-  fill: #dbe8ff !important;
-  stroke: #8fb3ff !important;
+input:hover,
+select:hover,
+textarea:hover{
+  border-color:#c6d3e3;
 }
 
-.yard-block-dropzone:hover {
-  fill: #cfe0ff !important;
-  stroke: #6ea0ff !important;
+.container-item:hover{
+  transform:translateY(-2px);
+  background:#f8fbff;
+  border-color:#bfd5ff;
+  box-shadow:
+    0 8px 18px rgba(15,23,42,.05),
+    0 16px 36px rgba(29,78,216,.08);
 }
 
-/* Evita negro fuerte en pills y chips */
-.yard-status-pill,
-.yard-size-pill,
-.badge {
-  color: #64748b !important;
+.yard-panel.card,
+.yard-mapwrap.card,
+.eir-card{
+  border:1px solid #e2e8f0;
+  box-shadow:
+    0 2px 8px rgba(15,23,42,.03),
+    0 14px 34px rgba(15,23,42,.055);
 }
 
-/* Mantener botones principales legibles */
-.btn.primary,
-.btn.success,
-.btn.danger,
-button:not(.btn) {
-  color: #ffffff !important;
+.card h2,
+.card h3,
+.eir-card h3{
+  color:#475569 !important;
 }
 
-/* Topbar menos negra, más gris profesional */
-.topbar {
-  background: linear-gradient(135deg, #34465f, #40536d) !important;
+#yardSvg text{
+  fill:#64748b !important;
+  font-weight:850 !important;
 }
 
-.brand-title,
-.navlink,
-.userchip {
-  color: rgba(248,250,252,.92) !important;
+#yardSvg text:nth-of-type(odd){
+  fill:#475569 !important;
+  font-weight:950 !important;
 }
 
-.brand-sub {
-  color: rgba(226,232,240,.72) !important;
+.yard-block-dropzone{
+  fill:#dbe8ff !important;
+  stroke:#8fb3ff !important;
+}
+
+.yard-block-dropzone:hover{
+  fill:#cfe0ff !important;
+  stroke:#6ea0ff !important;
 }
 
 .site-chip{
@@ -1209,4 +1232,93 @@ button:not(.btn) {
 .site-chip strong{
   color:#ffffff;
   font-weight:950;
+}
+
+.topbar{
+  background:linear-gradient(135deg, #34465f, #40536d) !important;
+}
+
+.navlink{
+  letter-spacing:-.01em;
+}
+
+.brand-title,
+.navlink,
+.userchip{
+  color:rgba(248,250,252,.92) !important;
+}
+
+.brand-sub{
+  color:rgba(226,232,240,.72) !important;
+}
+
+.nav-group{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.nav-group-admin{
+  padding-left:8px;
+  margin-left:4px;
+  border-left:1px solid rgba(255,255,255,.12);
+}
+
+.nav-group-session{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.site-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.12);
+  color:rgba(248,250,252,.95);
+  font-size:13px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.site-chip-label{
+  color:rgba(226,232,240,.72);
+  font-weight:850;
+}
+
+.site-chip strong{
+  color:#ffffff;
+  font-weight:950;
+}
+
+.damage-view-crop{
+  position:relative;
+  width:100%;
+  aspect-ratio:2.2 / 1;
+  background-repeat:no-repeat;
+  background-size:200% 300%;
+  background-color:#ffffff;
+  border:1px solid #e2e8f0;
+  border-radius:12px;
+  overflow:hidden;
+}
+
+.damage-click-layer{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  background:transparent;
+  border:0;
+  border-radius:0;
+  cursor:crosshair;
+}
+
+.damage-click-layer .markers-layer{
+  pointer-events:none;
 }

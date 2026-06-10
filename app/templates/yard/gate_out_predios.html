@@ -815,109 +815,40 @@
 
         <div class="damage-layout">
           <div class="damage-views">
-            <!-- RIGHT -->
-            <div class="damage-panel">
-              <h5>Costado derecho</h5>
-              <small>Haz clic en la zona del contenedor</small>
-              <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 120">
-                <rect x="30" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-                <rect x="178" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-                <line x1="30" y1="82" x2="25" y2="96" stroke="#334155" stroke-width="2"/>
-                <line x1="175" y1="82" x2="182" y2="96" stroke="#334155" stroke-width="2"/>
-                <line x1="110" y1="82" x2="110" y2="100" stroke="#334155" stroke-width="2"/>
-                <circle cx="60" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <circle cx="88" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <line x1="198" y1="58" x2="224" y2="58" stroke="#334155" stroke-width="2"/>
-                <g class="markers-layer"></g>
-              </svg>
-            </div>
 
-            <!-- LEFT -->
-            <div class="damage-panel">
-              <h5>Costado izquierdo</h5>
-              <small>Haz clic en la zona del contenedor</small>
-              <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 120">
-                <rect x="45" y="32" width="145" height="50" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-                <rect x="20" y="40" width="20" height="30" fill="#ffffff" stroke="#334155" stroke-width="2"/>
-                <line x1="45" y1="82" x2="38" y2="96" stroke="#334155" stroke-width="2"/>
-                <line x1="190" y1="82" x2="196" y2="96" stroke="#334155" stroke-width="2"/>
-                <line x1="122" y1="82" x2="122" y2="100" stroke="#334155" stroke-width="2"/>
-                <circle cx="145" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <circle cx="173" cy="100" r="10" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <line x1="20" y1="58" x2="5" y2="58" stroke="#334155" stroke-width="2"/>
-                <g class="markers-layer"></g>
-              </svg>
-            </div>
+            {% set container_views_img = url_for('static', filename='img/eir/container_views.png') %}
 
-            <!-- INTERIOR -->
-            <div class="damage-panel">
-              <h5>Interior</h5>
-              <small>Haz clic en la zona del contenedor</small>
-              <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 120">
-                <polygon points="30,28 210,28 180,92 60,92" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <polygon points="78,42 162,42 146,78 94,78" fill="#f8fafc" stroke="#334155" stroke-width="1.5"/>
-                <line x1="60" y1="92" x2="78" y2="42" stroke="#334155" stroke-width="1.2"/>
-                <line x1="180" y1="92" x2="162" y2="42" stroke="#334155" stroke-width="1.2"/>
-                <line x1="120" y1="92" x2="120" y2="42" stroke="#334155" stroke-width="1.2"/>
-                <g class="markers-layer"></g>
-              </svg>
-            </div>
+            {% set views = [
+              ('RIGHT', 'Costado derecho', '0% 0%'),
+              ('LEFT', 'Costado izquierdo', '100% 0%'),
+              ('FRONT', 'Frente', '0% 50%'),
+              ('REAR', 'Atrás', '100% 50%'),
+              ('INTERIOR', 'Interior', '0% 100%'),
+              ('ROOF', 'Techo', '100% 100%')
+            ] %}
 
-            <!-- FRONT -->
-            <div class="damage-panel">
-              <h5>Frente</h5>
-              <small>Haz clic en la zona del contenedor</small>
-              <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 120">
-                <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
-                <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
-                <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
-                <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
-                <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
-                <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <g class="markers-layer"></g>
-              </svg>
-            </div>
+            {% for side, title, bg_pos in views %}
+              <div class="damage-panel">
+                <h5>{{ title }}</h5>
+                <small>Haz clic en la zona del contenedor</small>
 
-            <!-- REAR -->
-            <div class="damage-panel">
-              <h5>Atrás</h5>
-              <small>Haz clic en la zona del contenedor</small>
-              <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 120">
-                <rect x="72" y="20" width="96" height="70" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <line x1="120" y1="20" x2="120" y2="90" stroke="#334155" stroke-width="1.5"/>
-                <line x1="72" y1="42" x2="168" y2="42" stroke="#334155" stroke-width="1.2"/>
-                <line x1="72" y1="66" x2="168" y2="66" stroke="#334155" stroke-width="1.2"/>
-                <rect x="84" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
-                <rect x="144" y="48" width="12" height="18" fill="#fff" stroke="#334155" stroke-width="1.5"/>
-                <line x1="90" y1="90" x2="88" y2="100" stroke="#334155" stroke-width="2"/>
-                <line x1="150" y1="90" x2="152" y2="100" stroke="#334155" stroke-width="2"/>
-                <circle cx="95" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <circle cx="145" cy="104" r="8" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <g class="markers-layer"></g>
-              </svg>
-            </div>
+                <div
+                  class="damage-view-crop"
+                  data-bg="{{ container_views_img }}"
+                  data-bg-pos="{{ bg_pos }}"
+                >
+                  <svg
+                    class="damage-svg damage-click-layer"
+                    data-side="{{ side }}"
+                    viewBox="0 0 1000 500"
+                    preserveAspectRatio="none"
+                  >
+                    <g class="markers-layer"></g>
+                  </svg>
+                </div>
+              </div>
+            {% endfor %}
 
-            <!-- ROOF -->
-            <div class="damage-panel">
-              <h5>Techo</h5>
-              <small>Haz clic en la zona del contenedor</small>
-              <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 120">
-                <rect x="28" y="30" width="184" height="60" rx="6" fill="#fff" stroke="#334155" stroke-width="2"/>
-                <line x1="44" y1="30" x2="44" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="60" y1="30" x2="60" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="76" y1="30" x2="76" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="92" y1="30" x2="92" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="108" y1="30" x2="108" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="124" y1="30" x2="124" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="140" y1="30" x2="140" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="156" y1="30" x2="156" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="172" y1="30" x2="172" y2="90" stroke="#334155" stroke-width="1"/>
-                <line x1="188" y1="30" x2="188" y2="90" stroke="#334155" stroke-width="1"/>
-                <g class="markers-layer"></g>
-              </svg>
-            </div>
           </div>
 
           <div class="legend-card">
@@ -1707,6 +1638,21 @@
       syncDamageUi();
     });
   }
+
+  /*
+  |--------------------------------------------------------------------------
+  | Inicializar imágenes de vistas del contenedor
+  |--------------------------------------------------------------------------
+  */
+  document.querySelectorAll(".damage-view-crop").forEach(el => {
+    const bg = el.dataset.bg;
+    const pos = el.dataset.bgPos || "0% 0%";
+
+    if (bg) {
+      el.style.backgroundImage = `url("${bg}")`;
+      el.style.backgroundPosition = pos;
+    }
+  });
 
   bindStatusToggles();
   syncMode();
