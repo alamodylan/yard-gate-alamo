@@ -827,26 +827,32 @@
               ("ROOF", "Techo", "roof.png")
             ] %}
 
-            {% for side, title, bg_pos in views %}
-              <div class="damage-panel">
+            {% for side, title, image_name in views %}
+            <div class="damage-panel">
+
                 <h5>{{ title }}</h5>
                 <small>Haz clic en la zona del contenedor</small>
 
-                <div
-                  class="damage-view-crop"
-                  data-bg="{{ container_views_img }}"
-                  data-bg-pos="{{ bg_pos }}"
-                >
-                  <svg
-                    class="damage-svg damage-click-layer"
-                    data-side="{{ side }}"
-                    viewBox="0 0 1000 500"
-                    preserveAspectRatio="none"
-                  >
-                    <g class="markers-layer"></g>
-                  </svg>
+                <div class="damage-view-crop">
+
+                    <img
+                        src="{{ url_for('static', filename='img/eir/' ~ image_name) }}"
+                        class="damage-base-image"
+                        alt="{{ title }}"
+                    >
+
+                    <svg
+                        class="damage-svg damage-click-layer"
+                        data-side="{{ side }}"
+                        viewBox="0 0 1000 500"
+                        preserveAspectRatio="none"
+                    >
+                        <g class="markers-layer"></g>
+                    </svg>
+
                 </div>
-              </div>
+
+            </div>
             {% endfor %}
 
           </div>
