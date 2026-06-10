@@ -819,12 +819,12 @@
             {% set container_views_img = url_for('static', filename='img/eir/container_views.png') %}
 
             {% set views = [
-              ('RIGHT', 'Costado derecho', '0% 0%'),
-              ('LEFT', 'Costado izquierdo', '100% 0%'),
-              ('FRONT', 'Frente', '0% 50%'),
-              ('REAR', 'Atrás', '100% 50%'),
-              ('INTERIOR', 'Interior', '0% 100%'),
-              ('ROOF', 'Techo', '100% 100%')
+              ("RIGHT", "Costado derecho", "right.png"),
+              ("LEFT", "Costado izquierdo", "left.png"),
+              ("FRONT", "Frente", "front.png"),
+              ("REAR", "Atrás", "rear.png"),
+              ("INTERIOR", "Interior", "interior.png"),
+              ("ROOF", "Techo", "roof.png")
             ] %}
 
             {% for side, title, bg_pos in views %}

@@ -1322,3 +1322,31 @@ textarea:hover{
 .damage-click-layer .markers-layer{
   pointer-events:none;
 }
+
+.damage-view-crop{
+    position:relative;
+    width:100%;
+    height:220px;
+    overflow:hidden;
+    border:1px solid #d7dde7;
+    border-radius:12px;
+    background:#fff;
+}
+
+.damage-base-image{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    pointer-events:none;
+    user-select:none;
+}
+
+.damage-svg{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    z-index:5;
+}
