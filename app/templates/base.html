@@ -135,6 +135,21 @@
             Cambiar predio
           </a>
 
+          <div class="site-chip" title="Predio activo">
+            <span class="site-chip-label">Predio</span>
+            <strong>
+              {{
+                active_site_name
+                if active_site_name is defined
+                else (
+                  active_site_key
+                  if active_site_key is defined
+                  else 'Activo'
+                )
+              }}
+            </strong>
+          </div>
+
           <div
             class="userchip"
             title="{{ current_user.email if current_user.email is defined else '' }}"

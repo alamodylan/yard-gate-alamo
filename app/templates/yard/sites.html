@@ -1,31 +1,159 @@
 {% extends "base.html" %}
-{% block title %}Seleccionar predio{% endblock %}
+{% block title %}Seleccionar Predio{% endblock %}
 
 {% block content %}
-<div class="card card-pad" style="max-width:760px; margin:0 auto;">
-  <h2 style="margin:0 0 10px 0;">Selecciona el predio</h2>
-  <div class="hint" style="margin-bottom:14px;">
-    Elige dónde vas a trabajar hoy (sin drama, solo un clic 😄).
+
+<div class="card card-pad" style="max-width:900px; margin:0 auto;">
+
+  <div style="margin-bottom:24px;">
+    <h2 style="margin:0;">Seleccionar Predio</h2>
+
+    <p class="card-sub" style="margin-top:8px;">
+      Seleccione el predio con el que desea trabajar.
+    </p>
   </div>
 
   <form method="post" action="{{ url_for('yard.sites_select') }}">
-    <div style="display:grid; gap:10px;">
+
+    <div class="site-selector-grid">
+
       {% for s in sites %}
-        <label class="container-item" style="cursor:pointer;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-            <div>
-              <div style="font-weight:950;">{{ s.name }}</div>
-              <div class="hint" style="margin-top:6px;">{{ s.code }}</div>
+
+      <label class="site-option-card">
+
+        <input
+          type="radio"
+          name="site_id"
+          value="{{ s.id }}"
+          required
+          class="site-option-radio"
+        >
+
+        <div class="site-option-content">
+
+          <div>
+            <div class="site-option-title">
+              {{ s.name }}
             </div>
-            <input type="radio" name="site_id" value="{{ s.id }}" required />
+
+            <div class="site-option-code">
+              {{ s.code }}
+            </div>
           </div>
-        </label>
+
+          <div class="site-option-check">
+            ✓
+          </div>
+
+        </div>
+
+      </label>
+
       {% endfor %}
+
     </div>
 
-    <div style="display:flex; justify-content:flex-end; margin-top:14px;">
-      <button class="btn btn-primary" type="submit">Entrar</button>
+    <div style="display:flex; justify-content:flex-end; margin-top:24px;">
+      <button class="btn success" type="submit">
+        Continuar
+      </button>
     </div>
+
   </form>
+
 </div>
+
+<style>
+
+.site-selector-grid{
+  display:grid;
+  gap:14px;
+}
+
+.site-option-card{
+  display:block;
+  cursor:pointer;
+}
+
+.site-option-radio{
+  display:none;
+}
+
+.site-option-content{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+
+  padding:20px;
+
+  border:1px solid #dbe4f0;
+  border-radius:18px;
+
+  background:#ffffff;
+
+  transition:all .18s ease;
+}
+
+.site-option-card:hover .site-option-content{
+  border-color:#8fb3ff;
+  transform:translateY(-1px);
+
+  box-shadow:
+    0 10px 24px rgba(15,23,42,.06);
+}
+
+.site-option-title{
+  font-size:20px;
+  font-weight:900;
+  color:#475569;
+}
+
+.site-option-code{
+  margin-top:6px;
+  font-size:13px;
+  font-weight:800;
+  color:#94a3b8;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.site-option-check{
+  width:34px;
+  height:34px;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  border-radius:50%;
+
+  background:#e2e8f0;
+  color:transparent;
+
+  font-weight:900;
+
+  transition:all .18s ease;
+}
+
+.site-option-radio:checked + .site-option-content{
+  border-color:#3b82f6;
+
+  background:
+    linear-gradient(
+      180deg,
+      #ffffff,
+      #f8fbff
+    );
+
+  box-shadow:
+    0 12px 28px rgba(59,130,246,.15);
+}
+
+.site-option-radio:checked + .site-option-content .site-option-check{
+  background:#3b82f6;
+  color:#ffffff;
+}
+
+</style>
+
 {% endblock %}

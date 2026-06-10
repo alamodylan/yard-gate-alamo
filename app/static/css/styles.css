@@ -1187,3 +1187,26 @@ button:not(.btn) {
   color: rgba(226,232,240,.72) !important;
 }
 
+.site-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.10);
+  color:rgba(248,250,252,.94);
+  font-size:13px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.site-chip-label{
+  color:rgba(226,232,240,.72);
+  font-weight:850;
+}
+
+.site-chip strong{
+  color:#ffffff;
+  font-weight:950;
+}
