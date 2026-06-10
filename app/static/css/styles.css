@@ -8,9 +8,9 @@
   --panel:#ffffff;
   --card:#ffffff;
   --card2:#f8fafc;
-  --muted:#64748b;
-  --text:#172033;
-  --text2:#334155;
+  --muted:#7a8798;
+  --text:#475569;
+  --text2:#64748b;
   --border:#dbe4f0;
 
   --primary:#1d4ed8;
@@ -34,8 +34,8 @@
   --radius2:20px;
 
   --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  --topbar:#10223f;
-  --topbar2:#0f1e36;
+  --topbar:#34465f;
+  --topbar2:#40536d;
 
   --rack-label-col: 70px;
   --rack-col-min: 140px;
@@ -232,7 +232,7 @@ label{
   display:block;
   margin-top:10px;
   font-weight:900;
-  color:#334155;
+  color:#64748b;
   font-size:13px;
 }
 
@@ -274,7 +274,7 @@ button{
   appearance:none;
   border:1px solid var(--border);
   background:#fff;
-  color:#1e293b;
+  color:#64748b;
   font-weight:950;
   font-size:13px;
   padding:10px 12px;
@@ -398,7 +398,7 @@ button:not(.btn):hover{
   border-bottom:1px solid #eef2f7;
   font-size:13px;
   vertical-align:top;
-  color:#334155;
+  color:#64748b;
 }
 
 .table th{
@@ -429,7 +429,7 @@ button:not(.btn):hover{
   font-weight:900;
   background:#fff;
   box-shadow:var(--shadow);
-  color:#334155;
+  color:#64748b;
 }
 
 .flash-dot{
@@ -484,7 +484,7 @@ button:not(.btn):hover{
   border-radius:999px;
   background:#f8fafc;
   border:1px solid #e2e8f0;
-  color:#1e293b;
+  color:#64748b;
   font-weight:950;
   display:inline-flex;
   gap:8px;
@@ -496,7 +496,7 @@ button:not(.btn):hover{
   border-radius:14px;
   background:#fff;
   border:1px solid var(--border);
-  color:#1e293b;
+  color:#64748b;
   font-weight:950;
   letter-spacing:.4px;
   box-shadow:var(--shadow2);
@@ -559,7 +559,7 @@ button:not(.btn):hover{
   background:#fff;
   cursor:pointer;
   transition:transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
-  color:#1e293b;
+  color:#64748b;
   font-weight:950;
   box-shadow:0 1px 2px rgba(15,23,42,.03);
 }
@@ -590,11 +590,11 @@ button:not(.btn):hover{
 }
 
 .yard-cell > div > div:first-child{
-  color:#172033;
+  color:#475569;
   font-size:15px;
   letter-spacing:.2px;
 }
-.yard-cell div{ color:#334155; }
+.yard-cell div{ color:#64748b; }
 
 .yard-cell .badge-ok{ color:#15803d; font-weight:950; }
 .yard-cell .badge-bad{ color:#b91c1c; font-weight:950; }
@@ -704,7 +704,7 @@ button:not(.btn):hover{
 @media print {
   html, body{
     background:#fff !important;
-    color:#000 !important;
+    color:#475569 !important;
     width:80mm;
     margin:0 auto !important;
     font-size:13px;
@@ -739,13 +739,13 @@ button:not(.btn):hover{
   .ticket-dt .dt-date{
     font-size:15px !important;
     font-weight:1000 !important;
-    color:#000 !important;
+    color:#475569 !important;
     line-height:1.05 !important;
   }
   .ticket-dt .dt-time{
     font-size:17px !important;
     font-weight:1000 !important;
-    color:#000 !important;
+    color:#475569 !important;
     letter-spacing:.3px !important;
     line-height:1.05 !important;
   }
@@ -753,14 +753,14 @@ button:not(.btn):hover{
   .ticket-m{
     font-size:14px !important;
     font-weight:1000 !important;
-    color:#000 !important;
+    color:#475569 !important;
     line-height:1.1 !important;
   }
 
   .ticket-k{
     font-size:12px !important;
     font-weight:950 !important;
-    color:#000 !important;
+    color:#475569 !important;
   }
 
   .ticket-card, .card, body{
@@ -827,7 +827,7 @@ button:not(.btn):hover{
   font-size:12px;
   font-weight:950;
   text-align:center;
-  color:#334155;
+  color:#64748b;
 }
 
 .rack-slot{
@@ -845,7 +845,7 @@ button:not(.btn):hover{
   transition:all .12s ease;
   user-select:none;
   overflow:hidden;
-  color:#172033;
+  color:#475569;
 }
 
 .rack-slot:hover{
@@ -856,7 +856,7 @@ button:not(.btn):hover{
 .rack-slot.is-occupied{
   background:#dbeafe;
   border-color:#93c5fd;
-  color:#1e3a8a;
+  color:#31547f;
 }
 
 .rack-slot.is-available{
@@ -1030,7 +1030,7 @@ button:not(.btn):hover{
 
 .yard-status-pill.is-mounted-dispatch{
   background:#dbeafe;
-  color:#1e3a8a;
+  color:#31547f;
   border-color:#60a5fa;
 }
 
@@ -1093,5 +1093,97 @@ button:not(.btn):hover{
 
 .rack-slot.is-size-40 .rack-status{
   font-size:10px;
+}
+
+/* =========================================================
+   Corporate Gray Overrides
+   - Reduce negro brusco en interfaz clara
+   - Mantiene jerarquía visual con grises profesionales
+   ========================================================= */
+
+h1, h2, h3, h4, h5, h6,
+.card-title,
+.yard-breadcrumb,
+#yardCrumbLevel,
+#yardActiveContainer,
+.container-item strong,
+.container-item b,
+.stack-card b,
+.table th,
+label {
+  color: #475569 !important;
+}
+
+.card-sub,
+.hint,
+.yard-crumb-detail,
+.table td,
+.rack-colhdr,
+.rack-tierlbl,
+.rack-status {
+  color: #7a8798 !important;
+}
+
+.container-item div,
+.yard-cell,
+.yard-cell div,
+.rack-slot,
+.rack-code {
+  color: #64748b !important;
+}
+
+.rack-slot.is-occupied .rack-code,
+.rack-slot.is-occupied .rack-status {
+  color: #31547f !important;
+}
+
+/* Textos dentro de bloques SVG del mapa */
+#yardSvg text {
+  fill: #64748b !important;
+}
+
+#yardSvg text:first-of-type {
+  fill: #475569 !important;
+}
+
+/* Bloques del mapa: azul suave, texto gris */
+.yard-block-dropzone {
+  fill: #dbe8ff !important;
+  stroke: #8fb3ff !important;
+}
+
+.yard-block-dropzone:hover {
+  fill: #cfe0ff !important;
+  stroke: #6ea0ff !important;
+}
+
+/* Evita negro fuerte en pills y chips */
+.yard-status-pill,
+.yard-size-pill,
+.badge {
+  color: #64748b !important;
+}
+
+/* Mantener botones principales legibles */
+.btn.primary,
+.btn.success,
+.btn.danger,
+button:not(.btn) {
+  color: #ffffff !important;
+}
+
+/* Topbar menos negra, más gris profesional */
+.topbar {
+  background: linear-gradient(135deg, #34465f, #40536d) !important;
+}
+
+.brand-title,
+.navlink,
+.userchip {
+  color: rgba(248,250,252,.92) !important;
+}
+
+.brand-sub {
+  color: rgba(226,232,240,.72) !important;
 }
 
