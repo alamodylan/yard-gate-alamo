@@ -149,7 +149,7 @@
       border:1px solid #111827;
       padding:3px;
       page-break-inside:avoid;
-      min-height:112px;
+      min-height:145px;
     }
 
     .damage-panel h5{
@@ -161,7 +161,7 @@
     .damage-image-wrapper{
       position:relative;
       width:100%;
-      height:100px;
+      height:130px;
       overflow:hidden;
       background:#ffffff;
     }
@@ -206,10 +206,10 @@
 
     .marker-label{
       font-weight:900;
-      font-size:42px;
+      font-size:52px;
       fill:#dc2626;
       stroke:#ffffff;
-      stroke-width:6px;
+      stroke-width:7px;
       paint-order:stroke;
       text-anchor:middle;
       dominant-baseline:middle;
@@ -218,7 +218,7 @@
     .marker-dot{
       fill:#ffffff;
       stroke:#dc2626;
-      stroke-width:4;
+      stroke-width:8;
     }
 
     .note-box{
@@ -629,12 +629,19 @@
         const cx = Number(item.x) * vb.width;
         const cy = Number(item.y) * vb.height;
 
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", cx);
+        circle.setAttribute("cy", cy);
+        circle.setAttribute("r", 30);
+        circle.setAttribute("class", "marker-dot");
+
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", cx);
-        text.setAttribute("y", cy + 0.5);
+        text.setAttribute("y", cy + 1);
         text.setAttribute("class", "marker-label");
         text.textContent = item.damage_type;
 
+        layer.appendChild(circle);
         layer.appendChild(text);
       });
     });
