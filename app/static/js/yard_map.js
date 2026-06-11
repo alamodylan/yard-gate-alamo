@@ -93,7 +93,6 @@ function getDispatchStatusClass(containerOrStatus) {
 
   return "";
 }
-
 function getDispatchStatusLabel(status) {
   const s = (status || "NORMAL").toUpperCase();
 
