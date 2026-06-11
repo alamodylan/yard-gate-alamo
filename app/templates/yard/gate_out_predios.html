@@ -420,6 +420,100 @@
     margin-top:14px;
     flex-wrap:wrap;
   }
+
+  .ajax-combo{
+    position:relative;
+  }
+
+  .ajax-combo-input{
+    width:100%;
+    padding:12px 14px;
+    border:1px solid #cbd5e1;
+    border-radius:14px;
+    font-size:14px;
+    box-sizing:border-box;
+    background:#fff;
+  }
+
+  .ajax-combo-input:focus{
+    outline:none;
+    border-color:#60a5fa;
+    box-shadow:0 0 0 4px rgba(96,165,250,.18);
+  }
+
+  .ajax-combo-results{
+    position:absolute;
+    z-index:50;
+    top:calc(100% + 6px);
+    left:0;
+    right:0;
+    background:#fff;
+    border:1px solid #cbd5e1;
+    border-radius:14px;
+    box-shadow:0 18px 36px rgba(15,23,42,.16);
+    overflow:hidden;
+    max-height:280px;
+    overflow-y:auto;
+  }
+
+  .ajax-combo-item{
+    padding:11px 13px;
+    cursor:pointer;
+    border-bottom:1px solid #e2e8f0;
+  }
+
+  .ajax-combo-item:last-child{
+    border-bottom:none;
+  }
+
+  .ajax-combo-item:hover{
+    background:#eff6ff;
+  }
+
+  .ajax-combo-item strong{
+    display:block;
+    color:#0f172a;
+    font-size:13px;
+  }
+
+  .ajax-combo-item small{
+    display:block;
+    margin-top:3px;
+    color:#64748b;
+    font-size:12px;
+  }
+
+  .ajax-combo-empty{
+    padding:12px 13px;
+    color:#64748b;
+    font-size:13px;
+  }
+
+  .ajax-combo-selected{
+    margin-top:10px;
+    padding:10px 12px;
+    border:1px solid #bfdbfe;
+    background:#eff6ff;
+    color:#1d4ed8;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    font-size:13px;
+    font-weight:800;
+  }
+
+  .ajax-combo-selected button{
+    border:none;
+    background:#dbeafe;
+    color:#1d4ed8;
+    border-radius:999px;
+    padding:6px 10px;
+    font-size:12px;
+    font-weight:900;
+    cursor:pointer;
+  }
 </style>
 
 <div class="eir-wrap">
@@ -583,68 +677,52 @@
       <div class="eir-grid">
         <div class="field col-6" id="box_chassis_select">
           <label>Chasis en inventario</label>
-          <select name="chassis_id" id="chassis_id" size="8">
-            <option value="">— Selecciona chasis —</option>
-            {% for ch in chassis_rows %}
-                <option
-                value="{{ ch.id }}"
-                data-chassis-number="{{ ch.chassis_number or '' }}"
-                data-plate="{{ ch.plate or '' }}"
-                data-axles="{{ ch.axles or '' }}"
-                data-type-code="{{ ch.type_code or '' }}"
-                >
-                {{ ch.chassis_number }}
-                {% if ch.plate %} · Placa {{ ch.plate }}{% endif %}
-                {% if ch.type_code %} · {{ ch.type_code }}{% endif %}
-                </option>
-            {% endfor %}
-          </select>
-          <div class="field-help">Solo se muestran chasis activos en inventario del predio actual.</div>
+
+          <input type="hidden" name="chassis_id" id="chassis_id" value="">
+
+          <div class="ajax-combo" data-combo="chassis">
+            <input
+              type="text"
+              id="chassis_search"
+              class="ajax-combo-input"
+              placeholder="Buscar por número de chasis o placa..."
+              autocomplete="off"
+            >
+
+            <div class="ajax-combo-results hidden" id="chassis_results"></div>
+
+            <div class="ajax-combo-selected hidden" id="chassis_selected">
+              <span id="chassis_selected_text"></span>
+              <button type="button" id="chassis_clear_btn">Quitar</button>
+            </div>
+          </div>
+
+          <div class="field-help">Busca por número de chasis o placa. Solo se muestran chasis activos en inventario del predio actual.</div>
         </div>
 
         <div class="field col-6" id="box_container_select">
           <label>Contenedor en patio</label>
-          <select name="container_id" id="container_id">
-            <option value="">— Selecciona contenedor —</option>
-            {% for row in containers %}
-              {% set c = row.container %}
-              {% set p = row.position %}
-              {% set b = row.bay %}
-              {% set dispatch_status = row.dispatch_status or c.dispatch_status or 'NORMAL' %}
 
-              <option
-                value="{{ c.id }}"
-                data-code="{{ c.code }}"
-                data-size="{{ c.size or '' }}"
-                data-bay="{{ b.code if b else '' }}"
-                data-row="{{ p.depth_row if p else '' }}"
-                data-tier="{{ p.tier if p else '' }}"
-                data-dispatch-status="{{ dispatch_status }}"
-                data-shipping-line="{{ row.shipping_line or '' }}"
-              >
-                {{ c.code }} · {{ c.size }}
-                ·
-                {% if b and p %}
-                  {{ b.code }} F{{ "%02d"|format(p.depth_row) }} N{{ p.tier }}
-                {% else %}
-                  Montado / sin posición física
-                {% endif %}
-                ·
-                {% if dispatch_status == 'PARA_DESPACHO' %}
-                  Asignado para despacho
-                {% elif dispatch_status == 'EVACUAR_SOLICITADO' %}
-                  Solicitado para evacuar
-                {% elif dispatch_status == 'DESPACHO_MONTADO' %}
-                  Despacho montado
-                {% elif dispatch_status == 'EVACUACION_MONTADA' %}
-                  Evacuación montada
-                {% else %}
-                  {{ dispatch_status }}
-                {% endif %}
-              </option>
-            {% endfor %}
-          </select>
-          <div class="field-help">Solo se muestran contenedores activos en patio de este predio.</div>
+          <input type="hidden" name="container_id" id="container_id" value="">
+
+          <div class="ajax-combo" data-combo="container">
+            <input
+              type="text"
+              id="container_search"
+              class="ajax-combo-input"
+              placeholder="Buscar por código de contenedor..."
+              autocomplete="off"
+            >
+
+            <div class="ajax-combo-results hidden" id="container_results"></div>
+
+            <div class="ajax-combo-selected hidden" id="container_selected">
+              <span id="container_selected_text"></span>
+              <button type="button" id="container_clear_btn">Quitar</button>
+            </div>
+          </div>
+
+          <div class="field-help">Busca por contenedor. Solo se muestran contenedores en prelista.</div>
         </div>
       </div>
     </div>
@@ -1063,6 +1141,21 @@
   const chassisSelect = document.getElementById("chassis_id");
   const containerSelect = document.getElementById("container_id");
 
+  const chassisSearch = document.getElementById("chassis_search");
+  const chassisResults = document.getElementById("chassis_results");
+  const chassisSelected = document.getElementById("chassis_selected");
+  const chassisSelectedText = document.getElementById("chassis_selected_text");
+  const chassisClearBtn = document.getElementById("chassis_clear_btn");
+
+  const containerSearch = document.getElementById("container_search");
+  const containerResults = document.getElementById("container_results");
+  const containerSelected = document.getElementById("container_selected");
+  const containerSelectedText = document.getElementById("container_selected_text");
+  const containerClearBtn = document.getElementById("container_clear_btn");
+
+  let selectedChassisData = null;
+  let selectedContainerData = null;
+
   const chassisNumberView = document.getElementById("chassis_number_view");
   const chassisPlateView = document.getElementById("chassis_plate_view");
   const chassisTypeView = document.getElementById("chassis_type_view");
@@ -1330,29 +1423,44 @@
     sectionReefer.classList.toggle("hidden", !chkIsReefer.checked);
 
     if (!chkHasChassis.checked) {
+      selectedChassisData = null;
       chassisSelect.value = "";
       chassisNumberView.value = "";
       chassisPlateView.value = "";
       chassisTypeView.value = "";
       resumeChassis.textContent = "—";
+
+      if (chassisSelected) chassisSelected.classList.add("hidden");
+      if (chassisSelectedText) chassisSelectedText.textContent = "";
+      if (chassisSearch) chassisSearch.value = "";
+      hideComboResults(chassisResults);
+
       clearAxleSealEditor();
     }
 
     if (!chkHasContainer.checked) {
+      selectedContainerData = null;
       containerSelect.value = "";
       containerCodeView.value = "";
       containerSizeView.value = "";
       containerPositionView.value = "";
       resumeContainer.textContent = "—";
+
+      if (shippingLineInput) shippingLineInput.value = "";
+      if (containerSelected) containerSelected.classList.add("hidden");
+      if (containerSelectedText) containerSelectedText.textContent = "";
+      if (containerSearch) containerSearch.value = "";
+      hideComboResults(containerResults);
     }
 
     resumeReefer.textContent = chkIsReefer.checked ? "Sí" : "No";
   }
 
   function syncChassisInfo() {
-    const opt = chassisSelect.options[chassisSelect.selectedIndex];
+    const item = selectedChassisData;
 
-    if (!opt || !opt.value) {
+    if (!item) {
+      chassisSelect.value = "";
       chassisNumberView.value = "";
       chassisPlateView.value = "";
       chassisTypeView.value = "";
@@ -1361,10 +1469,12 @@
       return;
     }
 
-    const chassisNumber = opt.dataset.chassisNumber || "";
-    const plate = opt.dataset.plate || "";
-    const axles = Number(opt.dataset.axles || 2);
-    const typeCode = opt.dataset.typeCode || "";
+    chassisSelect.value = item.id || "";
+
+    const chassisNumber = item.chassis_number || "";
+    const plate = item.plate || "";
+    const axles = Number(item.axles || 2);
+    const typeCode = item.type_code || "";
 
     chassisNumberView.value = chassisNumber;
     chassisPlateView.value = plate;
@@ -1378,9 +1488,10 @@
   }
 
   function syncContainerInfo() {
-    const opt = containerSelect.options[containerSelect.selectedIndex];
+    const item = selectedContainerData;
 
-    if (!opt || !opt.value) {
+    if (!item) {
+      containerSelect.value = "";
       containerCodeView.value = "";
       containerSizeView.value = "";
       containerPositionView.value = "";
@@ -1393,18 +1504,15 @@
       return;
     }
 
-    const code = opt.dataset.code || "";
-    const size = opt.dataset.size || "";
-    const bay = opt.dataset.bay || "";
-    const row = opt.dataset.row || "";
-    const tier = opt.dataset.tier || "";
-    const shippingLine = opt.dataset.shippingLine || "";
+    containerSelect.value = item.id || "";
+
+    const code = item.code || "";
+    const size = item.size || "";
+    const shippingLine = item.shipping_line || "";
 
     containerCodeView.value = code;
     containerSizeView.value = size;
-    containerPositionView.value = bay
-      ? `${bay} F${String(row).padStart(2, "0")} N${tier}`
-      : "Montado / sin posición física";
+    containerPositionView.value = item.position_label || "Montado / sin posición física";
 
     if (shippingLineInput) {
       shippingLineInput.value = shippingLine;
@@ -1579,6 +1687,142 @@
     openDamageModal(side, xn, yn);
   }
 
+  function debounce(fn, delay = 250) {
+    let timer = null;
+
+    return function (...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+
+  function hideComboResults(box) {
+    if (box) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+    }
+  }
+
+  function renderComboResults(resultsBox, items, onSelect) {
+    if (!resultsBox) return;
+
+    if (!items.length) {
+      resultsBox.innerHTML = `<div class="ajax-combo-empty">No se encontraron resultados.</div>`;
+      resultsBox.classList.remove("hidden");
+      return;
+    }
+
+    resultsBox.innerHTML = items.map((item, index) => {
+      return `
+        <div class="ajax-combo-item" data-index="${index}">
+          <strong>${item.label}</strong>
+          <small>ID interno: ${item.id}</small>
+        </div>
+      `;
+    }).join("");
+
+    Array.from(resultsBox.querySelectorAll(".ajax-combo-item")).forEach(el => {
+      el.addEventListener("click", () => {
+        const idx = Number(el.dataset.index);
+        onSelect(items[idx]);
+        hideComboResults(resultsBox);
+      });
+    });
+
+    resultsBox.classList.remove("hidden");
+  }
+
+  async function searchAjax(url, q) {
+    const fullUrl = `${url}?q=${encodeURIComponent(q || "")}`;
+    const response = await fetch(fullUrl, {
+      headers: {
+        "Accept": "application/json",
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "No se pudo realizar la búsqueda.");
+    }
+
+    return data.results || [];
+  }
+
+  const searchChassisAjax = debounce(async function () {
+    const q = chassisSearch ? chassisSearch.value.trim() : "";
+
+    if (!q || q.length < 2) {
+      hideComboResults(chassisResults);
+      return;
+    }
+
+    try {
+      const items = await searchAjax("{{ url_for('yard.api_gate_out_search_chassis') }}", q);
+
+      renderComboResults(chassisResults, items, function (item) {
+        selectedChassisData = item;
+
+        if (chassisSelectedText) {
+          chassisSelectedText.textContent = item.label;
+        }
+
+        if (chassisSelected) {
+          chassisSelected.classList.remove("hidden");
+        }
+
+        if (chassisSearch) {
+          chassisSearch.value = "";
+        }
+
+        syncChassisInfo();
+      });
+    } catch (err) {
+      console.error("Error buscando chasis:", err);
+      if (chassisResults) {
+        chassisResults.innerHTML = `<div class="ajax-combo-empty">Error buscando chasis.</div>`;
+        chassisResults.classList.remove("hidden");
+      }
+    }
+  }, 250);
+
+  const searchContainerAjax = debounce(async function () {
+    const q = containerSearch ? containerSearch.value.trim() : "";
+
+    if (!q || q.length < 2) {
+      hideComboResults(containerResults);
+      return;
+    }
+
+    try {
+      const items = await searchAjax("{{ url_for('yard.api_gate_out_search_containers') }}", q);
+
+      renderComboResults(containerResults, items, function (item) {
+        selectedContainerData = item;
+
+        if (containerSelectedText) {
+          containerSelectedText.textContent = item.label;
+        }
+
+        if (containerSelected) {
+          containerSelected.classList.remove("hidden");
+        }
+
+        if (containerSearch) {
+          containerSearch.value = "";
+        }
+
+        syncContainerInfo();
+      });
+    } catch (err) {
+      console.error("Error buscando contenedores:", err);
+      if (containerResults) {
+        containerResults.innerHTML = `<div class="ajax-combo-empty">Error buscando contenedores.</div>`;
+        containerResults.classList.remove("hidden");
+      }
+    }
+  }, 250);
+
   damageSvgs.forEach(svg => {
     svg.addEventListener("click", onSvgClick);
   });
@@ -1631,8 +1875,41 @@
     rfGenset.addEventListener("change", syncEquipmentSections);
   }
 
-  chassisSelect.addEventListener("change", syncChassisInfo);
-  containerSelect.addEventListener("change", syncContainerInfo);
+  if (chassisSearch) {
+    chassisSearch.addEventListener("input", searchChassisAjax);
+  }
+
+  if (containerSearch) {
+    containerSearch.addEventListener("input", searchContainerAjax);
+  }
+
+  if (chassisClearBtn) {
+    chassisClearBtn.addEventListener("click", () => {
+      selectedChassisData = null;
+      if (chassisSelected) chassisSelected.classList.add("hidden");
+      if (chassisSelectedText) chassisSelectedText.textContent = "";
+      if (chassisSearch) chassisSearch.value = "";
+      syncChassisInfo();
+    });
+  }
+
+  if (containerClearBtn) {
+    containerClearBtn.addEventListener("click", () => {
+      selectedContainerData = null;
+      if (containerSelected) containerSelected.classList.add("hidden");
+      if (containerSelectedText) containerSelectedText.textContent = "";
+      if (containerSearch) containerSearch.value = "";
+      syncContainerInfo();
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".ajax-combo")) {
+      hideComboResults(chassisResults);
+      hideComboResults(containerResults);
+    }
+  });
+
   operationType.addEventListener("change", syncOperationResume);
   btnFillNow.addEventListener("click", setNow);
 

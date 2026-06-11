@@ -1,9 +1,9 @@
 import json
 from datetime import datetime
 
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash, jsonify
 from flask_login import login_required, current_user
-from sqlalchemy import text
+from sqlalchemy import text, or_
 
 from app.blueprints.yard import yard_bp
 from app.extensions import db
@@ -146,6 +146,179 @@ def gate_out_view():
         "yard/gate_out.html",
         rows=containers,
     )
+
+@yard_bp.get("/api/yard/gate-out/search-chassis")
+@login_required
+def api_gate_out_search_chassis():
+    site_id = _ensure_active_site()
+
+    q = (request.args.get("q") or "").strip()
+    q_like = f"%{q}%"
+
+    query = (
+        Chassis.query
+        .filter(
+            Chassis.site_id == site_id,
+            Chassis.is_in_yard == True,  # noqa: E712
+        )
+    )
+
+    if q:
+        query = query.filter(
+            or_(
+                Chassis.chassis_number.ilike(q_like),
+                Chassis.plate.ilike(q_like),
+                Chassis.type_code.ilike(q_like),
+            )
+        )
+
+    rows = (
+        query
+        .order_by(Chassis.chassis_number.asc())
+        .limit(20)
+        .all()
+    )
+
+    results = []
+
+    for ch in rows:
+        parts = [ch.chassis_number or "SIN NÚMERO"]
+
+        if ch.plate:
+            parts.append(f"Placa {ch.plate}")
+
+        if ch.type_code:
+            parts.append(ch.type_code)
+
+        if ch.axles:
+            parts.append(f"{ch.axles} ejes")
+
+        results.append({
+            "id": ch.id,
+            "label": " · ".join(parts),
+            "chassis_number": ch.chassis_number or "",
+            "plate": ch.plate or "",
+            "axles": ch.axles or "",
+            "type_code": ch.type_code or "",
+            "status": ch.status or "",
+        })
+
+    return jsonify({
+        "ok": True,
+        "results": results,
+    })
+
+
+@yard_bp.get("/api/yard/gate-out/search-containers")
+@login_required
+def api_gate_out_search_containers():
+    site_id = _ensure_active_site()
+
+    q = (request.args.get("q") or "").strip()
+    q_like = f"%{q}%"
+
+    allowed_gate_out_statuses = {
+        "PARA_DESPACHO",
+        "EVACUAR_SOLICITADO",
+        "DESPACHO_MONTADO",
+        "EVACUACION_MONTADA",
+    }
+
+    sql_last_class = text("""
+        SELECT DISTINCT ON (cc.container_id)
+            cc.container_id,
+            cc.shipping_line
+        FROM yard_gate_alamo.container_classifications cc
+        WHERE cc.site_id = :site_id
+        ORDER BY cc.container_id, cc.classified_at DESC NULLS LAST, cc.id DESC
+    """)
+
+    class_rows = db.session.execute(
+        sql_last_class,
+        {"site_id": site_id},
+    ).mappings().all()
+
+    shipping_line_map = {
+        int(r["container_id"]): (r["shipping_line"] or "").strip().upper()
+        for r in class_rows
+    }
+
+    query = (
+        db.session.query(Container, ContainerPosition, YardBay)
+        .outerjoin(
+            ContainerPosition,
+            ContainerPosition.container_id == Container.id,
+        )
+        .outerjoin(
+            YardBay,
+            YardBay.id == ContainerPosition.bay_id,
+        )
+        .filter(
+            Container.is_in_yard == True,  # noqa: E712
+            Container.site_id == site_id,
+            Container.dispatch_status.in_(list(allowed_gate_out_statuses)),
+        )
+    )
+
+    if q:
+        query = query.filter(
+            or_(
+                Container.code.ilike(q_like),
+                Container.size.ilike(q_like),
+                Container.dispatch_status.ilike(q_like),
+            )
+        )
+
+    rows = (
+        query
+        .order_by(
+            Container.dispatch_status.asc(),
+            YardBay.code.asc().nulls_last(),
+            ContainerPosition.depth_row.asc().nulls_last(),
+            ContainerPosition.tier.asc().nulls_last(),
+            Container.code.asc(),
+        )
+        .limit(20)
+        .all()
+    )
+
+    results = []
+
+    for c, p, b in rows:
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+        if b and p:
+            position_label = f"{b.code} F{str(p.depth_row).zfill(2)} N{p.tier}"
+        else:
+            position_label = "Montado / sin posición física"
+
+        status_label = {
+            "PARA_DESPACHO": "Asignado para despacho",
+            "EVACUAR_SOLICITADO": "Solicitado para evacuar",
+            "DESPACHO_MONTADO": "Despacho montado",
+            "EVACUACION_MONTADA": "Evacuación montada",
+        }.get(dispatch_status, dispatch_status)
+
+        label = f"{c.code} · {c.size} · {position_label} · {status_label}"
+
+        results.append({
+            "id": c.id,
+            "label": label,
+            "code": c.code or "",
+            "size": c.size or "",
+            "bay": b.code if b else "",
+            "row": p.depth_row if p else "",
+            "tier": p.tier if p else "",
+            "dispatch_status": dispatch_status,
+            "shipping_line": shipping_line_map.get(c.id, ""),
+            "position_label": position_label,
+        })
+
+    return jsonify({
+        "ok": True,
+        "results": results,
+    })
+
 
 
 @yard_bp.post("/gate-out")
