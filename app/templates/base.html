@@ -238,6 +238,17 @@
   </main>
 
   {% block scripts %}{% endblock %}
+
+<script>
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("{{ url_for('static', filename='service-worker.js') }}")
+        .catch(function (error) {
+          console.error("No se pudo registrar el Service Worker:", error);
+        });
+    });
+  }
+</script>
 </body>
 </html>
 
