@@ -93,6 +93,7 @@ function getDispatchStatusClass(containerOrStatus) {
 
   return "";
 }
+
 function getDispatchStatusLabel(status) {
   const s = (status || "NORMAL").toUpperCase();
 
@@ -108,7 +109,10 @@ function getDispatchStatusLabel(status) {
 function updateMountButtons() {
   const c = getSelectedContainerData();
   const status = (c?.dispatch_status || "NORMAL").toUpperCase();
-  const canMount = MOUNTABLE_STATUSES.has(status);
+
+  const canMount =
+    MOUNTABLE_STATUSES.has(status) &&
+    c?.can_mount === true;
 
   if (mountContainerBtn) {
     mountContainerBtn.classList.toggle("hidden", !canMount);

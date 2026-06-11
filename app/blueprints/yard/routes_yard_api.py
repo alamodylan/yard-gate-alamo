@@ -386,13 +386,20 @@ def _yard_validation_error_response(validation: dict, status_code: int = 409):
 def api_containers_in_yard():
     """
     Para bandeja/mapa:
-    Retorna contenedores en patio con su posición actual, estado operativo
-    y si pertenece a la prelista del mapa.
+    Retorna contenedores en patio con su posición actual, estado operativo,
+    si pertenece a la prelista del mapa y si puede montarse según reglas reales
+    de retiro con sidepick.
 
     Regla prelista mapa:
     - Hoy completo.
     - Mañana completo.
     - Si se monta, NO desaparece; solo cambia de estado/color.
+
+    Regla montar:
+    - Solo puede montarse si está PARA_DESPACHO o EVACUAR_SOLICITADO.
+    - Además debe poder retirarse físicamente:
+        * sin contenedor encima
+        * sin bloqueo de acceso sidepick
     """
     site_id = _ensure_active_site()
 
@@ -482,6 +489,24 @@ def api_containers_in_yard():
         dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
         prelist_info = prelist_by_container.get(c.id)
 
+        can_mount = False
+        mount_blockers = []
+        mount_blocked_reason = None
+
+        if dispatch_status in {"PARA_DESPACHO", "EVACUAR_SOLICITADO"}:
+            validation = _validate_container_can_be_removed(
+                container_id=c.id,
+                site_id=site_id,
+            )
+
+            can_mount = validation.get("ok") is True
+            mount_blockers = validation.get("blockers") or []
+
+            if not can_mount:
+                mount_blocked_reason = validation.get("message") or (
+                    "El contenedor no está accesible para sidepick."
+                )
+
         payload.append(
             {
                 "id": c.id,
@@ -490,6 +515,10 @@ def api_containers_in_yard():
                 "year": c.year,
                 "status_notes": c.status_notes,
                 "dispatch_status": dispatch_status,
+
+                "can_mount": can_mount,
+                "mount_blockers": mount_blockers,
+                "mount_blocked_reason": mount_blocked_reason,
 
                 # True solo si el contenedor está en prelista de hoy o mañana.
                 "is_prelist_visible": bool(prelist_info),
