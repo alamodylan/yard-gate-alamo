@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>EIR #{{ eir.id }}</title>
+
   <style>
     @page{
       size:A4 portrait;
@@ -33,6 +34,24 @@
       text-align:center;
       font-size:9px;
       margin-bottom:6px;
+    }
+
+    .topbar{
+      position:relative;
+      min-height:34px;
+      margin-bottom:4px;
+    }
+
+    .topbar-logo{
+      position:absolute;
+      top:0;
+      left:0;
+      width:45px;
+      height:auto;
+    }
+
+    .topbar-title{
+      padding-top:2px;
     }
 
     .header-band{
@@ -130,7 +149,7 @@
       border:1px solid #111827;
       padding:3px;
       page-break-inside:avoid;
-      min-height:94px;
+      min-height:112px;
     }
 
     .damage-panel h5{
@@ -139,9 +158,29 @@
       font-weight:800;
     }
 
-    .damage-svg{
+    .damage-image-wrapper{
+      position:relative;
       width:100%;
-      height:auto;
+      height:100px;
+      overflow:hidden;
+      background:#ffffff;
+    }
+
+    .damage-base-image{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      object-fit:contain;
+      z-index:1;
+    }
+
+    .damage-svg{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      z-index:10;
       display:block;
     }
 
@@ -167,16 +206,19 @@
 
     .marker-label{
       font-weight:900;
-      font-size:13px;
-      fill:#b91c1c;
+      font-size:42px;
+      fill:#dc2626;
+      stroke:#ffffff;
+      stroke-width:6px;
+      paint-order:stroke;
       text-anchor:middle;
       dominant-baseline:middle;
     }
 
     .marker-dot{
-      fill:#fff;
-      stroke:#b91c1c;
-      stroke-width:1.8;
+      fill:#ffffff;
+      stroke:#dc2626;
+      stroke-width:4;
     }
 
     .note-box{
@@ -209,15 +251,9 @@
     .tight{
       margin-bottom:4px;
     }
-    .topbar-logo{
-    position:absolute;
-    top:0;
-    left:0;
-    width:40px;
-    height:auto;
-    }
   </style>
 </head>
+
 <body>
 {% set chassis_snapshot = eir.chassis_snapshot_json or {} %}
 {% set container_snapshot = eir.container_snapshot_json or {} %}
@@ -232,6 +268,15 @@
   'ROOF': 'Techo',
   'INTERIOR': 'Interior'
 } %}
+
+{% set damage_views = [
+  ('RIGHT', 'Costado derecho', 'right.png'),
+  ('LEFT', 'Costado izquierdo', 'left.png'),
+  ('FRONT', 'Frente', 'front.png'),
+  ('REAR', 'Atrás', 'rear.png'),
+  ('INTERIOR', 'Interior', 'interior.png'),
+  ('ROOF', 'Techo', 'roof.png')
+] %}
 
 {% set tire_labels = {
   'AX1_L_IN': 'Eje 1 izq int',
@@ -249,8 +294,14 @@
 } %}
 
 <div class="page">
+
   <div class="topbar">
-    <img class="topbar-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="Logo Álamo">
+    <img
+      class="topbar-logo"
+      src="{{ url_for('static', filename='img/logo.png') }}"
+      alt="Logo Álamo"
+    >
+
     <div class="topbar-title">
       <div class="title">EIR - CONDICIÓN DE EQUIPO</div>
       <div class="subtitle">Yard Gate Álamo · EIR #{{ eir.id }}</div>
@@ -288,6 +339,7 @@
         <div class="value">{{ eir.driver_name or '' }}</div>
       </td>
     </tr>
+
     <tr>
       <td colspan="2">
         <div class="label">Tipo de operación</div>
@@ -310,6 +362,7 @@
         <div class="value">{{ eir.driver_id_doc or eir.truck_plate or '' }}</div>
       </td>
     </tr>
+
     <tr>
       <td colspan="2">
         <div class="label">Naviera</div>
@@ -327,272 +380,202 @@
   </table>
 
   {% if eir.has_container %}
-  <div class="section-title">DAÑOS DEL CONTENEDOR</div>
+    <div class="section-title">DAÑOS DEL CONTENEDOR</div>
 
-  <div class="damage-layout">
-    <div class="damage-left">
-      <div class="damage-grid">
-        <!-- Costado derecho -->
-        <div class="damage-panel">
-          <h5>Costado derecho</h5>
-          <svg class="damage-svg" data-side="RIGHT" viewBox="0 0 240 110">
-            <rect x="30" y="30" width="145" height="48" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <rect x="178" y="38" width="20" height="28" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="30" y1="78" x2="24" y2="90" stroke="#111827" stroke-width="2"/>
-            <line x1="175" y1="78" x2="182" y2="90" stroke="#111827" stroke-width="2"/>
-            <line x1="106" y1="78" x2="106" y2="94" stroke="#111827" stroke-width="2"/>
-            <circle cx="60" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <circle cx="88" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="198" y1="52" x2="222" y2="52" stroke="#111827" stroke-width="2"/>
-            <g class="markers-layer"></g>
-          </svg>
-        </div>
+    <div class="damage-layout">
+      <div class="damage-left">
+        <div class="damage-grid">
 
-        <!-- Costado izquierdo -->
-        <div class="damage-panel">
-          <h5>Costado izquierdo</h5>
-          <svg class="damage-svg" data-side="LEFT" viewBox="0 0 240 110">
-            <rect x="45" y="30" width="145" height="48" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <rect x="20" y="38" width="20" height="28" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="45" y1="78" x2="38" y2="90" stroke="#111827" stroke-width="2"/>
-            <line x1="190" y1="78" x2="196" y2="90" stroke="#111827" stroke-width="2"/>
-            <line x1="122" y1="78" x2="122" y2="94" stroke="#111827" stroke-width="2"/>
-            <circle cx="145" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <circle cx="173" cy="94" r="9" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="20" y1="52" x2="4" y2="52" stroke="#111827" stroke-width="2"/>
-            <g class="markers-layer"></g>
-          </svg>
-        </div>
+          {% for side, title, image_name in damage_views %}
+            <div class="damage-panel">
+              <h5>{{ title }}</h5>
 
-        <!-- Interior -->
-        <div class="damage-panel">
-          <h5>Interior</h5>
-          <svg class="damage-svg" data-side="INTERIOR" viewBox="0 0 240 110">
-            <polygon points="10,28 40,38 40,94 10,104" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <polygon points="230,28 200,38 200,94 230,104" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <rect x="40" y="28" width="160" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <polygon points="70,46 170,46 150,64 90,64" fill="none" stroke="#111827" stroke-width="2"/>
-            <polygon points="70,46 90,64 90,90 70,94" fill="none" stroke="#111827" stroke-width="2"/>
-            <polygon points="170,46 150,64 150,90 170,94" fill="none" stroke="#111827" stroke-width="2"/>
-            <rect x="90" y="64" width="60" height="26" fill="none" stroke="#111827" stroke-width="2"/>
-            <g class="markers-layer"></g>
-          </svg>
-        </div>
+              <div class="damage-image-wrapper">
+                <img
+                  src="{{ url_for('static', filename='img/eir/' ~ image_name) }}"
+                  class="damage-base-image"
+                  alt="{{ title }}"
+                >
 
-        <!-- Frente -->
-        <div class="damage-panel">
-          <h5>Frente</h5>
-          <svg class="damage-svg" data-side="FRONT" viewBox="0 0 240 110">
-            <rect x="72" y="18" width="96" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="120" y1="18" x2="120" y2="84" stroke="#111827" stroke-width="1.5"/>
-            <line x1="72" y1="40" x2="168" y2="40" stroke="#111827" stroke-width="1.2"/>
-            <line x1="72" y1="62" x2="168" y2="62" stroke="#111827" stroke-width="1.2"/>
-            <line x1="90" y1="84" x2="88" y2="94" stroke="#111827" stroke-width="2"/>
-            <line x1="150" y1="84" x2="152" y2="94" stroke="#111827" stroke-width="2"/>
-            <circle cx="95" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <circle cx="145" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <g class="markers-layer"></g>
-          </svg>
-        </div>
+                <svg
+                  class="damage-svg"
+                  data-side="{{ side }}"
+                  viewBox="0 0 1000 500"
+                  preserveAspectRatio="none"
+                >
+                  <g class="markers-layer"></g>
+                </svg>
+              </div>
+            </div>
+          {% endfor %}
 
-        <!-- Atrás -->
-        <div class="damage-panel">
-          <h5>Atrás</h5>
-          <svg class="damage-svg" data-side="REAR" viewBox="0 0 240 110">
-            <rect x="72" y="18" width="96" height="66" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="120" y1="18" x2="120" y2="84" stroke="#111827" stroke-width="1.5"/>
-            <line x1="72" y1="40" x2="168" y2="40" stroke="#111827" stroke-width="1.2"/>
-            <line x1="72" y1="62" x2="168" y2="62" stroke="#111827" stroke-width="1.2"/>
-            <rect x="84" y="45" width="12" height="16" fill="#fff" stroke="#111827" stroke-width="1.5"/>
-            <rect x="144" y="45" width="12" height="16" fill="#fff" stroke="#111827" stroke-width="1.5"/>
-            <line x1="90" y1="84" x2="88" y2="94" stroke="#111827" stroke-width="2"/>
-            <line x1="150" y1="84" x2="152" y2="94" stroke="#111827" stroke-width="2"/>
-            <circle cx="95" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <circle cx="145" cy="98" r="8" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <g class="markers-layer"></g>
-          </svg>
-        </div>
-
-        <!-- Techo -->
-        <div class="damage-panel">
-          <h5>Techo</h5>
-          <svg class="damage-svg" data-side="ROOF" viewBox="0 0 240 110">
-            <rect x="28" y="28" width="184" height="54" rx="5" fill="#fff" stroke="#111827" stroke-width="2"/>
-            <line x1="44" y1="28" x2="44" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="60" y1="28" x2="60" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="76" y1="28" x2="76" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="92" y1="28" x2="92" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="108" y1="28" x2="108" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="124" y1="28" x2="124" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="140" y1="28" x2="140" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="156" y1="28" x2="156" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="172" y1="28" x2="172" y2="82" stroke="#111827" stroke-width="1"/>
-            <line x1="188" y1="28" x2="188" y2="82" stroke="#111827" stroke-width="1"/>
-            <g class="markers-layer"></g>
-          </svg>
         </div>
       </div>
-    </div>
 
-    <div class="damage-right">
-      <table class="legend-table">
-        <tr><td class="code-cell">A</td><td>Abollado</td></tr>
-        <tr><td class="code-cell">R</td><td>Rayado</td></tr>
-        <tr><td class="code-cell">G</td><td>Gotera</td></tr>
-        <tr><td class="code-cell">M</td><td>Malo</td></tr>
-        <tr><td class="code-cell">C</td><td>Costadura</td></tr>
-        <tr><td class="code-cell">F</td><td>Falla</td></tr>
-        <tr><td class="code-cell">H</td><td>Hueco</td></tr>
-        <tr><td class="code-cell">Q</td><td>Quebrado</td></tr>
-      </table>
+      <div class="damage-right">
+        <table class="legend-table">
+          <tr><td class="code-cell">A</td><td>Abollado</td></tr>
+          <tr><td class="code-cell">R</td><td>Rayado</td></tr>
+          <tr><td class="code-cell">G</td><td>Gotera</td></tr>
+          <tr><td class="code-cell">M</td><td>Malo</td></tr>
+          <tr><td class="code-cell">C</td><td>Costadura</td></tr>
+          <tr><td class="code-cell">F</td><td>Falla</td></tr>
+          <tr><td class="code-cell">H</td><td>Hueco</td></tr>
+          <tr><td class="code-cell">Q</td><td>Quebrado</td></tr>
+        </table>
 
-      <table class="table">
-        <thead>
-          <tr>
-            <th style="width:42%;">Vista</th>
-            <th style="width:18%;">Código</th>
-            <th style="width:40%;">Nota</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for d in damages %}
-          <tr>
-            <td>{{ side_labels.get(d.side, d.side) }}</td>
-            <td>{{ d.damage_type }}</td>
-            <td>{{ d.notes or '' }}</td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="3">Sin daños registrados</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        <table class="table">
+          <thead>
+            <tr>
+              <th style="width:42%;">Vista</th>
+              <th style="width:18%;">Código</th>
+              <th style="width:40%;">Nota</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for d in damages %}
+              <tr>
+                <td>{{ side_labels.get(d.side, d.side) }}</td>
+                <td>{{ d.damage_type }}</td>
+                <td>{{ d.notes or '' }}</td>
+              </tr>
+            {% else %}
+              <tr>
+                <td colspan="3">Sin daños registrados</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
   {% endif %}
 
   {% if eir.has_chassis %}
-  <div class="section-title">REVISIÓN DE CHASIS</div>
+    <div class="section-title">REVISIÓN DE CHASIS</div>
 
-  {% set insp = chassis_snapshot.get('inspection', {}) %}
-  <table class="table tight">
-    <thead>
-      <tr>
-        <th>Elemento</th>
-        <th>Estado</th>
-        <th>Detalle</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Luces</td>
-        <td>{{ insp.get('lights', {}).get('status') or '' }}</td>
-        <td>{{ insp.get('lights', {}).get('detail') or '' }}</td>
-      </tr>
-      <tr>
-        <td>Twist locks</td>
-        <td>{{ insp.get('twist_locks', {}).get('status') or '' }}</td>
-        <td>{{ insp.get('twist_locks', {}).get('detail') or '' }}</td>
-      </tr>
-      <tr>
-        <td>Faldones</td>
-        <td>{{ insp.get('mudflaps', {}).get('status') or '' }}</td>
-        <td>{{ insp.get('mudflaps', {}).get('detail') or '' }}</td>
-      </tr>
-      <tr>
-        <td>Patas</td>
-        <td>{{ insp.get('landing_gear', {}).get('status') or '' }}</td>
-        <td>{{ insp.get('landing_gear', {}).get('detail') or '' }}</td>
-      </tr>
-      <tr>
-        <td>Estructura</td>
-        <td>{{ insp.get('structure', {}).get('status') or '' }}</td>
-        <td>{{ insp.get('structure', {}).get('detail') or '' }}</td>
-      </tr>
-    </tbody>
-  </table>
+    {% set insp = chassis_snapshot.get('inspection', {}) %}
 
-  <table class="table">
-    <thead>
-      <tr>
-        <th style="width:22%;">Posición</th>
-        <th style="width:11%;">Marchamo</th>
-        <th style="width:14%;">Número llanta</th>
-        <th style="width:12%;">Marca</th>
-        <th style="width:10%;">Estado</th>
-        <th style="width:8%;">Estrías</th>
-        <th style="width:8%;">Pinchada</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for tire in chassis_snapshot.get('tires', []) %}
-      <tr>
-        <td>
-            {{ tire_labels.get(tire.get('position_code'), tire.get('position_code') or '') }}
-        </td>
-        <td>{{ tire.get('marchamo') or '' }}</td>
-        <td>{{ tire.get('tire_number') or '' }}</td>
-        <td>{{ tire.get('brand') or '' }}</td>
-        <td>{{ tire.get('tire_state') or '' }}</td>
-        <td>{{ tire.get('estrias_mm') if tire.get('estrias_mm') is not none else '' }}</td>
-        <td>{{ 'SI' if tire.get('is_flat') else 'NO' }}</td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="7">Sin llantas registradas en snapshot</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <table class="table tight">
+      <thead>
+        <tr>
+          <th>Elemento</th>
+          <th>Estado</th>
+          <th>Detalle</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>Luces</td>
+          <td>{{ insp.get('lights', {}).get('status') or '' }}</td>
+          <td>{{ insp.get('lights', {}).get('detail') or '' }}</td>
+        </tr>
+        <tr>
+          <td>Twist locks</td>
+          <td>{{ insp.get('twist_locks', {}).get('status') or '' }}</td>
+          <td>{{ insp.get('twist_locks', {}).get('detail') or '' }}</td>
+        </tr>
+        <tr>
+          <td>Faldones</td>
+          <td>{{ insp.get('mudflaps', {}).get('status') or '' }}</td>
+          <td>{{ insp.get('mudflaps', {}).get('detail') or '' }}</td>
+        </tr>
+        <tr>
+          <td>Patas</td>
+          <td>{{ insp.get('landing_gear', {}).get('status') or '' }}</td>
+          <td>{{ insp.get('landing_gear', {}).get('detail') or '' }}</td>
+        </tr>
+        <tr>
+          <td>Estructura</td>
+          <td>{{ insp.get('structure', {}).get('status') or '' }}</td>
+          <td>{{ insp.get('structure', {}).get('detail') or '' }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="table">
+      <thead>
+        <tr>
+          <th style="width:22%;">Posición</th>
+          <th style="width:11%;">Marchamo</th>
+          <th style="width:14%;">Número llanta</th>
+          <th style="width:12%;">Marca</th>
+          <th style="width:10%;">Estado</th>
+          <th style="width:8%;">Estrías</th>
+          <th style="width:8%;">Pinchada</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for tire in chassis_snapshot.get('tires', []) %}
+          <tr>
+            <td>{{ tire_labels.get(tire.get('position_code'), tire.get('position_code') or '') }}</td>
+            <td>{{ tire.get('marchamo') or '' }}</td>
+            <td>{{ tire.get('tire_number') or '' }}</td>
+            <td>{{ tire.get('brand') or '' }}</td>
+            <td>{{ tire.get('tire_state') or '' }}</td>
+            <td>{{ tire.get('estrias_mm') if tire.get('estrias_mm') is not none else '' }}</td>
+            <td>{{ 'SI' if tire.get('is_flat') else 'NO' }}</td>
+          </tr>
+        {% else %}
+          <tr>
+            <td colspan="7">Sin llantas registradas en snapshot</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   {% endif %}
 
   {% if eir.is_reefer %}
-  <div class="section-title">EQUIPO REFRIGERADO</div>
-  <table class="table tight">
-    <thead>
-      <tr>
-        <th>Running</th>
-        <th>Temperatura</th>
-        <th>Genset</th>
-        <th>Plug</th>
-        <th>Cord</th>
-        <th>Computer</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>{{ reefer_snapshot.get('running_status') or '' }}</td>
-        <td>{{ reefer_snapshot.get('temperature') or '' }}</td>
-        <td>{{ reefer_snapshot.get('genset') or '' }}</td>
-        <td>{{ reefer_snapshot.get('plug') or '' }}</td>
-        <td>{{ reefer_snapshot.get('cord') or '' }}</td>
-        <td>{{ reefer_snapshot.get('computer') or '' }}</td>
-      </tr>
-    </tbody>
-  </table>
+    <div class="section-title">EQUIPO REFRIGERADO</div>
 
-  <table class="table tight">
-    <thead>
-      <tr>
-        <th>Combustible</th>
-        <th>Horímetro</th>
-        <th>Alternador</th>
-        <th>Batería</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>{{ reefer_snapshot.get('fuel') or '' }}</td>
-        <td>{{ reefer_snapshot.get('hourmeter') or '' }}</td>
-        <td>{{ reefer_snapshot.get('alternator') or '' }}</td>
-        <td>{{ reefer_snapshot.get('battery') or '' }}</td>
-      </tr>
-    </tbody>
-  </table>
+    <table class="table tight">
+      <thead>
+        <tr>
+          <th>Running</th>
+          <th>Temperatura</th>
+          <th>Genset</th>
+          <th>Plug</th>
+          <th>Cord</th>
+          <th>Computer</th>
+        </tr>
+      </thead>
 
-  <div class="section-title">OBSERVACIONES RF</div>
-  <div class="note-box">{{ reefer_snapshot.get('notes') or '' }}</div>
+      <tbody>
+        <tr>
+          <td>{{ reefer_snapshot.get('running_status') or '' }}</td>
+          <td>{{ reefer_snapshot.get('temperature') or '' }}</td>
+          <td>{{ reefer_snapshot.get('genset') or '' }}</td>
+          <td>{{ reefer_snapshot.get('plug') or '' }}</td>
+          <td>{{ reefer_snapshot.get('cord') or '' }}</td>
+          <td>{{ reefer_snapshot.get('computer') or '' }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table class="table tight">
+      <thead>
+        <tr>
+          <th>Combustible</th>
+          <th>Horímetro</th>
+          <th>Alternador</th>
+          <th>Batería</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <tr>
+          <td>{{ reefer_snapshot.get('fuel') or '' }}</td>
+          <td>{{ reefer_snapshot.get('hourmeter') or '' }}</td>
+          <td>{{ reefer_snapshot.get('alternator') or '' }}</td>
+          <td>{{ reefer_snapshot.get('battery') or '' }}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="section-title">OBSERVACIONES RF</div>
+    <div class="note-box">{{ reefer_snapshot.get('notes') or '' }}</div>
   {% endif %}
 
   <div class="section-title">OBSERVACIONES GENERALES</div>
@@ -646,23 +629,17 @@
         const cx = Number(item.x) * vb.width;
         const cy = Number(item.y) * vb.height;
 
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        circle.setAttribute("cx", cx);
-        circle.setAttribute("cy", cy);
-        circle.setAttribute("r", 10);
-        circle.setAttribute("class", "marker-dot");
-
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("x", cx);
         text.setAttribute("y", cy + 0.5);
         text.setAttribute("class", "marker-label");
         text.textContent = item.damage_type;
 
-        layer.appendChild(circle);
         layer.appendChild(text);
       });
     });
   })();
 </script>
+
 </body>
 </html>
