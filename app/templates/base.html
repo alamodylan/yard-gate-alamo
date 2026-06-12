@@ -18,6 +18,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
 
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}">
+
   {% block head %}{% endblock %}
 </head>
 
@@ -147,7 +148,6 @@
         <div class="nav-sep" aria-hidden="true"></div>
 
         {% if current_user.is_authenticated %}
-
           <div class="nav-group nav-group-session">
 
             <a
@@ -205,20 +205,157 @@
             >
               Salir
             </a>
-
           </div>
-
         {% else %}
-
           <a class="navlink" href="{{ url_for('auth.login') }}">
             Ingresar
           </a>
-
         {% endif %}
 
       </nav>
     </div>
   </header>
+
+  {% if current_user.is_authenticated %}
+    <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
+      <a href="{{ url_for('yard.map_view') }}">
+        <span class="mobile-nav-icon">⌂</span>
+        <span>Mapa</span>
+      </a>
+
+      <a href="{{ url_for('yard.gate_in_view') }}">
+        <span class="mobile-nav-icon">＋</span>
+        <span>Gate In</span>
+      </a>
+
+      <a href="{{ url_for('yard.gate_out_view') }}">
+        <span class="mobile-nav-icon">↗</span>
+        <span>Gate Out</span>
+      </a>
+
+      <a href="{{ url_for('inventory.inventory_index') }}">
+        <span class="mobile-nav-icon">▣</span>
+        <span>Inventario</span>
+      </a>
+
+      <button type="button" id="mobileMoreBtn">
+        <span class="mobile-nav-icon">☰</span>
+        <span>Más</span>
+      </button>
+    </nav>
+
+    <div class="mobile-menu-backdrop" id="mobileMenuBackdrop" aria-hidden="true">
+      <div class="mobile-menu-panel" role="dialog" aria-modal="true" aria-label="Menú móvil">
+        <div class="mobile-menu-head">
+          <div>
+            <strong>Yard Gate Álamo</strong>
+            <div>Menú principal</div>
+          </div>
+
+          <button type="button" id="mobileMenuClose" aria-label="Cerrar menú">
+            ✕
+          </button>
+        </div>
+
+        <div class="mobile-menu-site">
+          <span>Predio activo</span>
+          <strong>
+            {{
+              active_site_name
+              if active_site_name is defined
+              else (
+                active_site_key
+                if active_site_key is defined
+                else 'Activo'
+              )
+            }}
+          </strong>
+        </div>
+
+        <div class="mobile-menu-user">
+          <span class="userchip-dot" aria-hidden="true"></span>
+          <strong>
+            {{
+              current_user.name
+              if current_user.name is defined
+              else (
+                current_user.username
+                if current_user.username is defined
+                else 'Usuario'
+              )
+            }}
+          </strong>
+
+          {% if current_user.role is defined %}
+            <span>{{ current_user.role|capitalize }}</span>
+          {% endif %}
+        </div>
+
+        <div class="mobile-menu-section-title">Operación</div>
+
+        <div class="mobile-menu-links">
+          {% if has_endpoint('inventory.evacuation_list') %}
+            <a href="{{ url_for('inventory.evacuation_list') }}">Lista de Vacíos</a>
+          {% endif %}
+
+          {% if has_endpoint('dispatch.pending_requests') %}
+            <a href="{{ url_for('dispatch.pending_requests') }}">Solicitudes</a>
+          {% endif %}
+
+          {% if has_endpoint('dispatch.assigned_requests') %}
+            <a href="{{ url_for('dispatch.assigned_requests') }}">Asignadas</a>
+          {% endif %}
+
+          {% if has_endpoint('dispatch.new_request') %}
+            <a href="{{ url_for('dispatch.new_request') }}">Nueva Solicitud</a>
+          {% endif %}
+
+          {% if has_endpoint('dispatch.agenda') %}
+            <a href="{{ url_for('dispatch.agenda') }}">Agenda</a>
+          {% endif %}
+
+          {% if has_endpoint('dispatch.prelist') %}
+            <a href="{{ url_for('dispatch.prelist') }}">Prelista</a>
+          {% endif %}
+
+          {% if has_endpoint('dispatch.mounted') %}
+            <a href="{{ url_for('dispatch.mounted') }}">Montado</a>
+          {% endif %}
+        </div>
+
+        <div class="mobile-menu-section-title">Equipo</div>
+
+        <div class="mobile-menu-links">
+          <a href="{{ url_for('yard.chassis_list') }}">Chasis</a>
+          <a href="{{ url_for('yard.tires_list') }}">Llantas</a>
+          <a href="{{ url_for('yard.eir_list_view') }}">EIR</a>
+
+          {% if session.get('active_site_id') in [2, 3, 4] %}
+            <a href="{{ url_for('yard.reports_dashboard') }}">Reportes</a>
+          {% else %}
+            <a href="{{ url_for('yard.reports_view') }}">Reportes</a>
+          {% endif %}
+        </div>
+
+        {% if current_user.role|lower == 'admin' %}
+          <div class="mobile-menu-section-title">Administración</div>
+
+          <div class="mobile-menu-links">
+            <a href="{{ url_for('yard.map_config_view') }}">Configuración Patio</a>
+            <a href="{{ url_for('admin.users_view') }}">Usuarios</a>
+            <a href="{{ url_for('admin.audit_view') }}">Auditoría</a>
+          </div>
+        {% endif %}
+
+        <div class="mobile-menu-section-title">Sesión</div>
+
+        <div class="mobile-menu-links">
+          <a href="{{ url_for('yard.sites_dashboard') }}">Cambiar predio</a>
+          <a class="mobile-danger" href="{{ url_for('auth.logout') }}">Salir</a>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
   <main class="container" role="main">
     {% with messages = get_flashed_messages(with_categories=true) %}
@@ -239,16 +376,56 @@
 
   {% block scripts %}{% endblock %}
 
-<script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", function () {
-      navigator.serviceWorker.register("{{ url_for('static', filename='service-worker.js') }}")
-        .catch(function (error) {
-          console.error("No se pudo registrar el Service Worker:", error);
-        });
-    });
-  }
-</script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("{{ url_for('static', filename='service-worker.js') }}")
+          .then(function (registration) {
+            console.log("Service Worker registrado:", registration.scope);
+          })
+          .catch(function (error) {
+            console.error("No se pudo registrar el Service Worker:", error);
+          });
+      });
+    }
+  </script>
+
+  <script>
+    (function () {
+      const moreBtn = document.getElementById("mobileMoreBtn");
+      const backdrop = document.getElementById("mobileMenuBackdrop");
+      const closeBtn = document.getElementById("mobileMenuClose");
+
+      if (!moreBtn || !backdrop || !closeBtn) return;
+
+      function openMenu() {
+        backdrop.classList.add("is-open");
+        backdrop.setAttribute("aria-hidden", "false");
+        document.body.classList.add("mobile-menu-open");
+      }
+
+      function closeMenu() {
+        backdrop.classList.remove("is-open");
+        backdrop.setAttribute("aria-hidden", "true");
+        document.body.classList.remove("mobile-menu-open");
+      }
+
+      moreBtn.addEventListener("click", openMenu);
+      closeBtn.addEventListener("click", closeMenu);
+
+      backdrop.addEventListener("click", function (event) {
+        if (event.target === backdrop) {
+          closeMenu();
+        }
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          closeMenu();
+        }
+      });
+    })();
+  </script>
 </body>
 </html>
 
