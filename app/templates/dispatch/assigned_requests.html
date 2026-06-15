@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="card card-pad">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+  <div class="assigned-head">
     <div>
       <h2 style="margin:0;">Solicitudes Asignadas</h2>
       <p class="card-sub" style="margin-top:6px;">
@@ -11,7 +11,7 @@
       </p>
     </div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <div class="assigned-head-actions">
       <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Pendientes</a>
       <a href="{{ url_for('dispatch.new_request') }}" class="btn success">+ Nueva Solicitud</a>
     </div>
@@ -24,12 +24,13 @@
   </div>
 {% else %}
   {% for r in requests %}
-    <div class="card card-pad" style="margin-top:14px;">
-      <div style="display:flex; justify-content:space-between; gap:12px; align-items:flex-start;">
+    <div class="card card-pad assigned-request-card">
+      <div class="request-top">
         <div>
           <h3 style="margin:0;">Solicitud #{{ r.id }}</h3>
           <p class="card-sub" style="margin-top:6px;">
-            {{ r.request_type }} · {{ r.shipping_line }} · Estado: <b>{{ r.status }}</b>
+            {{ r.request_type }} · {{ r.shipping_line }} · Estado:
+            <span class="status-pill">{{ r.status }}</span>
           </p>
         </div>
 
@@ -47,28 +48,119 @@
         <div><b>Actualizada:</b> {{ r.updated_at|dt_cr("%d/%m/%Y %I:%M %p") }}</div>
       </div>
 
-      <div style="margin-top:12px;">
+      <div class="lines-wrap">
         {% for line in r.lines %}
           <div class="line-card">
-            <div>
-              <b>{{ line.quantity }} x {{ line.container_size }}</b>
-              · {{ line.condition_type }}
-              · {{ line.load_date.strftime("%d/%m/%Y") }}
-              {% if line.load_time %}
-                · {{ line.load_time.strftime("%I:%M %p") }}
-              {% endif %}
-              · <b>{{ line.status }}</b>
+            <div class="line-title">
+              <div>
+                <b>{{ line.quantity }} x {{ line.container_size }}</b>
+                · {{ line.condition_type }}
+                · {{ line.load_date.strftime("%d/%m/%Y") }}
+                {% if line.load_time %}
+                  · {{ line.load_time.strftime("%I:%M %p") }}
+                {% endif %}
+              </div>
+
+              <span class="line-status">{{ line.status }}</span>
             </div>
 
-            <div class="assigned-list">
-              {% if line.assignments %}
-                {% for a in line.assignments %}
-                  <span class="assigned-chip">{{ a.container.code }}</span>
-                {% endfor %}
-              {% else %}
-                <span class="hint">Sin contenedores asignados.</span>
-              {% endif %}
-            </div>
+            {% if line.assignments %}
+              <div class="assigned-table-wrap">
+                <table class="assigned-table">
+                  <thead>
+                    <tr>
+                      <th>Contenedor</th>
+                      <th>Tamaño</th>
+                      <th>Estado asignación</th>
+                      <th>Asignado</th>
+                      <th>Montado</th>
+                      <th style="width:280px;">Acciones</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {% for a in line.assignments %}
+                      <tr>
+                        <td>
+                          <strong>{{ a.container.code }}</strong>
+                        </td>
+
+                        <td>
+                          {{ a.container.size or line.container_size }}
+                        </td>
+
+                        <td>
+                          <span class="assignment-pill">
+                            {{ a.status }}
+                          </span>
+                        </td>
+
+                        <td>
+                          {{ a.assigned_at|dt_cr("%d/%m/%Y %I:%M %p") }}
+                        </td>
+
+                        <td>
+                          {% if a.mounted_at %}
+                            <span class="mounted-pill">
+                              {{ a.mounted_at|dt_cr("%d/%m/%Y %I:%M %p") }}
+                            </span>
+                          {% else %}
+                            —
+                          {% endif %}
+                        </td>
+
+                        <td>
+                          <div class="assignment-actions">
+                            <form
+                              method="post"
+                              action="{{ url_for('dispatch.release_assignment', assignment_id=a.id) }}"
+                              onsubmit="return confirm('¿Deseas liberar el contenedor {{ a.container.code }} de esta solicitud?');"
+                            >
+                              <button type="submit" class="btn danger small">
+                                Liberar
+                              </button>
+                            </form>
+
+                            <details class="reschedule-box">
+                              <summary>Reagendar</summary>
+
+                              <form
+                                method="post"
+                                action="{{ url_for('dispatch.reschedule_assignment', assignment_id=a.id) }}"
+                                class="reschedule-form"
+                              >
+                                <label>Nueva fecha</label>
+                                <input
+                                  type="date"
+                                  name="load_date"
+                                  value="{{ line.load_date.isoformat() }}"
+                                  required
+                                >
+
+                                <label>Nueva hora</label>
+                                <input
+                                  type="time"
+                                  name="load_time"
+                                  value="{{ line.load_time.strftime('%H:%M') if line.load_time else '' }}"
+                                >
+
+                                <button type="submit" class="btn primary small">
+                                  Guardar
+                                </button>
+                              </form>
+                            </details>
+                          </div>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="hint" style="margin-top:8px;">
+                Sin contenedores asignados.
+              </div>
+            {% endif %}
           </div>
         {% endfor %}
       </div>
@@ -77,36 +169,196 @@
 {% endif %}
 
 <style>
-.info-grid {
+.assigned-head,
+.request-top{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.assigned-head-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.assigned-request-card{
+  margin-top:14px;
+}
+
+.info-grid{
   display:grid;
   grid-template-columns:repeat(3, minmax(0, 1fr));
   gap:10px;
+  color:#0f172a;
 }
 
-.line-card {
-  border-top:1px solid rgba(148,163,184,.16);
-  padding:12px 0;
+.lines-wrap{
+  margin-top:14px;
+  display:grid;
+  gap:14px;
 }
 
-.assigned-list {
+.line-card{
+  border:1px solid #dbe3ef;
+  background:#f8fafc;
+  border-radius:18px;
+  padding:14px;
+}
+
+.line-title{
   display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
   flex-wrap:wrap;
-  gap:8px;
-  margin-top:8px;
+  color:#0f172a;
 }
 
-.assigned-chip {
-  border:1px solid rgba(34,197,94,.35);
-  background:rgba(34,197,94,.12);
-  padding:5px 9px;
+.status-pill,
+.line-status,
+.assignment-pill,
+.mounted-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
   border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+  padding:5px 10px;
+  white-space:nowrap;
+}
+
+.status-pill{
+  background:#ede9fe;
+  color:#6d28d9;
+  border:1px solid #c4b5fd;
+}
+
+.line-status{
+  background:#dbeafe;
+  color:#1d4ed8;
+  border:1px solid #93c5fd;
+}
+
+.assignment-pill{
+  background:#dcfce7;
+  color:#166534;
+  border:1px solid #86efac;
+}
+
+.mounted-pill{
+  background:#fef3c7;
+  color:#92400e;
+  border:1px solid #fcd34d;
+}
+
+.assigned-table-wrap{
+  margin-top:12px;
+  overflow:auto;
+  border:1px solid #dbe3ef;
+  border-radius:16px;
+  background:#ffffff;
+}
+
+.assigned-table{
+  width:100%;
+  min-width:980px;
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+.assigned-table th{
+  background:#f1f5f9;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+  padding:11px 10px;
+  border-bottom:1px solid #dbe3ef;
+  text-align:left;
+  white-space:nowrap;
+}
+
+.assigned-table td{
+  color:#0f172a;
+  font-size:13px;
+  padding:11px 10px;
+  border-bottom:1px solid #edf2f7;
+  vertical-align:top;
+}
+
+.assigned-table tbody tr:last-child td{
+  border-bottom:none;
+}
+
+.assigned-table tbody tr:hover{
+  background:#f8fafc;
+}
+
+.assignment-actions{
+  display:flex;
+  align-items:flex-start;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.assignment-actions form{
+  margin:0;
+}
+
+.reschedule-box{
+  position:relative;
+}
+
+.reschedule-box summary{
+  list-style:none;
+  cursor:pointer;
+  border-radius:12px;
+  padding:8px 12px;
+  background:#e2e8f0;
+  color:#0f172a;
   font-size:12px;
   font-weight:900;
 }
 
-@media (max-width: 900px) {
-  .info-grid {
+.reschedule-box summary::-webkit-details-marker{
+  display:none;
+}
+
+.reschedule-form{
+  margin-top:8px;
+  padding:10px;
+  border:1px solid #dbe3ef;
+  border-radius:14px;
+  background:#ffffff;
+  min-width:230px;
+  display:grid;
+  gap:8px;
+}
+
+.reschedule-form label{
+  font-size:12px;
+  font-weight:900;
+  color:#334155;
+}
+
+.reschedule-form input{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:8px 10px;
+}
+
+@media (max-width:900px){
+  .info-grid{
     grid-template-columns:1fr;
+  }
+
+  .assigned-table{
+    min-width:920px;
   }
 }
 </style>

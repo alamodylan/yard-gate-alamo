@@ -69,6 +69,39 @@ def _parse_time(value: str):
         return None
     return datetime.strptime(value, "%H:%M").time()
 
+def _recompute_dispatch_status(req: DispatchRequest):
+    lines = DispatchRequestLine.query.filter_by(request_id=req.id).all()
+
+    any_assigned = False
+    all_assigned = True
+
+    for line in lines:
+        assigned_count = len(line.assignments)
+        qty = int(line.quantity or 0)
+
+        if assigned_count <= 0:
+            line.status = "PENDIENTE"
+            all_assigned = False
+        elif assigned_count >= qty:
+            line.status = "ASIGNADA"
+            any_assigned = True
+        else:
+            line.status = "PARCIAL"
+            any_assigned = True
+            all_assigned = False
+
+    if not lines:
+        req.status = "PENDIENTE"
+    elif all_assigned:
+        req.status = "ASIGNADA"
+    elif any_assigned:
+        req.status = "PARCIAL"
+    else:
+        req.status = "PENDIENTE"
+
+    req.updated_at = datetime.utcnow()
+
+
 
 @dispatch_bp.get("/")
 @login_required
@@ -569,3 +602,93 @@ def prelist():
         dispatch_lines=dispatch_lines,
         empty_lines=empty_lines,
     )
+
+@dispatch_bp.post("/assignment/<int:assignment_id>/release")
+@login_required
+def release_assignment(assignment_id: int):
+    site_id = _ensure_active_site()
+
+    assignment = DispatchAssignment.query.get_or_404(assignment_id)
+    line = DispatchRequestLine.query.get_or_404(assignment.request_line_id)
+    req = DispatchRequest.query.get_or_404(line.request_id)
+
+    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    container = Container.query.get_or_404(assignment.container_id)
+
+    request_type = (req.request_type or "DESPACHO").strip().upper()
+
+    if request_type == "VACIO":
+        container.dispatch_status = "PARA_EVACUAR"
+    else:
+        container.dispatch_status = "NORMAL"
+
+    container.dispatch_marked_at = None
+    container.dispatch_marked_by_user_id = None
+    container.mounted_at = None
+    container.mounted_by_user_id = None
+
+    if hasattr(container, "is_mounted"):
+        container.is_mounted = False
+
+    db.session.delete(assignment)
+    db.session.flush()
+
+    _recompute_dispatch_status(req)
+
+    db.session.commit()
+
+    flash(f"Contenedor {container.code} liberado correctamente.", "success")
+    return redirect(url_for("dispatch.assigned_requests"))
+
+@dispatch_bp.post("/assignment/<int:assignment_id>/reschedule")
+@login_required
+def reschedule_assignment(assignment_id: int):
+    site_id = _ensure_active_site()
+
+    assignment = DispatchAssignment.query.get_or_404(assignment_id)
+    line = DispatchRequestLine.query.get_or_404(assignment.request_line_id)
+    req = DispatchRequest.query.get_or_404(line.request_id)
+
+    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    new_date = _parse_date(request.form.get("load_date") or "")
+    new_time = _parse_time(request.form.get("load_time") or "")
+
+    if not new_date:
+        flash("Debe indicar la nueva fecha.", "danger")
+        return redirect(url_for("dispatch.assigned_requests"))
+
+    assigned_count = len(line.assignments)
+
+    if assigned_count <= 1 and int(line.quantity or 0) <= 1:
+        line.load_date = new_date
+        line.load_time = new_time
+    else:
+        line.quantity = max(int(line.quantity or 1) - 1, 1)
+
+        new_line = DispatchRequestLine(
+            request_id=req.id,
+            container_size=line.container_size,
+            quantity=1,
+            load_date=new_date,
+            load_time=new_time,
+            condition_type=line.condition_type,
+            status="ASIGNADA",
+        )
+
+        db.session.add(new_line)
+        db.session.flush()
+
+        assignment.request_line_id = new_line.id
+
+    req.updated_at = datetime.utcnow()
+
+    _recompute_dispatch_status(req)
+
+    db.session.commit()
+
+    flash("Asignación reagendada correctamente.", "success")
+    return redirect(url_for("dispatch.assigned_requests"))
