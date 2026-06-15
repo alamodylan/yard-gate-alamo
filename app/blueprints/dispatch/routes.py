@@ -642,6 +642,38 @@ def release_assignment(assignment_id: int):
     flash(f"Contenedor {container.code} liberado correctamente.", "success")
     return redirect(url_for("dispatch.assigned_requests"))
 
+@dispatch_bp.post("/line/<int:line_id>/release-pending")
+@login_required
+def release_pending_line(line_id: int):
+    site_id = _ensure_active_site()
+
+    line = DispatchRequestLine.query.get_or_404(line_id)
+    req = DispatchRequest.query.get_or_404(line.request_id)
+
+    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    assigned_count = len(line.assignments)
+    qty = int(line.quantity or 0)
+    pending_count = max(qty - assigned_count, 0)
+
+    if pending_count <= 0:
+        flash("Esta línea no tiene pendientes por liberar.", "info")
+        return redirect(url_for("dispatch.assigned_requests"))
+
+    line.quantity = qty - 1
+
+    if line.quantity <= 0:
+        db.session.delete(line)
+        db.session.flush()
+
+    _recompute_dispatch_status(req)
+
+    db.session.commit()
+
+    flash("Pendiente liberado correctamente.", "success")
+    return redirect(url_for("dispatch.assigned_requests"))
+
 @dispatch_bp.post("/assignment/<int:assignment_id>/reschedule")
 @login_required
 def reschedule_assignment(assignment_id: int):
