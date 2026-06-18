@@ -17,6 +17,13 @@
           Lista de Vacíos
         </a>
 
+        <a
+          class="btn success"
+          href="{{ url_for('inventory.inventory_bulk_upload_view') }}"
+        >
+          Carga Masiva
+        </a>
+
         <a class="btn" href="{{ url_for('inventory.inventory_export', in_yard=in_yard, q=q) }}">
           ⬇ Exportar Excel
         </a>

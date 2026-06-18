@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% block title %}Carga Masiva | Yard Gate Álamo{% endblock %}
+
+{% block content %}
+
+<div class="bulk-header-card">
+  <div>
+    <h2>Carga Masiva de Contenedores</h2>
+
+    <p class="bulk-subtitle">
+      Permite registrar múltiples contenedores mediante Excel,
+      incluyendo clasificación, ubicación física y estado operativo.
+    </p>
+  </div>
+
+  <div class="bulk-header-actions">
+    <a
+      href="{{ url_for('inventory.inventory_bulk_upload_template') }}"
+      class="btn success"
+    >
+      Descargar Plantilla
+    </a>
+
+    <a
+      href="{{ url_for('inventory.inventory_index') }}"
+      class="btn"
+    >
+      Inventario
+    </a>
+  </div>
+</div>
+
+<div class="bulk-info-card">
+  <h3>Estados permitidos</h3>
+
+  <div class="status-grid">
+    <div><strong>DISPONIBLE</strong> → NORMAL</div>
+    <div><strong>ASIGNADO</strong> → PARA_DESPACHO</div>
+    <div><strong>EVACUAR</strong> → PARA_EVACUAR</div>
+    <div><strong>ASIGNADO_EVACUAR</strong> → EVACUAR_SOLICITADO</div>
+    <div><strong>DESPACHO_MONTADO</strong> → DESPACHO_MONTADO</div>
+    <div><strong>EVACUACION_MONTADA</strong> → EVACUACION_MONTADA</div>
+  </div>
+
+  <div class="bulk-note">
+    Si ESTIBA, FILA y NIVEL vienen completos,
+    el contenedor se ubicará automáticamente.
+
+    Si alguno falta,
+    quedará como <strong>PENDIENTE DE UBICAR</strong>.
+  </div>
+</div>
+
+<div class="upload-card">
+
+  <form
+    method="post"
+    enctype="multipart/form-data"
+  >
+
+    <div class="upload-zone">
+
+      <div class="upload-icon">
+        📦
+      </div>
+
+      <div class="upload-title">
+        Seleccione archivo Excel
+      </div>
+
+      <div class="upload-help">
+        Formatos permitidos:
+        .xlsx y .xlsm
+      </div>
+
+      <input
+        type="file"
+        name="file"
+        accept=".xlsx,.xlsm"
+        required
+      >
+
+    </div>
+
+    <div class="upload-actions">
+      <button
+        type="submit"
+        class="btn primary"
+      >
+        Procesar Archivo
+      </button>
+    </div>
+
+  </form>
+
+</div>
+
+{% if result %}
+
+  {% if result.ok %}
+
+    <div class="result-card success-card">
+
+      <h3>
+        Carga completada correctamente
+      </h3>
+
+      <div class="result-grid">
+
+        <div class="metric-box">
+          <span>{{ result.created }}</span>
+          <small>Contenedores creados</small>
+        </div>
+
+        <div class="metric-box">
+          <span>{{ result.positioned }}</span>
+          <small>Ubicados</small>
+        </div>
+
+        <div class="metric-box">
+          <span>{{ result.pending_location }}</span>
+          <small>Pendientes de ubicar</small>
+        </div>
+
+        <div class="metric-box">
+          <span>{{ result.mounted }}</span>
+          <small>Montados</small>
+        </div>
+
+      </div>
+
+    </div>
+
+  {% else %}
+
+    <div class="result-card warning-card">
+
+      <h3>
+        El archivo contiene errores
+      </h3>
+
+      <p>
+        Corrija los errores y vuelva a intentar.
+      </p>
+
+    </div>
+
+  {% endif %}
+
+{% endif %}
+
+{% if errors %}
+
+<div class="errors-card">
+
+  <h3>
+    Errores encontrados
+  </h3>
+
+  <div class="table-wrap">
+
+    <table class="bulk-table">
+
+      <thead>
+        <tr>
+          <th>Fila</th>
+          <th>Contenedor</th>
+          <th>Descripción</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        {% for err in errors %}
+          <tr>
+            <td>{{ err.row }}</td>
+            <td>{{ err.container }}</td>
+            <td>{{ err.message }}</td>
+          </tr>
+        {% endfor %}
+
+      </tbody>
+
+    </table>
+
+  </div>
+
+</div>
+
+{% endif %}
+
+<style>
+
+.bulk-header-card{
+  background:#ffffff;
+  border:1px solid #dbe3ef;
+  border-radius:20px;
+  padding:22px;
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:18px;
+  flex-wrap:wrap;
+}
+
+.bulk-header-card h2{
+  margin:0;
+  color:#0f172a;
+}
+
+.bulk-subtitle{
+  margin-top:8px;
+  color:#64748b;
+}
+
+.bulk-header-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.bulk-info-card{
+  margin-top:16px;
+  background:#ffffff;
+  border:1px solid #dbe3ef;
+  border-radius:20px;
+  padding:20px;
+}
+
+.bulk-info-card h3{
+  margin-top:0;
+}
+
+.status-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:12px;
+}
+
+.bulk-note{
+  margin-top:16px;
+  background:#eff6ff;
+  border:1px solid #bfdbfe;
+  color:#1d4ed8;
+  border-radius:14px;
+  padding:14px;
+}
+
+.upload-card{
+  margin-top:16px;
+  background:#ffffff;
+  border:1px solid #dbe3ef;
+  border-radius:20px;
+  padding:22px;
+}
+
+.upload-zone{
+  border:2px dashed #cbd5e1;
+  border-radius:18px;
+  padding:40px 20px;
+  text-align:center;
+  background:#f8fafc;
+}
+
+.upload-icon{
+  font-size:42px;
+}
+
+.upload-title{
+  font-size:18px;
+  font-weight:900;
+  color:#0f172a;
+  margin-top:10px;
+}
+
+.upload-help{
+  color:#64748b;
+  margin-top:6px;
+  margin-bottom:18px;
+}
+
+.upload-actions{
+  margin-top:16px;
+}
+
+.result-card{
+  margin-top:16px;
+  border-radius:20px;
+  padding:20px;
+}
+
+.success-card{
+  background:#ecfdf5;
+  border:1px solid #a7f3d0;
+}
+
+.warning-card{
+  background:#fff7ed;
+  border:1px solid #fed7aa;
+}
+
+.result-grid{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:12px;
+  margin-top:14px;
+}
+
+.metric-box{
+  background:#ffffff;
+  border-radius:14px;
+  padding:14px;
+  text-align:center;
+  border:1px solid #dbe3ef;
+}
+
+.metric-box span{
+  display:block;
+  font-size:28px;
+  font-weight:900;
+  color:#0f172a;
+}
+
+.metric-box small{
+  color:#64748b;
+}
+
+.errors-card{
+  margin-top:16px;
+  background:#ffffff;
+  border:1px solid #fecaca;
+  border-radius:20px;
+  padding:20px;
+}
+
+.bulk-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.bulk-table th{
+  background:#f8fafc;
+  color:#334155;
+  text-align:left;
+  padding:12px;
+  border-bottom:1px solid #dbe3ef;
+}
+
+.bulk-table td{
+  padding:12px;
+  border-bottom:1px solid #eef2f7;
+  color:#0f172a;
+}
+
+.table-wrap{
+  overflow:auto;
+}
+
+@media (max-width:900px){
+
+  .status-grid{
+    grid-template-columns:1fr;
+  }
+
+  .result-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+}
+
+@media (max-width:600px){
+
+  .result-grid{
+    grid-template-columns:1fr;
+  }
+
+}
+
+</style>
+
+{% endblock %}

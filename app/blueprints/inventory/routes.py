@@ -18,6 +18,9 @@ from app.models.movement import Movement, MovementPhoto
 from app.models.site import Site, UserSite
 from flask import render_template, request, send_file, session, abort, redirect, url_for, flash
 from datetime import datetime
+from openpyxl.worksheet.datavalidation import DataValidation
+from openpyxl.styles import PatternFill
+from app.models.container_classification import ContainerClassification
 
 
 # =========================================================
@@ -543,4 +546,729 @@ def evacuation_list():
     return render_template(
         "inventory/evacuation_list.html",
         items=items,
+    )
+
+# =========================================================
+# Carga masiva de contenedores
+# =========================================================
+
+BULK_REQUIRED_HEADERS = {
+    "CONTENEDOR",
+    "TAMAÑO",
+    "NAVIERA",
+    "ESTADO",
+}
+
+BULK_HEADERS = [
+    "CONTENEDOR",
+    "TAMAÑO",
+    "NAVIERA",
+    "ESTADO",
+    "AÑO",
+    "MAX_GROSS",
+    "TARA",
+    "NOTAS",
+    "ESTIBA",
+    "FILA",
+    "NIVEL",
+    "DESTINO_EVACUACION",
+    "TIPO_EVACUACION",
+    "OBS_EVACUACION",
+]
+
+BULK_STATUS_MAP = {
+    "DISPONIBLE": "NORMAL",
+    "NORMAL": "NORMAL",
+
+    "ASIGNADO": "PARA_DESPACHO",
+    "PARA_DESPACHO": "PARA_DESPACHO",
+
+    "EVACUAR": "PARA_EVACUAR",
+    "PARA_EVACUAR": "PARA_EVACUAR",
+
+    "ASIGNADO_EVACUAR": "EVACUAR_SOLICITADO",
+    "EVACUAR_SOLICITADO": "EVACUAR_SOLICITADO",
+
+    "DESPACHO_MONTADO": "DESPACHO_MONTADO",
+    "EVACUACION_MONTADA": "EVACUACION_MONTADA",
+}
+
+BULK_VALID_SIZES = {
+    "20ST",
+    "20OT",
+    "20RF",
+    "20TQ",
+    "40ST",
+    "40HC",
+    "40RF",
+    "40OT",
+    "45HC",
+}
+
+BULK_VALID_EVAC_TYPES = {
+    "RT",
+    "BARCO",
+    "EVACUACION",
+}
+
+
+def _bulk_clean(value):
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _bulk_upper(value):
+    return _bulk_clean(value).upper()
+
+
+def _bulk_int(value):
+    value = _bulk_clean(value)
+    if not value:
+        return None
+
+    try:
+        return int(float(value))
+    except Exception:
+        return None
+
+
+def _bulk_normalize_container_code(value):
+    raw = _bulk_upper(value)
+    raw = raw.replace(" ", "").replace("\t", "")
+
+    if not raw:
+        return ""
+
+    if "-" in raw:
+        return raw
+
+    # Formato sin guiones: CSNU0012888 -> CSNU-001288-8
+    if len(raw) == 11 and raw[:4].isalpha() and raw[4:].isdigit():
+        return f"{raw[:4]}-{raw[4:10]}-{raw[10]}"
+
+    return raw
+
+
+def _bulk_headers_from_sheet(ws):
+    headers = {}
+
+    for idx, cell in enumerate(ws[1], start=1):
+        name = _bulk_upper(cell.value)
+        if name:
+            headers[name] = idx
+
+    return headers
+
+
+def _bulk_get(row, headers, name):
+    idx = headers.get(name)
+    if not idx:
+        return ""
+    return _bulk_clean(row[idx - 1].value)
+
+
+def _bulk_validate_position(
+    *,
+    site_id: int,
+    container_size: str,
+    bay_code: str,
+    depth_row,
+    tier,
+):
+    bay_code = _bulk_upper(bay_code)
+
+    if not bay_code and not depth_row and not tier:
+        return {
+            "ok": True,
+            "has_position": False,
+            "bay": None,
+            "depth_row": None,
+            "tier": None,
+        }
+
+    if not bay_code or not depth_row or not tier:
+        return {
+            "ok": False,
+            "message": "Si se indica ubicación, ESTIBA, FILA y NIVEL deben venir completos.",
+        }
+
+    bay = YardBay.query.filter_by(
+        site_id=site_id,
+        code=bay_code,
+        is_active=True,
+    ).first()
+
+    if not bay:
+        return {
+            "ok": False,
+            "message": f"La estiba {bay_code} no existe o está inactiva en este predio.",
+        }
+
+    try:
+        depth_row = int(depth_row)
+        tier = int(tier)
+    except Exception:
+        return {
+            "ok": False,
+            "message": "FILA y NIVEL deben ser numéricos.",
+        }
+
+    if depth_row < 1 or depth_row > int(bay.max_depth_rows or 0):
+        return {
+            "ok": False,
+            "message": f"La fila {depth_row} está fuera del rango permitido para {bay.code}.",
+        }
+
+    if tier < 1 or tier > int(bay.max_tiers or 0):
+        return {
+            "ok": False,
+            "message": f"El nivel {tier} está fuera del rango permitido para {bay.code}.",
+        }
+
+    size = _bulk_upper(container_size)
+    bay_size = _bulk_upper(bay.container_size_type or "40")
+
+    if bay_size == "20" and not size.startswith("20"):
+        return {
+            "ok": False,
+            "message": f"La estiba {bay.code} solo acepta contenedores de 20 pies.",
+        }
+
+    if bay_size == "40" and not (size.startswith("40") or size.startswith("45")):
+        return {
+            "ok": False,
+            "message": f"La estiba {bay.code} solo acepta contenedores de 40/45 pies.",
+        }
+
+    occupied = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+            ContainerPosition.bay_id == bay.id,
+            ContainerPosition.depth_row == depth_row,
+            ContainerPosition.tier == tier,
+        )
+        .first()
+    )
+
+    if occupied:
+        c, _ = occupied
+        return {
+            "ok": False,
+            "message": f"La posición {bay.code} F{depth_row:02d} N{tier} ya está ocupada por {c.code}.",
+        }
+
+    if tier > 1:
+        support = (
+            db.session.query(ContainerPosition)
+            .join(Container, Container.id == ContainerPosition.container_id)
+            .filter(
+                Container.site_id == site_id,
+                Container.is_in_yard == True,  # noqa: E712
+                ContainerPosition.bay_id == bay.id,
+                ContainerPosition.depth_row == depth_row,
+                ContainerPosition.tier == tier - 1,
+            )
+            .first()
+        )
+
+        if not support:
+            return {
+                "ok": False,
+                "message": f"No se puede colocar en N{tier} sin soporte debajo en N{tier - 1}.",
+            }
+
+    access_blocker = (
+        db.session.query(Container, ContainerPosition)
+        .join(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .filter(
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+            ContainerPosition.bay_id == bay.id,
+            ContainerPosition.depth_row > depth_row,
+        )
+        .first()
+    )
+
+    if access_blocker:
+        c, p = access_blocker
+        return {
+            "ok": False,
+            "message": f"La sidepick no puede acceder a F{depth_row:02d}; bloquea {c.code} en F{p.depth_row:02d} N{p.tier}.",
+        }
+
+    return {
+        "ok": True,
+        "has_position": True,
+        "bay": bay,
+        "depth_row": depth_row,
+        "tier": tier,
+    }
+
+
+@inventory_bp.get("/inventory/bulk-upload/template")
+@login_required
+def inventory_bulk_upload_template():
+    wb = openpyxl.Workbook()
+
+    ws = wb.active
+    ws.title = "DATOS"
+
+    ws.append(BULK_HEADERS)
+
+    header_fill = PatternFill("solid", fgColor="0F3B63")
+    header_font = Font(bold=True, color="FFFFFF")
+
+    for col_idx, header in enumerate(BULK_HEADERS, start=1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center")
+
+        ws.column_dimensions[get_column_letter(col_idx)].width = max(len(header) + 4, 18)
+
+    example = [
+        "CSNU-001288-8",
+        "40HC",
+        "ONE",
+        "DISPONIBLE",
+        2015,
+        32500,
+        3800,
+        "Piso OK",
+        "A1E",
+        1,
+        1,
+        "",
+        "",
+        "",
+    ]
+
+    ws.append(example)
+
+    dv_size = DataValidation(
+        type="list",
+        formula1='"20ST,20OT,20RF,20TQ,40ST,40HC,40RF,40OT,45HC"',
+        allow_blank=False,
+    )
+
+    dv_status = DataValidation(
+        type="list",
+        formula1='"DISPONIBLE,ASIGNADO,EVACUAR,ASIGNADO_EVACUAR,DESPACHO_MONTADO,EVACUACION_MONTADA"',
+        allow_blank=False,
+    )
+
+    dv_dest = DataValidation(
+        type="list",
+        formula1='"LIMON,CALDERA,OTRO"',
+        allow_blank=True,
+    )
+
+    dv_type = DataValidation(
+        type="list",
+        formula1='"RT,BARCO,EVACUACION"',
+        allow_blank=True,
+    )
+
+    ws.add_data_validation(dv_size)
+    ws.add_data_validation(dv_status)
+    ws.add_data_validation(dv_dest)
+    ws.add_data_validation(dv_type)
+
+    dv_size.add("B2:B5000")
+    dv_status.add("D2:D5000")
+    dv_dest.add("L2:L5000")
+    dv_type.add("M2:M5000")
+
+    ws2 = wb.create_sheet("INSTRUCCIONES")
+
+    instructions = [
+        ["CARGA MASIVA DE CONTENEDORES", ""],
+        ["", ""],
+        ["Campos obligatorios", "CONTENEDOR, TAMAÑO, NAVIERA, ESTADO"],
+        ["Campos opcionales", "AÑO, MAX_GROSS, TARA, NOTAS, ESTIBA, FILA, NIVEL, DESTINO_EVACUACION, TIPO_EVACUACION, OBS_EVACUACION"],
+        ["", ""],
+        ["Regla de ubicación", "Si ESTIBA, FILA y NIVEL vienen completos, se ubicará automáticamente."],
+        ["Regla de ubicación", "Si falta alguno de los tres, quedará en patio pendiente de ubicar."],
+        ["", ""],
+        ["ESTADO EXCEL", "ESTADO SISTEMA"],
+        ["DISPONIBLE", "NORMAL"],
+        ["ASIGNADO", "PARA_DESPACHO"],
+        ["EVACUAR", "PARA_EVACUAR"],
+        ["ASIGNADO_EVACUAR", "EVACUAR_SOLICITADO"],
+        ["DESPACHO_MONTADO", "DESPACHO_MONTADO"],
+        ["EVACUACION_MONTADA", "EVACUACION_MONTADA"],
+        ["", ""],
+        ["Tamaños permitidos", "20ST, 20OT, 20RF, 20TQ, 40ST, 40HC, 40RF, 40OT, 45HC"],
+        ["Tipos evacuación", "RT, BARCO, EVACUACION"],
+        ["Destinos evacuación", "LIMON, CALDERA, OTRO"],
+    ]
+
+    for row in instructions:
+        ws2.append(row)
+
+    for col in range(1, 3):
+        ws2.column_dimensions[get_column_letter(col)].width = 38
+
+    ws2["A1"].font = Font(bold=True, size=14)
+    ws2["A9"].font = Font(bold=True)
+    ws2["B9"].font = Font(bold=True)
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name="plantilla_carga_masiva_contenedores.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@inventory_bp.get("/inventory/bulk-upload")
+@login_required
+def inventory_bulk_upload_view():
+    _ensure_active_site()
+
+    return render_template(
+        "inventory/bulk_upload.html",
+        result=None,
+        errors=[],
+    )
+
+
+@inventory_bp.post("/inventory/bulk-upload")
+@login_required
+def inventory_bulk_upload_post():
+    site_id = _ensure_active_site()
+
+    file = request.files.get("file")
+
+    if not file or not file.filename:
+        flash("Debe seleccionar un archivo Excel.", "warning")
+        return redirect(url_for("inventory.inventory_bulk_upload_view"))
+
+    if not file.filename.lower().endswith((".xlsx", ".xlsm")):
+        flash("El archivo debe ser .xlsx o .xlsm.", "danger")
+        return redirect(url_for("inventory.inventory_bulk_upload_view"))
+
+    try:
+        wb = openpyxl.load_workbook(file, data_only=True)
+    except Exception:
+        flash("No se pudo leer el archivo Excel.", "danger")
+        return redirect(url_for("inventory.inventory_bulk_upload_view"))
+
+    ws = wb["DATOS"] if "DATOS" in wb.sheetnames else wb.active
+
+    headers = _bulk_headers_from_sheet(ws)
+    missing = sorted(BULK_REQUIRED_HEADERS - set(headers.keys()))
+
+    if missing:
+        return render_template(
+            "inventory/bulk_upload.html",
+            result=None,
+            errors=[
+                {
+                    "row": 1,
+                    "container": "—",
+                    "message": f"Faltan columnas obligatorias: {', '.join(missing)}",
+                }
+            ],
+        )
+
+    errors = []
+    parsed_rows = []
+    seen_codes = set()
+
+    for row_number, row in enumerate(ws.iter_rows(min_row=2), start=2):
+        raw_values = [cell.value for cell in row]
+
+        if all(v is None or str(v).strip() == "" for v in raw_values):
+            continue
+
+        code = _bulk_normalize_container_code(_bulk_get(row, headers, "CONTENEDOR"))
+        size = _bulk_upper(_bulk_get(row, headers, "TAMAÑO"))
+        shipping_line = _bulk_upper(_bulk_get(row, headers, "NAVIERA"))
+        status_excel = _bulk_upper(_bulk_get(row, headers, "ESTADO"))
+
+        year = _bulk_int(_bulk_get(row, headers, "AÑO"))
+        max_gross_kg = _bulk_int(_bulk_get(row, headers, "MAX_GROSS"))
+        tare_kg = _bulk_int(_bulk_get(row, headers, "TARA"))
+        notes = _bulk_clean(_bulk_get(row, headers, "NOTAS"))
+
+        bay_code = _bulk_upper(_bulk_get(row, headers, "ESTIBA"))
+        depth_row = _bulk_int(_bulk_get(row, headers, "FILA"))
+        tier = _bulk_int(_bulk_get(row, headers, "NIVEL"))
+
+        evac_destination = _bulk_upper(_bulk_get(row, headers, "DESTINO_EVACUACION"))
+        evac_type = _bulk_upper(_bulk_get(row, headers, "TIPO_EVACUACION"))
+        evac_notes = _bulk_clean(_bulk_get(row, headers, "OBS_EVACUACION"))
+
+        row_errors = []
+
+        if not code:
+            row_errors.append("CONTENEDOR es obligatorio.")
+
+        if not size:
+            row_errors.append("TAMAÑO es obligatorio.")
+        elif size not in BULK_VALID_SIZES:
+            row_errors.append(f"Tamaño inválido: {size}.")
+
+        if not shipping_line:
+            row_errors.append("NAVIERA es obligatoria.")
+
+        if not status_excel:
+            row_errors.append("ESTADO es obligatorio.")
+
+        dispatch_status = BULK_STATUS_MAP.get(status_excel)
+
+        if not dispatch_status:
+            row_errors.append(f"Estado inválido: {status_excel}.")
+
+        if code in seen_codes:
+            row_errors.append(f"El contenedor {code} está duplicado dentro del Excel.")
+
+        if code:
+            seen_codes.add(code)
+
+            exists = Container.query.filter_by(
+                site_id=site_id,
+                code=code,
+            ).first()
+
+            if exists:
+                row_errors.append(f"El contenedor {code} ya existe en este predio.")
+
+        if year is not None and (year < 1980 or year > 2100):
+            row_errors.append(f"Año inválido: {year}.")
+
+        if max_gross_kg is not None and max_gross_kg <= 0:
+            row_errors.append("MAX_GROSS debe ser mayor a 0.")
+
+        if tare_kg is not None and tare_kg <= 0:
+            row_errors.append("TARA debe ser mayor a 0.")
+
+        if evac_type and evac_type not in BULK_VALID_EVAC_TYPES:
+            row_errors.append(f"TIPO_EVACUACION inválido: {evac_type}.")
+
+        is_mounted_status = dispatch_status in {
+            "DESPACHO_MONTADO",
+            "EVACUACION_MONTADA",
+        }
+
+        position_result = {
+            "ok": True,
+            "has_position": False,
+            "bay": None,
+            "depth_row": None,
+            "tier": None,
+        }
+
+        if not is_mounted_status:
+            position_result = _bulk_validate_position(
+                site_id=site_id,
+                container_size=size,
+                bay_code=bay_code,
+                depth_row=depth_row,
+                tier=tier,
+            )
+
+            if not position_result.get("ok"):
+                row_errors.append(position_result.get("message") or "Ubicación inválida.")
+
+        if row_errors:
+            for msg in row_errors:
+                errors.append({
+                    "row": row_number,
+                    "container": code or "—",
+                    "message": msg,
+                })
+            continue
+
+        parsed_rows.append({
+            "row_number": row_number,
+            "code": code,
+            "size": size,
+            "shipping_line": shipping_line,
+            "dispatch_status": dispatch_status,
+            "year": year,
+            "max_gross_kg": max_gross_kg,
+            "tare_kg": tare_kg,
+            "notes": notes,
+            "position": position_result,
+            "evac_destination": evac_destination,
+            "evac_type": evac_type,
+            "evac_notes": evac_notes,
+            "is_mounted_status": is_mounted_status,
+        })
+
+    if errors:
+        db.session.rollback()
+
+        return render_template(
+            "inventory/bulk_upload.html",
+            result={
+                "ok": False,
+                "created": 0,
+                "validated": len(parsed_rows),
+                "errors_count": len(errors),
+            },
+            errors=errors,
+        )
+
+    created_count = 0
+    positioned_count = 0
+    pending_location_count = 0
+    mounted_count = 0
+
+    try:
+        for item in parsed_rows:
+            position = item["position"]
+            has_position = bool(position.get("has_position"))
+
+            status_notes = None
+
+            if not has_position:
+                status_notes = "PENDIENTE_UBICAR_EN_PATIO"
+
+            c = Container(
+                site_id=site_id,
+                code=item["code"],
+                size=item["size"],
+                year=item["year"],
+                status_notes=status_notes,
+                is_in_yard=True,
+                dispatch_status=item["dispatch_status"],
+            )
+
+            if item["dispatch_status"] == "PARA_EVACUAR":
+                c.dispatch_marked_at = datetime.utcnow()
+                c.dispatch_marked_by_user_id = current_user.id
+                c.evacuation_destination = item["evac_destination"] or None
+                c.evacuation_type = item["evac_type"] or None
+                c.evacuation_notes = item["evac_notes"] or None
+
+            if item["dispatch_status"] in {"DESPACHO_MONTADO", "EVACUACION_MONTADA"}:
+                c.mounted_at = datetime.utcnow()
+                c.mounted_by_user_id = current_user.id
+
+            db.session.add(c)
+            db.session.flush()
+
+            db.session.add(
+                ContainerClassification(
+                    site_id=site_id,
+                    container_id=c.id,
+                    classified_at=datetime.utcnow(),
+                    classified_by_user_id=current_user.id,
+                    shipping_line=item["shipping_line"],
+                    max_gross_kg=item["max_gross_kg"],
+                    tare_kg=item["tare_kg"],
+                    manufacture_year=item["year"],
+                    summary_text=item["notes"] or None,
+                    notes=item["notes"] or None,
+                )
+            )
+
+            if item["is_mounted_status"]:
+                mounted_count += 1
+
+                db.session.add(
+                    Movement(
+                        site_id=site_id,
+                        container_id=c.id,
+                        movement_type="MOVE",
+                        occurred_at=datetime.utcnow(),
+                        bay_code=None,
+                        depth_row=None,
+                        tier=None,
+                        created_by_user_id=current_user.id,
+                        notes=f"BULK_IMPORT_{item['dispatch_status']}_WITHOUT_POSITION",
+                    )
+                )
+
+            elif has_position:
+                bay = position["bay"]
+                depth_row = position["depth_row"]
+                tier = position["tier"]
+
+                db.session.add(
+                    ContainerPosition(
+                        container_id=c.id,
+                        bay_id=bay.id,
+                        depth_row=depth_row,
+                        tier=tier,
+                        placed_by_user_id=current_user.id,
+                    )
+                )
+
+                db.session.add(
+                    Movement(
+                        site_id=site_id,
+                        container_id=c.id,
+                        movement_type="MOVE",
+                        occurred_at=datetime.utcnow(),
+                        bay_code=bay.code,
+                        depth_row=depth_row,
+                        tier=tier,
+                        created_by_user_id=current_user.id,
+                        notes="BULK_IMPORT_PLACED_WITH_POSITION",
+                    )
+                )
+
+                positioned_count += 1
+
+            else:
+                db.session.add(
+                    Movement(
+                        site_id=site_id,
+                        container_id=c.id,
+                        movement_type="MOVE",
+                        occurred_at=datetime.utcnow(),
+                        bay_code=None,
+                        depth_row=None,
+                        tier=None,
+                        created_by_user_id=current_user.id,
+                        notes="BULK_IMPORT_PENDING_LOCATION",
+                    )
+                )
+
+                pending_location_count += 1
+
+            created_count += 1
+
+        db.session.commit()
+
+    except Exception as exc:
+        db.session.rollback()
+
+        return render_template(
+            "inventory/bulk_upload.html",
+            result=None,
+            errors=[
+                {
+                    "row": "—",
+                    "container": "—",
+                    "message": f"Error general importando archivo: {str(exc)}",
+                }
+            ],
+        )
+
+    flash(f"Carga masiva completada. {created_count} contenedores creados.", "success")
+
+    return render_template(
+        "inventory/bulk_upload.html",
+        result={
+            "ok": True,
+            "created": created_count,
+            "positioned": positioned_count,
+            "pending_location": pending_location_count,
+            "mounted": mounted_count,
+            "errors_count": 0,
+        },
+        errors=[],
     )
