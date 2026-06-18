@@ -2,44 +2,66 @@
 {% block title %}Lista de Vacíos | Yard Gate Álamo{% endblock %}
 
 {% block content %}
-<div class="card card-pad" style="margin-bottom:14px;">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;">
+<div class="card card-pad evac-head-card">
+  <div class="evac-head">
     <div>
-      <h2 style="margin:0;">Lista de Vacíos / Evacuación</h2>
-      <p class="card-sub" style="margin-top:6px;">
-        Contenedores marcados para evacuar. Estos son los disponibles para solicitudes de vacío.
+      <h2 class="evac-title">Lista de Vacíos / Evacuación</h2>
+      <p class="card-sub">
+        Contenedores marcados para evacuar, con destino y tipo operativo.
       </p>
     </div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
-    </div>
+    <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
   </div>
 </div>
 
-<div class="card" style="overflow:auto;">
-  <table class="table" style="min-width:900px;">
+<div class="evac-table-wrap">
+  <table class="evac-table">
     <thead>
       <tr>
         <th>Contenedor</th>
         <th>Tamaño</th>
+        <th>Destino</th>
+        <th>Tipo</th>
         <th>Estado</th>
         <th>Posición</th>
         <th>Marcado</th>
-        <th style="width:220px;">Acción</th>
+        <th>Notas</th>
+        <th style="width:240px;">Acción</th>
       </tr>
     </thead>
 
     <tbody>
       {% for it in items %}
+        {% set dest = (it.evacuation_destination or '')|upper %}
         <tr>
-          <td style="font-weight:900;">
-            <a href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}" style="text-decoration:none;">
+          <td class="container-code-cell">
+            <a href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">
               {{ it.code }}
             </a>
           </td>
 
-          <td>{{ it.size or "—" }}</td>
+          <td><span class="plain-chip">{{ it.size or "—" }}</span></td>
+
+          <td>
+            {% if dest == "LIMON" or dest == "LIMÓN" %}
+              <span class="dest-chip dest-limon">Destino Limón</span>
+            {% elif dest == "CALDERA" %}
+              <span class="dest-chip dest-caldera">Destino Caldera</span>
+            {% elif dest %}
+              <span class="dest-chip dest-other">{{ dest }}</span>
+            {% else %}
+              <span class="muted-text">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if it.evacuation_type %}
+              <span class="type-chip">{{ it.evacuation_type }}</span>
+            {% else %}
+              <span class="muted-text">—</span>
+            {% endif %}
+          </td>
 
           <td>
             <span class="op-badge op-evac">Evacuar</span>
@@ -47,39 +69,49 @@
 
           <td>
             {% if it.position %}
-              <span class="badge">
-                {{ it.position.bay_code }}
-                · F{{ "%02d"|format(it.position.depth_row) }}
-                · N{{ it.position.tier }}
-              </span>
+              <div class="position-stack">
+                <span class="position-chip">{{ it.position.bay_code }}</span>
+                <span class="level-chip">F{{ "%02d"|format(it.position.depth_row) }}</span>
+                <span class="level-chip">N{{ it.position.tier }}</span>
+              </div>
             {% else %}
-              —
+              <span class="muted-text">—</span>
             {% endif %}
           </td>
 
           <td>
             {% if it.dispatch_marked_at %}
-              {{ it.dispatch_marked_at|dt_cr("%d/%m/%Y %I:%M %p") }}
+              <span class="date-chip">{{ it.dispatch_marked_at|dt_cr("%d/%m/%Y %I:%M %p") }}</span>
             {% else %}
-              —
+              <span class="muted-text">—</span>
             {% endif %}
           </td>
 
-          <td style="display:flex; gap:8px; flex-wrap:wrap;">
-            <a class="btn" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
+          <td class="notes-cell" title="{{ it.evacuation_notes or '' }}">
+            {{ it.evacuation_notes or "—" }}
+          </td>
 
-            <form method="POST" action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}" style="display:inline;">
-              <button class="btn danger" type="submit">
-                Regresar a disponible
-              </button>
-            </form>
+          <td>
+            <div class="evac-actions">
+              <a class="btn small" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
+
+              <form
+                method="POST"
+                action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}"
+                onsubmit="return confirm('¿Deseas regresar {{ it.code }} a Disponible?');"
+              >
+                <button class="btn danger small" type="submit">
+                  Regresar
+                </button>
+              </form>
+            </div>
           </td>
         </tr>
       {% endfor %}
 
       {% if not items %}
         <tr>
-          <td colspan="6" style="color:rgba(229,231,235,.80);">
+          <td colspan="9" class="empty-cell">
             No hay contenedores en lista de evacuación.
           </td>
         </tr>
@@ -89,20 +121,189 @@
 </div>
 
 <style>
-.op-badge{
-  display:inline-block;
-  padding:5px 9px;
-  border-radius:999px;
-  font-size:11px;
+.evac-head-card{margin-bottom:16px;}
+
+.evac-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:14px;
+  flex-wrap:wrap;
+}
+
+.evac-title{
+  margin:0;
+  color:#0f172a;
+  font-size:28px;
+  letter-spacing:-.03em;
+}
+
+.evac-table-wrap{
+  overflow:auto;
+  border:1px solid #dbe3ef;
+  border-radius:20px;
+  background:#fff;
+  box-shadow:0 10px 28px rgba(15,23,42,.06);
+}
+
+.evac-table{
+  width:100%;
+  min-width:1200px;
+  border-collapse:separate;
+  border-spacing:0;
+}
+
+.evac-table th{
+  background:#f8fafc;
+  color:#334155;
+  font-size:12px;
   font-weight:900;
-  border:1px solid rgba(148,163,184,.25);
+  padding:13px 12px;
+  border-bottom:1px solid #dbe3ef;
+  text-align:left;
+  white-space:nowrap;
+  text-transform:uppercase;
+  letter-spacing:.035em;
+}
+
+.evac-table td{
+  color:#0f172a;
+  font-size:13px;
+  padding:13px 12px;
+  border-bottom:1px solid #edf2f7;
+  vertical-align:middle;
+}
+
+.evac-table tbody tr:hover{background:#f8fafc;}
+
+.container-code-cell a{
+  color:#0f172a;
+  font-size:14px;
+  font-weight:950;
+  text-decoration:none;
   white-space:nowrap;
 }
 
+.container-code-cell a:hover{color:#1d4ed8;}
+
+.plain-chip,
+.dest-chip,
+.type-chip,
+.op-badge,
+.position-chip,
+.level-chip,
+.date-chip{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:900;
+  white-space:nowrap;
+  border:1px solid #dbe3ef;
+}
+
+.plain-chip{
+  padding:5px 9px;
+  background:#f8fafc;
+  color:#334155;
+}
+
+.dest-chip{
+  padding:7px 11px;
+}
+
+.dest-limon{
+  background:#dcfce7;
+  color:#166534;
+  border-color:#86efac;
+}
+
+.dest-caldera{
+  background:#ffedd5;
+  color:#c2410c;
+  border-color:#fdba74;
+}
+
+.dest-other{
+  background:#dbeafe;
+  color:#1d4ed8;
+  border-color:#93c5fd;
+}
+
+.type-chip{
+  padding:6px 10px;
+  background:#ede9fe;
+  color:#6d28d9;
+  border-color:#c4b5fd;
+}
+
+.op-badge{
+  padding:6px 10px;
+  font-size:11px;
+}
+
 .op-evac{
-  background:rgba(239,68,68,.14);
-  color:#fecaca;
-  border-color:rgba(239,68,68,.45);
+  background:#fee2e2;
+  color:#991b1b;
+  border-color:#fca5a5;
+}
+
+.position-stack{
+  display:flex;
+  flex-wrap:wrap;
+  gap:5px;
+}
+
+.position-chip{
+  padding:6px 10px;
+  background:#dbeafe;
+  color:#1e40af;
+  border-color:#bfdbfe;
+}
+
+.level-chip{
+  padding:6px 8px;
+  background:#f1f5f9;
+  color:#334155;
+  border-color:#cbd5e1;
+  font-size:11px;
+}
+
+.date-chip{
+  padding:6px 10px;
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-color:#bfdbfe;
+}
+
+.notes-cell{
+  max-width:300px;
+  color:#64748b !important;
+  font-size:12px !important;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.muted-text{
+  color:#94a3b8;
+  font-weight:700;
+}
+
+.evac-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.evac-actions form{margin:0;}
+
+.empty-cell{
+  color:#64748b !important;
+  padding:22px !important;
+  text-align:center;
+  font-weight:800;
 }
 </style>
 {% endblock %}

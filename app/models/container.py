@@ -27,6 +27,9 @@ class Container(db.Model):
     size = db.Column(db.String(10), nullable=False)
     year = db.Column(db.Integer, nullable=True)
     status_notes = db.Column(db.Text, nullable=True)
+    evacuation_destination = db.Column(db.String(100), nullable=True)
+    evacuation_type = db.Column(db.String(50), nullable=True)
+    evacuation_notes = db.Column(db.Text, nullable=True)
 
     is_in_yard = db.Column(db.Boolean, nullable=False, default=True)
 

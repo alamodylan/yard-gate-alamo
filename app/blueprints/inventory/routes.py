@@ -214,6 +214,9 @@ def inventory_index():
                 "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
                 "eir_trip_date": (eir.get("trip_date") if eir else None),
                 "is_in_yard": bool(c.is_in_yard),
+                "evacuation_destination": c.evacuation_destination,
+                "evacuation_type": c.evacuation_type,
+                "evacuation_notes": c.evacuation_notes,
 
                 # Estado operativo real del contenedor
                 "dispatch_status": c.dispatch_status or "NORMAL",
@@ -445,13 +448,32 @@ def mark_container_evacuation(container_id: int):
         flash("Solo se pueden marcar como evacuar contenedores disponibles.", "warning")
         return redirect(url_for("inventory.inventory_index"))
 
+    destination = (request.form.get("evacuation_destination") or "").strip().upper()
+    custom_destination = (request.form.get("evacuation_destination_other") or "").strip().upper()
+    evacuation_type = (request.form.get("evacuation_type") or "").strip().upper()
+    evacuation_notes = (request.form.get("evacuation_notes") or "").strip().upper()
+
+    if destination == "OTRO":
+        destination = custom_destination
+
+    if not destination:
+        flash("Debe indicar el destino de evacuación.", "danger")
+        return redirect(url_for("inventory.inventory_index"))
+
+    if evacuation_type not in {"RT", "BARCO", "EVACUACION"}:
+        flash("Debe indicar el tipo de evacuación.", "danger")
+        return redirect(url_for("inventory.inventory_index"))
+
     c.dispatch_status = "PARA_EVACUAR"
     c.dispatch_marked_at = datetime.utcnow()
     c.dispatch_marked_by_user_id = current_user.id
+    c.evacuation_destination = destination
+    c.evacuation_type = evacuation_type
+    c.evacuation_notes = evacuation_notes or None
 
     db.session.commit()
 
-    flash(f"Contenedor {c.code} marcado para evacuar.", "success")
+    flash(f"Contenedor {c.code} marcado para evacuar hacia {destination}.", "success")
     return redirect(url_for("inventory.inventory_index"))
 
 
@@ -472,6 +494,9 @@ def unmark_container_evacuation(container_id: int):
     c.dispatch_status = "NORMAL"
     c.dispatch_marked_at = None
     c.dispatch_marked_by_user_id = None
+    c.evacuation_destination = None
+    c.evacuation_type = None
+    c.evacuation_notes = None
 
     db.session.commit()
 
@@ -505,6 +530,9 @@ def evacuation_list():
             "size": c.size,
             "dispatch_status": c.dispatch_status or "NORMAL",
             "dispatch_marked_at": c.dispatch_marked_at,
+            "evacuation_destination": c.evacuation_destination,
+            "evacuation_type": c.evacuation_type,
+            "evacuation_notes": c.evacuation_notes,
             "position": None if not pos else {
                 "bay_code": bay.code if bay else None,
                 "depth_row": pos.depth_row,
