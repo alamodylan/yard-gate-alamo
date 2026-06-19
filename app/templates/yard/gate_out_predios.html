@@ -538,7 +538,11 @@
     El guardado real de esos puntos se conecta en el siguiente paso dentro de <strong>routes.py</strong>.
   </div>
 
-  <form method="post" enctype="multipart/form-data" id="eirForm">
+  <form
+      method="post"
+      action="{{ url_for('yard.gate_out_post') }}"
+      enctype="multipart/form-data"
+      id="eirForm">
     <input type="hidden" name="mode" id="mode" value="{{ 'link' if is_editing_draft else 'create' }}">
     <input type="hidden" name="save_mode" id="save_mode" value="pending">
     <input type="hidden" name="has_chassis" id="has_chassis" value="1">
