@@ -69,6 +69,7 @@
     font-weight:800;
     font-size:14px;
     cursor:pointer;
+    white-space:nowrap;
   }
 
   .btn-dark{
@@ -79,6 +80,11 @@
   .btn-soft{
     background:#e2e8f0;
     color:#0f172a;
+  }
+
+  .btn-draft{
+    background:#f59e0b;
+    color:#111827;
   }
 
   table{
@@ -96,6 +102,10 @@
 
   th{
     background:#f8fafc;
+  }
+
+  tr.is-draft{
+    background:#fffbeb;
   }
 
   .badge{
@@ -127,13 +137,46 @@
     color:#991b1b;
     border-color:#fecaca;
   }
+
+  .badge.draft{
+    background:#fef3c7;
+    color:#92400e;
+    border-color:#fde68a;
+  }
+
+  .muted{
+    color:#64748b;
+    font-size:12px;
+    font-weight:700;
+  }
+
+  @media (max-width:760px){
+    .eir-card{
+      padding:14px;
+      border-radius:14px;
+    }
+
+    table{
+      display:block;
+      overflow-x:auto;
+      white-space:nowrap;
+    }
+
+    .btn{
+      width:100%;
+    }
+
+    .actions{
+      width:100%;
+    }
+  }
 </style>
 
 <div class="eir-wrap">
   <div class="eir-card">
     <h2 style="margin-top:0;">Consulta de EIR</h2>
     <p style="color:#64748b;margin-top:6px;">
-      Consulta los EIR creados, filtra por contenedor, chasis, fecha o estado, y confirma si están pendientes.
+      Consulta los EIR creados, filtra por contenedor, chasis, fecha o estado, y continúa editando los borradores pendientes.
     </p>
 
     <form method="get" class="grid" style="margin-top:12px;">
@@ -156,12 +199,10 @@
         <label>Estado</label>
         <select name="status">
           <option value="">Todos</option>
-          <option value="DRAFT" {{ 'selected' if status == 'DRAFT' else '' }}>
-            Borrador
-          </option>
+          <option value="DRAFT" {{ 'selected' if status == 'DRAFT' else '' }}>Borrador</option>
           <option value="PENDING" {{ 'selected' if status == 'PENDING' else '' }}>Pendiente</option>
           <option value="CONFIRMED" {{ 'selected' if status == 'CONFIRMED' else '' }}>Confirmado</option>
-          <option value="EDITING" {{ 'selected' if status == 'EDITING' else '' }}>Editing</option>
+          <option value="EDITING" {{ 'selected' if status == 'EDITING' else '' }}>En edición</option>
           <option value="REVERTED" {{ 'selected' if status == 'REVERTED' else '' }}>Revertido</option>
           <option value="CANCELED" {{ 'selected' if status == 'CANCELED' else '' }}>Cancelado</option>
         </select>
@@ -190,7 +231,7 @@
       </thead>
       <tbody>
         {% for e in rows %}
-        <tr>
+        <tr class="{{ 'is-draft' if e.status == 'DRAFT' else '' }}">
           <td>#{{ e.id }}</td>
           <td>
             {{ e.trip_date or '—' }}
@@ -209,26 +250,39 @@
               <span class="badge ok">CONFIRMADO</span>
             {% elif e.status == 'PENDING' %}
               <span class="badge warn">PENDIENTE</span>
+            {% elif e.status == 'DRAFT' %}
+              <span class="badge draft">BORRADOR</span>
+              <br><span class="muted">No disponible para PDF</span>
             {% elif e.status == 'EDITING' %}
-              <span class="badge warn">EDITING</span>
+              <span class="badge warn">EN EDICIÓN</span>
             {% elif e.status == 'REVERTED' %}
               <span class="badge danger">REVERTIDO</span>
+            {% elif e.status == 'CANCELED' %}
+              <span class="badge danger">CANCELADO</span>
             {% else %}
               <span class="badge">{{ e.status or '—' }}</span>
             {% endif %}
           </td>
           <td>
             <div class="actions">
-              {% if e.status == 'PENDING' %}
-              <form method="post" action="{{ url_for('yard.eir_confirm_view', eir_id=e.id) }}"
-                    onsubmit="return confirm('¿Deseas confirmar este EIR y aplicar el Gate Out?');"
-                    style="margin:0;">
-                <button type="submit" class="btn btn-dark">Confirmar</button>
-              </form>
-              {% endif %}
+              {% if e.status == 'DRAFT' %}
+                <a class="btn btn-draft"
+                   href="{{ url_for('yard.eir_detail_view', eir_id=e.id, continue_edit=1) }}">
+                  Continuar edición
+                </a>
+              {% else %}
+                {% if e.status == 'PENDING' %}
+                <form method="post" action="{{ url_for('yard.eir_confirm_view', eir_id=e.id) }}"
+                      onsubmit="return confirm('¿Deseas confirmar este EIR y aplicar el Gate Out?');"
+                      style="margin:0;">
+                  <button type="submit" class="btn btn-dark">Confirmar</button>
+                </form>
+                {% endif %}
 
-              <a class="btn btn-soft" href="{{ url_for('yard.eir_detail_view', eir_id=e.id) }}">Detalle</a>
-              <a class="btn btn-dark" href="{{ url_for('yard.eir_pdf_view', eir_id=e.id) }}" target="_blank">PDF</a>
+                <a class="btn btn-soft" href="{{ url_for('yard.eir_detail_view', eir_id=e.id) }}">Detalle</a>
+
+                <a class="btn btn-dark" href="{{ url_for('yard.eir_pdf_view', eir_id=e.id) }}" target="_blank">PDF</a>
+              {% endif %}
             </div>
           </td>
         </tr>
