@@ -3,6 +3,7 @@
 
 {% block content %}
 {% set site_key = (active_site_key or '')|upper %}
+{% set is_editing_draft = edit_eir is defined and edit_eir %}
 
 <style>
   .eir-wrap{
@@ -538,7 +539,7 @@
   </div>
 
   <form method="post" enctype="multipart/form-data" id="eirForm">
-    <input type="hidden" name="mode" id="mode" value="create">
+    <input type="hidden" name="mode" id="mode" value="{{ 'link' if is_editing_draft else 'create' }}">
     <input type="hidden" name="save_mode" id="save_mode" value="pending">
     <input type="hidden" name="has_chassis" id="has_chassis" value="1">
     <input type="hidden" name="has_container" id="has_container" value="1">
@@ -583,7 +584,13 @@
 
         <div class="field col-4 hidden" id="box_link_manual">
           <label>ID manual EIR</label>
-          <input type="number" name="eir_id" id="eir_id" placeholder="Ej: 1024">
+          <input
+            type="number"
+            name="eir_id"
+            id="eir_id"
+            value="{{ edit_eir.id if is_editing_draft else '' }}"
+            placeholder="Ej: 1024"
+          >
         </div>
       </div>
     </div>
@@ -597,17 +604,32 @@
       <div class="eir-grid">
         <div class="field col-4">
           <label>Terminal</label>
-          <input name="terminal_name" id="terminal_name" value="{{ site_key }}" placeholder="Terminal">
+          <input
+            name="terminal_name"
+            id="terminal_name"
+            value="{{ edit_eir.terminal_name if is_editing_draft else site_key }}"
+            placeholder="Terminal"
+          >
         </div>
 
         <div class="field col-4">
           <label>Fecha de salida</label>
-          <input type="date" name="trip_date" id="trip_date">
+          <input
+            type="date"
+            name="trip_date"
+            id="trip_date"
+            value="{{ edit_eir.trip_date.isoformat() if is_editing_draft and edit_eir.trip_date else '' }}"
+          >
         </div>
 
         <div class="field col-4">
           <label>Hora de carga / descarga</label>
-          <input type="time" name="trip_time" id="trip_time">
+          <input
+            type="time"
+            name="trip_time"
+            id="trip_time"
+            value="{{ edit_eir.trip_time.strftime('%H:%M') if is_editing_draft and edit_eir.trip_time else '' }}"
+          >
         </div>
 
         <div class="field col-4">
@@ -618,37 +640,66 @@
 
         <div class="field col-4">
           <label>Origen</label>
-          <input name="origin" id="origin" value="{{ site_key }}" placeholder="Origen">
+          <input
+            name="origin"
+            id="origin"
+            value="{{ edit_eir.origin if is_editing_draft else site_key }}"
+            placeholder="Origen"
+          >
         </div>
 
         <div class="field col-4">
           <label>Destino</label>
-          <input name="destination" id="destination" placeholder="Destino">
+          <input
+            name="destination"
+            id="destination"
+            value="{{ edit_eir.destination if is_editing_draft else '' }}"
+            placeholder="Destino"
+          >
         </div>
 
         <div class="field col-4">
           <label>Tipo de operación</label>
           <select name="operation_type" id="operation_type">
             <option value="">— Selecciona —</option>
-            <option value="EXPORTACION">Exportación</option>
-            <option value="IMPORTACION">Importación</option>
+            <option value="EXPORTACION" {{ 'selected' if is_editing_draft and edit_eir.operation_type == 'EXPORTACION' else '' }}>
+              Exportación
+            </option>
+            <option value="IMPORTACION" {{ 'selected' if is_editing_draft and edit_eir.operation_type == 'IMPORTACION' else '' }}>
+              Importación
+            </option>
           </select>
         </div>
 
         <div class="field col-4">
           <label>Chofer</label>
-          <input name="driver_name" id="driver_name" placeholder="Nombre del chofer">
+          <input
+            name="driver_name"
+            id="driver_name"
+            value="{{ edit_eir.driver_name if is_editing_draft else '' }}"
+            placeholder="Nombre del chofer"
+          >
           <div class="field-help">Si queda vacío, se podrá completar manualmente al imprimir.</div>
         </div>
 
         <div class="field col-4">
           <label>Documento del chofer</label>
-          <input name="driver_id_doc" id="driver_id_doc" placeholder="Cédula / identificación">
+          <input
+            name="driver_id_doc"
+            id="driver_id_doc"
+            value="{{ edit_eir.driver_id_doc if is_editing_draft else '' }}"
+            placeholder="Documento del chofer"
+          >
         </div>
 
         <div class="field col-4">
           <label>Placa del cabezal</label>
-          <input name="truck_plate" id="truck_plate" placeholder="Placa del cabezal">
+          <input
+            name="truck_plate"
+            id="truck_plate"
+            value="{{ edit_eir.truck_plate if is_editing_draft else '' }}"
+            placeholder="Placa del cabezal"
+          >
         </div>
       </div>
     </div>
@@ -862,12 +913,22 @@
 
         <div class="field col-4">
           <label>Marchamo</label>
-          <input name="container_seal" id="container_seal" placeholder="Ingresa marchamo del contenedor">
+          <input
+            name="container_seal"
+            id="container_seal"
+            value="{{ edit_eir.container_seal if is_editing_draft else '' }}"
+            placeholder="Ingresa marchamo del contenedor"
+          >
         </div>
 
         <div class="field col-6">
           <label>Naviera</label>
-          <input name="shipping_line" id="shipping_line" placeholder="Luego se jalará del Gate In / clasificación">
+          <input
+            name="shipping_line"
+            id="shipping_line"
+            value="{{ edit_eir.shipping_line if is_editing_draft else '' }}"
+            placeholder="Naviera"
+          >
           <div class="field-help">En el siguiente paso lo amarramos a los datos del ingreso.</div>
         </div>
 
@@ -1037,7 +1098,7 @@
       <h3>7) Observaciones generales</h3>
       <div class="field">
         <label>Notas generales del EIR</label>
-        <textarea name="notes" id="notes" placeholder="Observaciones generales de salida"></textarea>
+        <textarea name="notes" id="notes" placeholder="Observaciones generales de salida">{{ edit_eir.general_notes if is_editing_draft else '' }}</textarea>
       </div>
     </div>
 
@@ -1120,6 +1181,46 @@
     </div>
   </div>
 </div>
+
+{% if is_editing_draft %}
+  {% set ch_snap = edit_eir.chassis_snapshot_json or {} %}
+
+  {% set draft_chassis = {
+    "id": edit_eir.chassis.id if edit_eir.chassis else "",
+    "label": edit_eir.chassis.chassis_number if edit_eir.chassis else "",
+    "chassis_number": edit_eir.chassis.chassis_number if edit_eir.chassis else "",
+    "plate": edit_eir.chassis.plate if edit_eir.chassis else "",
+    "axles": edit_eir.chassis.axles if edit_eir.chassis else 2,
+    "type_code": edit_eir.chassis.type_code if edit_eir.chassis else ""
+  } %}
+
+  {% set draft_container = {
+    "id": edit_eir.container.id if edit_eir.container else "",
+    "label": edit_eir.container.code if edit_eir.container else "",
+    "code": edit_eir.container.code if edit_eir.container else "",
+    "size": edit_eir.container.size if edit_eir.container else "",
+    "shipping_line": edit_eir.shipping_line or "",
+    "position_label": "Montado / sin posición física"
+  } %}
+
+  {% set edit_payload = {
+    "id": edit_eir.id,
+    "has_chassis": edit_eir.has_chassis,
+    "has_container": edit_eir.has_container,
+    "is_reefer": edit_eir.is_reefer,
+    "has_genset": edit_eir.has_genset,
+    "chassis": draft_chassis,
+    "container": draft_container,
+    "axle_seals": ch_snap.get("axle_seals_entered", {}),
+    "damages": []
+  } %}
+
+  <script id="editEirDataJson" type="application/json">
+    {{ edit_payload|tojson }}
+  </script>
+{% else %}
+  <script id="editEirDataJson" type="application/json">null</script>
+{% endif %}
 
 <script>
   const modeSelect = document.getElementById("mode_select");
@@ -1206,6 +1307,21 @@
 
   let damagePoints = [];
   let pendingDamage = null;
+
+  function readEditEirData() {
+    const el = document.getElementById("editEirDataJson");
+
+    if (!el) return null;
+
+    try {
+      return JSON.parse(el.textContent || "null");
+    } catch (error) {
+      console.error("No se pudo leer editEirDataJson:", error);
+      return null;
+    }
+  }
+
+window.EDIT_EIR_DATA = readEditEirData();
 
   const sideLabels = {
     RIGHT: "Costado derecho",
@@ -1534,6 +1650,60 @@
 
   function syncOperationResume() {
     resumeOperation.textContent = operationType.value || "—";
+  }
+
+  function applyDraftData() {
+    const data = window.EDIT_EIR_DATA;
+
+    if (!data) return;
+
+    modeHidden.value = "link";
+
+    if (modeSelect) {
+      modeSelect.value = "link";
+    }
+
+    if (eirIdInput) {
+      eirIdInput.value = data.id || "";
+    }
+
+    if (eirIdPick) {
+      eirIdPick.value = String(data.id || "");
+    }
+
+    chkHasChassis.checked = !!data.has_chassis;
+    chkHasContainer.checked = !!data.has_container;
+    chkIsReefer.checked = !!data.is_reefer;
+
+    selectedChassisData = data.chassis && data.chassis.id ? data.chassis : null;
+    selectedContainerData = data.container && data.container.id ? data.container : null;
+
+    syncMode();
+    syncEquipmentSections();
+    syncChassisInfo();
+    syncContainerInfo();
+    syncOperationResume();
+
+    if (selectedChassisData && data.axle_seals) {
+      setTimeout(() => {
+        Object.keys(data.axle_seals || {}).forEach(side => {
+          const item = data.axle_seals[side] || {};
+
+          const seal1 = axleSealsContainer.querySelector(
+            `[data-side="${side}"][data-field="seal_1"]`
+          );
+
+          const seal2 = axleSealsContainer.querySelector(
+            `[data-side="${side}"][data-field="seal_2"]`
+          );
+
+          if (seal1) seal1.value = item.seal_1 || "";
+          if (seal2) seal2.value = item.seal_2 || "";
+        });
+
+        syncAxleSealsHidden();
+      }, 0);
+    }
   }
 
   function bindStatusToggles() {
@@ -1976,5 +2146,6 @@
   syncContainerInfo();
   syncOperationResume();
   syncDamageUi();
+  applyDraftData();
 </script>
 {% endblock %}

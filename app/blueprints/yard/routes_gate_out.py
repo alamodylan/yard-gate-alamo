@@ -862,3 +862,113 @@ def gate_out_post():
 
     flash(f"Gate Out registrado: {c.code}", "success")
     return redirect(url_for("yard.ticket_view", movement_id=mv.id))
+
+
+@yard_bp.get("/eir/<int:eir_id>/continue")
+@login_required
+def eir_continue_view(eir_id):
+    site_id = _ensure_active_site()
+
+    eir = EIR.query.get_or_404(eir_id)
+
+    if eir.site_id != site_id:
+        flash("Ese EIR no corresponde al predio activo.", "danger")
+        return redirect(url_for("yard.eir_list_view"))
+
+    if eir.status != "DRAFT":
+        flash("Solo los borradores pueden continuar editándose.", "warning")
+        return redirect(url_for("yard.eir_list_view"))
+
+    active_site = Site.query.get(site_id)
+    site_code = (active_site.code or "").upper() if active_site else ""
+
+    sql_last_class = text("""
+        SELECT DISTINCT ON (cc.container_id)
+            cc.container_id,
+            cc.shipping_line
+        FROM yard_gate_alamo.container_classifications cc
+        WHERE cc.site_id = :site_id
+        ORDER BY cc.container_id, cc.classified_at DESC NULLS LAST, cc.id DESC
+    """)
+
+    class_rows = db.session.execute(
+        sql_last_class,
+        {"site_id": site_id},
+    ).mappings().all()
+
+    shipping_line_map = {
+        int(r["container_id"]): (r["shipping_line"] or "").strip().upper()
+        for r in class_rows
+    }
+
+    allowed_gate_out_statuses = {
+        "PARA_DESPACHO",
+        "EVACUAR_SOLICITADO",
+        "DESPACHO_MONTADO",
+        "EVACUACION_MONTADA",
+    }
+
+    containers_raw = (
+        db.session.query(Container, ContainerPosition, YardBay)
+        .outerjoin(
+            ContainerPosition,
+            ContainerPosition.container_id == Container.id,
+        )
+        .outerjoin(
+            YardBay,
+            YardBay.id == ContainerPosition.bay_id,
+        )
+        .filter(
+            Container.is_in_yard == True,  # noqa: E712
+            Container.site_id == site_id,
+            Container.dispatch_status.in_(list(allowed_gate_out_statuses)),
+        )
+        .order_by(
+            Container.dispatch_status.asc(),
+            YardBay.code.asc().nulls_last(),
+            ContainerPosition.depth_row.asc().nulls_last(),
+            ContainerPosition.tier.asc().nulls_last(),
+            Container.code.asc(),
+        )
+        .all()
+    )
+
+    containers = []
+
+    for c, p, b in containers_raw:
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+        containers.append({
+            "container": c,
+            "position": p,
+            "bay": b,
+            "shipping_line": shipping_line_map.get(c.id, ""),
+            "is_mounted": dispatch_status in allowed_gate_out_statuses,
+            "dispatch_status": dispatch_status,
+        })
+
+    chassis_rows = (
+        Chassis.query
+        .filter(
+            Chassis.site_id == site_id,
+            Chassis.is_in_yard == True,  # noqa: E712
+        )
+        .order_by(Chassis.chassis_number.asc())
+        .all()
+    )
+
+    eirs_draft = (
+        EIR.query
+        .filter_by(site_id=site_id, status="DRAFT")
+        .order_by(EIR.id.desc())
+        .limit(200)
+        .all()
+    )
+
+    return render_template(
+        "yard/gate_out_predios.html",
+        containers=containers,
+        chassis_rows=chassis_rows,
+        eirs_draft=eirs_draft,
+        edit_eir=eir,
+    )
