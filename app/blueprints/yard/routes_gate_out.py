@@ -33,6 +33,20 @@ EIR_VALIDATE_CHASSIS_SEALS = False
 def gate_out_view():
     site_id = _ensure_active_site()
 
+    draft_eir_id = request.args.get("draft_eir_id", type=int)
+    draft_eir = None
+
+    if draft_eir_id:
+        draft_eir = (
+            EIR.query
+            .filter_by(
+                id=draft_eir_id,
+                site_id=site_id,
+                status="DRAFT",
+            )
+            .first()
+        )
+
     active_site = Site.query.get(site_id)
     site_code = (active_site.code or "").upper() if active_site else ""
 
@@ -125,6 +139,8 @@ def gate_out_view():
             containers=containers,
             chassis_rows=chassis_rows,
             eirs_draft=eirs_draft,
+            draft_eir=draft_eir,
+            draft_eir_id=draft_eir_id,
         )
 
     containers = (
@@ -144,8 +160,12 @@ def gate_out_view():
     )
 
     return render_template(
-        "yard/gate_out.html",
-        rows=containers,
+        "yard/gate_out_predios.html",
+        containers=containers,
+        chassis_rows=chassis_rows,
+        eirs_draft=eirs_draft,
+        edit_eir=draft_eir,
+        draft_eir_id=draft_eir_id,
     )
 
 @yard_bp.get("/api/yard/gate-out/search-chassis")

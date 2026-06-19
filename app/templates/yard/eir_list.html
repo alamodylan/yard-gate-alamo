@@ -267,7 +267,7 @@
             <div class="actions">
               {% if e.status == 'DRAFT' %}
                 <a class="btn btn-draft"
-                   href="{{ url_for('yard.eir_detail_view', eir_id=e.id, continue_edit=1) }}">
+                  href="{{ url_for('yard.eir_continue_view', eir_id=e.id) }}">
                   Continuar edición
                 </a>
               {% else %}
