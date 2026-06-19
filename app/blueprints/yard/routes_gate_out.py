@@ -26,6 +26,7 @@ from .routes import (
     _format_axle_seal_difference_lines,
 )
 
+EIR_VALIDATE_CHASSIS_SEALS = False
 
 @yard_bp.get("/gate-out")
 @login_required
@@ -331,6 +332,9 @@ def gate_out_post():
 
     if is_predio:
         mode = (request.form.get("mode") or "create").strip().lower()
+        save_mode = (request.form.get("save_mode") or "pending").strip().lower()
+        is_draft = save_mode == "draft"
+
         eir_id_raw = (request.form.get("eir_id") or "").strip()
 
         has_chassis = (request.form.get("has_chassis") or "0").strip() == "1"
@@ -385,8 +389,8 @@ def gate_out_post():
 
         damage_points_raw = (request.form.get("container_damage_points_json") or "[]").strip()
 
-        terminal_name = terminal_name or (active_site.name if active_site else site_code or "")
-        origin = origin or (active_site.name if active_site else site_code or "")
+        terminal_name = terminal_name or (active_site.name if active_site else site_code or "ATM")
+        origin = origin or (active_site.name if active_site else site_code or "ATM")
         carrier = carrier or "ATM"
 
         if trip_date_raw:
@@ -427,142 +431,158 @@ def gate_out_post():
 
         if has_container:
             if not container_id_raw or not str(container_id_raw).isdigit():
-                flash("Debes seleccionar un contenedor.", "danger")
-                return redirect(url_for("yard.gate_out_view"))
+                if not is_draft:
+                    flash("Debes seleccionar un contenedor.", "danger")
+                    return redirect(url_for("yard.gate_out_view"))
+            else:
+                c = Container.query.get(int(container_id_raw))
 
-            c = Container.query.get(int(container_id_raw))
-            if not c or not c.is_in_yard or c.site_id != site_id:
-                flash("Contenedor no válido o no está en patio en este predio.", "danger")
-                return redirect(url_for("yard.gate_out_view"))
+                if not c or not c.is_in_yard or c.site_id != site_id:
+                    if not is_draft:
+                        flash("Contenedor no válido o no está en patio en este predio.", "danger")
+                        return redirect(url_for("yard.gate_out_view"))
+                    c = None
 
-            pos = ContainerPosition.query.filter_by(container_id=c.id).first()
-            if pos:
-                bay = YardBay.query.get(pos.bay_id)
-                bay_code = bay.code if bay else None
-                depth_row = pos.depth_row
-                tier = pos.tier
+                if c:
+                    pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+                    if pos:
+                        bay = YardBay.query.get(pos.bay_id)
+                        bay_code = bay.code if bay else None
+                        depth_row = pos.depth_row
+                        tier = pos.tier
 
-            container_size = getattr(c, "size", None)
+                    container_size = getattr(c, "size", None)
 
-            if not shipping_line:
-                sql_last_class = text("""
-                    SELECT shipping_line
-                    FROM yard_gate_alamo.container_classifications
-                    WHERE site_id = :site_id
-                      AND container_id = :container_id
-                    ORDER BY classified_at DESC NULLS LAST, id DESC
-                    LIMIT 1
-                """)
-                row_class = db.session.execute(sql_last_class, {
-                    "site_id": site_id,
-                    "container_id": c.id,
-                }).mappings().first()
-                if row_class and row_class.get("shipping_line"):
-                    shipping_line = (row_class.get("shipping_line") or "").strip().upper()
+                    if not shipping_line:
+                        sql_last_class = text("""
+                            SELECT shipping_line
+                            FROM yard_gate_alamo.container_classifications
+                            WHERE site_id = :site_id
+                              AND container_id = :container_id
+                            ORDER BY classified_at DESC NULLS LAST, id DESC
+                            LIMIT 1
+                        """)
+                        row_class = db.session.execute(sql_last_class, {
+                            "site_id": site_id,
+                            "container_id": c.id,
+                        }).mappings().first()
 
-            container_snapshot = {
-                "container_id": c.id,
-                "container_code": c.code,
-                "size": container_size,
-                "shipping_line": shipping_line or None,
-                "seal": container_seal or None,
-                "position": {
-                    "bay_code": bay_code,
-                    "depth_row": depth_row,
-                    "tier": tier,
-                },
-                "damage_count": len(damage_points),
-            }
+                        if row_class and row_class.get("shipping_line"):
+                            shipping_line = (row_class.get("shipping_line") or "").strip().upper()
+
+                    container_snapshot = {
+                        "container_id": c.id,
+                        "container_code": c.code,
+                        "size": container_size,
+                        "shipping_line": shipping_line or None,
+                        "seal": container_seal or None,
+                        "position": {
+                            "bay_code": bay_code,
+                            "depth_row": depth_row,
+                            "tier": tier,
+                        },
+                        "damage_count": len(damage_points),
+                    }
 
         ch = None
         chassis_snapshot = None
 
         if has_chassis:
             if not chassis_id_raw or not str(chassis_id_raw).isdigit():
-                flash("Debes seleccionar un chasis.", "danger")
-                return redirect(url_for("yard.gate_out_view"))
+                if not is_draft:
+                    flash("Debes seleccionar un chasis.", "danger")
+                    return redirect(url_for("yard.gate_out_view"))
+            else:
+                ch = Chassis.query.get(int(chassis_id_raw))
 
-            ch = Chassis.query.get(int(chassis_id_raw))
-            if not ch:
-                flash("Chasis inválido.", "danger")
-                return redirect(url_for("yard.gate_out_view"))
+                if not ch:
+                    if not is_draft:
+                        flash("Chasis inválido.", "danger")
+                        return redirect(url_for("yard.gate_out_view"))
+                    ch = None
 
-            if ch.site_id != site_id or not ch.is_in_yard:
-                flash("Ese chasis no está disponible en este predio.", "danger")
-                return redirect(url_for("yard.gate_out_view"))
+                if ch and (ch.site_id != site_id or not ch.is_in_yard):
+                    if not is_draft:
+                        flash("Ese chasis no está disponible en este predio.", "danger")
+                        return redirect(url_for("yard.gate_out_view"))
+                    ch = None
 
-            # Gate Out compara contra lo configurado en /chassis/<id>.
-            # La comparación NO depende del orden de los dos marchamos por eje/lado.
-            expected_seals = _get_axle_seals_from_chassis_tires(ch.id)
+                if ch:
+                    if EIR_VALIDATE_CHASSIS_SEALS:
+                        expected_seals = _get_axle_seals_from_chassis_tires(ch.id)
 
-            seal_differences = _compare_axle_seals(
-                expected_seals,
-                chassis_axle_seals,
-            )
+                        seal_differences = _compare_axle_seals(
+                            expected_seals,
+                            chassis_axle_seals,
+                        )
 
-            if seal_differences:
-                detail_lines = _format_axle_seal_difference_lines(seal_differences)
+                        if seal_differences:
+                            detail_lines = _format_axle_seal_difference_lines(seal_differences)
 
-                flash(
-                    "No se puede guardar el EIR. "
-                    "Los marchamos escaneados no coinciden con la configuración del chasis. "
-                    + " | ".join(detail_lines),
-                    "danger",
-                )
+                            flash(
+                                "No se puede guardar el EIR. "
+                                "Los marchamos escaneados no coinciden con la configuración del chasis. "
+                                + " | ".join(detail_lines),
+                                "danger",
+                            )
 
-                return redirect(url_for("yard.gate_out_view"))
+                            return redirect(url_for("yard.gate_out_view"))
 
-            tire_rows = (
-                ChassisTire.query
-                .filter_by(chassis_id=ch.id)
-                .order_by(ChassisTire.position_code.asc())
-                .all()
-            )
+                    tire_rows = (
+                        ChassisTire.query
+                        .filter_by(chassis_id=ch.id)
+                        .order_by(ChassisTire.position_code.asc())
+                        .all()
+                    )
 
-            tires_snapshot = []
-            for tr in tire_rows:
-                tires_snapshot.append({
-                    "position_code": tr.position_code,
-                    "marchamo": tr.marchamo,
-                    "tire_state": tr.tire_state,
-                    "tire_number": tr.tire.tire_number if tr.tire else None,
-                    "brand": tr.tire.brand if tr.tire else None,
-                    "estrias_mm": getattr(tr, "estrias_mm", None),
-                    "is_flat": bool(getattr(tr, "is_flat", False)),
-                })
+                    tires_snapshot = []
 
-            chassis_snapshot = {
-                "chassis_id": ch.id,
-                "chassis_number": ch.chassis_number,
-                "plate": ch.plate,
-                "axles": ch.axles,
-                "type_code": getattr(ch, "type_code", None),
-                "inspection": {
-                    "lights": {
-                        "status": chassis_lights_status or "OK",
-                        "detail": chassis_lights_detail or None,
-                    },
-                    "twist_locks": {
-                        "status": chassis_twistlocks_status or "OK",
-                        "detail": chassis_twistlocks_detail or None,
-                    },
-                    "mudflaps": {
-                        "status": chassis_mudflaps_status or "OK",
-                        "detail": chassis_mudflaps_detail or None,
-                    },
-                    "landing_gear": {
-                        "status": chassis_landing_gear_status or "OK",
-                        "detail": chassis_landing_gear_detail or None,
-                    },
-                    "structure": {
-                        "status": chassis_structure_status or "OK",
-                        "detail": chassis_structure_detail or None,
-                    },
-                },
-                "tires": tires_snapshot,
-            }
+                    for tr in tire_rows:
+                        tires_snapshot.append({
+                            "position_code": tr.position_code,
+                            "marchamo": tr.marchamo,
+                            "tire_state": tr.tire_state,
+                            "tire_number": tr.tire.tire_number if tr.tire else None,
+                            "brand": tr.tire.brand if tr.tire else None,
+                            "estrias_mm": getattr(tr, "estrias_mm", None),
+                            "is_flat": bool(getattr(tr, "is_flat", False)),
+                        })
+
+                    chassis_snapshot = {
+                        "chassis_id": ch.id,
+                        "chassis_number": ch.chassis_number,
+                        "plate": ch.plate,
+                        "axles": ch.axles,
+                        "type_code": getattr(ch, "type_code", None),
+                        "inspection": {
+                            "lights": {
+                                "status": chassis_lights_status or "OK",
+                                "detail": chassis_lights_detail or None,
+                            },
+                            "twist_locks": {
+                                "status": chassis_twistlocks_status or "OK",
+                                "detail": chassis_twistlocks_detail or None,
+                            },
+                            "mudflaps": {
+                                "status": chassis_mudflaps_status or "OK",
+                                "detail": chassis_mudflaps_detail or None,
+                            },
+                            "landing_gear": {
+                                "status": chassis_landing_gear_status or "OK",
+                                "detail": chassis_landing_gear_detail or None,
+                            },
+                            "structure": {
+                                "status": chassis_structure_status or "OK",
+                                "detail": chassis_structure_detail or None,
+                            },
+                        },
+                        "tires": tires_snapshot,
+                        "axle_seals_entered": chassis_axle_seals,
+                        "seal_validation_enabled": bool(EIR_VALIDATE_CHASSIS_SEALS),
+                    }
 
         reefer_snapshot = None
+
         if is_reefer:
             reefer_snapshot = {
                 "running_status": rf_running_status or None,
@@ -578,8 +598,16 @@ def gate_out_post():
                 "notes": rf_notes or None,
             }
 
-        if not has_container and not has_chassis:
+        if not is_draft and not has_container and not has_chassis:
             flash("Debes indicar al menos un equipo: chasis o contenedor.", "danger")
+            return redirect(url_for("yard.gate_out_view"))
+
+        if not is_draft and has_container and not c:
+            flash("Debes seleccionar un contenedor válido.", "danger")
+            return redirect(url_for("yard.gate_out_view"))
+
+        if not is_draft and has_chassis and not ch:
+            flash("Debes seleccionar un chasis válido.", "danger")
             return redirect(url_for("yard.gate_out_view"))
 
         mv = None
@@ -587,37 +615,41 @@ def gate_out_post():
         if mode == "link":
             if not eir_id_raw or not str(eir_id_raw).isdigit():
                 db.session.rollback()
-                flash("Selecciona un EIR PENDING válido para ligar.", "danger")
+                flash("Selecciona un EIR válido para continuar.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
             eir = EIR.query.get(int(eir_id_raw))
+
             if not eir or eir.site_id != site_id:
                 db.session.rollback()
                 flash("Ese EIR no corresponde a este predio.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
-            if eir.status not in {"PENDING", "EDITING"}:
+            if eir.status not in {"DRAFT", "PENDING", "EDITING"}:
                 db.session.rollback()
-                flash("Solo puedes ligar EIRs en estado PENDING o EDITING.", "danger")
+                flash("Solo puedes continuar EIRs en estado DRAFT, PENDING o EDITING.", "danger")
                 return redirect(url_for("yard.gate_out_view"))
 
             EIRContainerDamage.query.filter_by(eir_id=eir.id).delete()
+
         else:
             eir = EIR(
                 site_id=site_id,
                 created_by_user_id=current_user.id,
                 terminal_name=terminal_name or "",
                 trip_date=trip_date,
+                trip_time=trip_time,
                 carrier=carrier or "ATM",
                 origin=origin or "",
                 destination=destination or "",
+                operation_type=operation_type or None,
                 has_chassis=bool(has_chassis and ch),
                 chassis_id=ch.id if ch else None,
                 has_container=bool(has_container and c),
                 container_id=c.id if c else None,
                 is_reefer=bool(is_reefer),
                 has_genset=bool(has_genset),
-                status="PENDING",
+                status="DRAFT" if is_draft else "PENDING",
             )
 
             db.session.add(eir)
@@ -655,12 +687,22 @@ def gate_out_post():
         eir.gate_out_movement_id = None
 
         now_utc = datetime.utcnow()
-        eir.status = "PENDING"
+
+        eir.status = "DRAFT" if is_draft else "PENDING"
         eir.updated_at = now_utc
-        eir.pdf_generated_at = now_utc
-        eir.finalized_at = None
-        eir.inventory_out_at = None
-        eir.editable_until = None
+        eir.last_edited_at = now_utc
+        eir.last_edited_by_user_id = current_user.id
+
+        if is_draft:
+            eir.pdf_generated_at = None
+            eir.finalized_at = None
+            eir.inventory_out_at = None
+            eir.editable_until = None
+        else:
+            eir.pdf_generated_at = now_utc
+            eir.finalized_at = None
+            eir.inventory_out_at = None
+            eir.editable_until = None
 
         for item in damage_points:
             side = (item.get("side") or "").strip().upper()
@@ -704,7 +746,7 @@ def gate_out_post():
 
         audit_log(
             current_user.id,
-            "EIR_PENDING_SAVED",
+            "EIR_DRAFT_SAVED" if is_draft else "EIR_PENDING_SAVED",
             "eir",
             eir.id,
             {
@@ -715,17 +757,23 @@ def gate_out_post():
                 "chassis_id": ch.id if ch else None,
                 "damage_count": len(damage_points),
                 "is_reefer": bool(is_reefer),
-                "seal_mismatch": False,
+                "seal_validation_enabled": bool(EIR_VALIDATE_CHASSIS_SEALS),
             },
         )
 
         db.session.commit()
 
-        flash(
-            f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
-            f"Debes confirmarlo para aplicar la salida de inventario.",
-            "success",
-        )
+        if is_draft:
+            flash(
+                f"EIR #{eir.id} guardado como BORRADOR. Puedes continuarlo después.",
+                "success",
+            )
+        else:
+            flash(
+                f"EIR #{eir.id} guardado correctamente en estado PENDIENTE. "
+                f"Debes confirmarlo para aplicar la salida de inventario.",
+                "success",
+            )
 
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
@@ -745,9 +793,11 @@ def gate_out_post():
         return redirect(url_for("yard.gate_out_view"))
 
     pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+
     bay_code = None
     depth_row = None
     tier = None
+
     if pos:
         bay = YardBay.query.get(pos.bay_id)
         bay_code = bay.code if bay else None
@@ -769,17 +819,27 @@ def gate_out_post():
         created_by_user_id=current_user.id,
         created_at=datetime.utcnow(),
     )
+
     db.session.add(mv)
     db.session.flush()
 
     storage = get_storage()
     photos = request.files.getlist("photos") or []
+
     for f in photos:
         if not f or not f.filename:
             continue
+
         key = build_photo_key(c.code, mv.id, f.filename)
         url = storage.upload_fileobj(f, key, f.mimetype or "application/octet-stream")
-        db.session.add(MovementPhoto(movement_id=mv.id, photo_type="DRIVER_ID", url=url))
+
+        db.session.add(
+            MovementPhoto(
+                movement_id=mv.id,
+                photo_type="DRIVER_ID",
+                url=url,
+            )
+        )
 
     ContainerPosition.query.filter_by(container_id=c.id).delete()
     c.is_in_yard = False
@@ -794,10 +854,11 @@ def gate_out_post():
             "from_bay": bay_code,
             "depth_row": depth_row,
             "tier": tier,
-            "site_id": site_id
+            "site_id": site_id,
         },
     )
 
     db.session.commit()
+
     flash(f"Gate Out registrado: {c.code}", "success")
     return redirect(url_for("yard.ticket_view", movement_id=mv.id))

@@ -528,7 +528,8 @@
   </div>
 
   <div class="eir-note">
-    Al guardar este formulario debe generarse el EIR digital, salir el equipo de inventario y quedar listo para PDF e impresión.
+    Puedes guardar el EIR como borrador para continuar más tarde.
+    Cuando esté completo, usa <strong>Guardar EIR</strong> para dejarlo pendiente de confirmación.
   </div>
 
   <div class="eir-warn">
@@ -538,6 +539,7 @@
 
   <form method="post" enctype="multipart/form-data" id="eirForm">
     <input type="hidden" name="mode" id="mode" value="create">
+    <input type="hidden" name="save_mode" id="save_mode" value="pending">
     <input type="hidden" name="has_chassis" id="has_chassis" value="1">
     <input type="hidden" name="has_container" id="has_container" value="1">
     <input type="hidden" name="is_reefer" id="is_reefer" value="0">
@@ -825,16 +827,12 @@
         <h4>Marchamos por eje / lado</h4>
 
         <div class="eir-note">
-          Escanee los marchamos instalados actualmente.
+          Escanee o ingrese los marchamos instalados actualmente.
 
           <br><br>
 
-          El sistema comparará automáticamente contra la última configuración.
-
-          <br><br>
-
-          Si existe una diferencia de marchamos,
-          el EIR no podrá guardarse hasta corregirla.
+          Por ahora el sistema solo registrará los marchamos digitados.
+          La validación contra la configuración del chasis queda desactivada temporalmente.
         </div>
 
         <div id="axleSealsContainer"
@@ -1068,8 +1066,17 @@
       </table>
 
       <div class="actions" style="margin-top:16px;">
-        <button type="submit" class="btn-main">Guardar EIR y aplicar Gate Out</button>
-        <button type="button" class="btn-soft" id="btn_fill_now">Poner fecha y hora actual</button>
+        <button type="button" class="btn-soft" id="btn_save_draft">
+          Guardar borrador
+        </button>
+
+        <button type="submit" class="btn-main" id="btn_save_pending">
+          Guardar EIR
+        </button>
+
+        <button type="button" class="btn-soft" id="btn_fill_now">
+          Poner fecha y hora actual
+        </button>
       </div>
     </div>
   </form>
@@ -1117,6 +1124,10 @@
 <script>
   const modeSelect = document.getElementById("mode_select");
   const modeHidden = document.getElementById("mode");
+
+  const saveModeInput = document.getElementById("save_mode");
+  const btnSaveDraft = document.getElementById("btn_save_draft");
+  const btnSavePending = document.getElementById("btn_save_pending");
   const boxLinkMode = document.getElementById("box_link_mode");
   const boxLinkManual = document.getElementById("box_link_manual");
   const eirIdPick = document.getElementById("eir_id_pick");
@@ -1919,6 +1930,27 @@
     eirForm.addEventListener("submit", () => {
       syncAxleSealsHidden();
       syncDamageUi();
+    });
+  }
+
+  if (btnSaveDraft) {
+    btnSaveDraft.addEventListener("click", () => {
+      if (saveModeInput) {
+        saveModeInput.value = "draft";
+      }
+
+      syncAxleSealsHidden();
+      syncDamageUi();
+
+      eirForm.submit();
+    });
+  }
+
+  if (btnSavePending) {
+    btnSavePending.addEventListener("click", () => {
+      if (saveModeInput) {
+        saveModeInput.value = "pending";
+      }
     });
   }
 

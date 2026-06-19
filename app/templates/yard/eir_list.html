@@ -156,6 +156,9 @@
         <label>Estado</label>
         <select name="status">
           <option value="">Todos</option>
+          <option value="DRAFT" {{ 'selected' if status == 'DRAFT' else '' }}>
+            Borrador
+          </option>
           <option value="PENDING" {{ 'selected' if status == 'PENDING' else '' }}>Pendiente</option>
           <option value="CONFIRMED" {{ 'selected' if status == 'CONFIRMED' else '' }}>Confirmado</option>
           <option value="EDITING" {{ 'selected' if status == 'EDITING' else '' }}>Editing</option>
