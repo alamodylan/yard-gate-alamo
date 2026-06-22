@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 from app.config import Config
 from app.extensions import db, migrate, login_manager
+from flask_login import current_user
 
 import pytz
 from datetime import datetime
@@ -53,6 +54,15 @@ def create_app():
         def has_endpoint(endpoint: str) -> bool:
             return endpoint in current_app.view_functions
         return dict(has_endpoint=has_endpoint)
+    
+    # ✅ Helper global para permisos en templates: can('permiso')
+    @app.context_processor
+    def inject_permissions():
+        from app.utils.permissions import user_has_permission
+
+        return {
+            "can": lambda permission: user_has_permission(current_user, permission),
+        }
 
     # ✅ Predio activo (site) para templates + helper
     @app.context_processor
