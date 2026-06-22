@@ -174,6 +174,57 @@ def api_container_prefill(code: str):
         **payload
     })
 
+@yard_bp.get("/api/chassis/<int:chassis_id>/last-seals")
+@login_required
+def api_chassis_last_seals(chassis_id: int):
+    """
+    Retorna los marchamos del último Gate Out / EIR del chasis.
+
+    Uso actual:
+    - Frontend Gate In muestra estos marchamos.
+    - El usuario selecciona OK o DISTINTO.
+    - No se ingresan marchamos nuevos manualmente.
+
+    Uso futuro:
+    - Cuando existan escáneres, se reutiliza la lógica existente
+      de comparación automática.
+    """
+    site_id = _ensure_active_site()
+
+    ch = Chassis.query.get(chassis_id)
+    if not ch:
+        return jsonify({
+            "ok": False,
+            "error": "CHASSIS_NOT_FOUND",
+        }), 404
+
+    last_eir = _fetch_last_final_eir_for_chassis(chassis_id)
+
+    if not last_eir or not last_eir.get("id"):
+        return jsonify({
+            "ok": True,
+            "found": False,
+            "chassis_id": chassis_id,
+            "last_eir_id": None,
+            "seals": {},
+        })
+
+    last_eir_id = int(last_eir["id"])
+
+    seals = _get_axle_seals_for_event(
+        chassis_id=chassis_id,
+        event_type="EIR_OUT",
+        event_id=last_eir_id,
+    )
+
+    return jsonify({
+        "ok": True,
+        "found": bool(seals),
+        "chassis_id": chassis_id,
+        "last_eir_id": last_eir_id,
+        "seals": seals or {},
+    })
+
 
 @yard_bp.post("/gate-in")
 @login_required

@@ -731,7 +731,19 @@
             <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
           </div>
 
-          <div id="axleSealsBlock" class="section-card hidden">
+          <div id="previousSealsBlock" class="section-card hidden">
+            <h3 style="margin:0;">Marchamos Gate Out anterior</h3>
+
+            <div class="hint" style="margin-top:6px;">
+              Valida visualmente los marchamos encontrados en el último Gate Out.
+              Debes indicar si coinciden o son distintos.
+            </div>
+
+            <div id="previousSealsRows" style="margin-top:12px;">
+            </div>
+          </div>
+
+          <div id="axleSealsBlock" class="section-card hidden" style="display:none;">
             <h3 style="margin:0;">Marchamos por eje/lado</h3>
             <div class="hint" style="margin-top:6px;">
               Escanea los 2 marchamos por lado del eje. No importa el orden; el sistema hará la comparación automáticamente.
@@ -1355,6 +1367,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const chassisAxleSealsHidden = document.getElementById("chassis_axle_seals_json");
   const axleSealsBlock = document.getElementById("axleSealsBlock");
   const chassisPosTbody = document.getElementById("chassisPosTbody");
+  const previousSealsBlock = document.getElementById("previousSealsBlock");
+  const previousSealsRows = document.getElementById("previousSealsRows");
 
   const ci_structure = document.getElementById("ci_structure");
   const ci_twistlocks = document.getElementById("ci_twistlocks");
@@ -1479,6 +1493,90 @@ document.addEventListener("DOMContentLoaded", () => {
 
     buildSummary();
     syncHiddenChassisPayloads();
+  }
+
+  async function loadPreviousSeals(chassisId){
+
+      if (!previousSealsBlock || !previousSealsRows){
+          return;
+      }
+
+      previousSealsRows.innerHTML = "";
+      previousSealsBlock.classList.add("hidden");
+
+      try{
+
+          const r = await fetch(
+              `/api/chassis/${chassisId}/last-seals`,
+              {
+                  headers:{
+                      "Accept":"application/json"
+                  }
+              }
+          );
+
+          const data = await r.json();
+
+          if (!data.ok || !data.found){
+              return;
+          }
+
+          const seals = data.seals || {};
+
+          Object.keys(seals).forEach(side => {
+
+              const item = seals[side] || {};
+
+              previousSealsRows.insertAdjacentHTML(
+                  "beforeend",
+                  `
+                  <div style="
+                      border:1px solid #dbe3ef;
+                      border-radius:12px;
+                      padding:12px;
+                      margin-bottom:10px;
+                  ">
+                      <div style="font-weight:800;">
+                          ${side}
+                      </div>
+
+                      <div style="margin-top:6px;">
+                          Marchamo 1:
+                          <b>${item.seal_1 || "-"}</b>
+                      </div>
+
+                      <div>
+                          Marchamo 2:
+                          <b>${item.seal_2 || "-"}</b>
+                      </div>
+
+                      <div style="margin-top:10px;">
+                          <select
+                              class="seal-review"
+                              data-side="${side}"
+                              required
+                          >
+                              <option value="">
+                                  Seleccione...
+                              </option>
+                              <option value="OK">
+                                  OK
+                              </option>
+                              <option value="DISTINTO">
+                                  DISTINTO
+                              </option>
+                          </select>
+                      </div>
+                  </div>
+                  `
+              );
+          });
+
+          previousSealsBlock.classList.remove("hidden");
+
+      } catch(err){
+          console.error(err);
+      }
   }
 
   function normalizeText(s){
@@ -2281,6 +2379,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     try{
       await loadChassisConfig(selectedChassisId);
+      await loadPreviousSeals(selectedChassisId);
       bindGateInSealScannerNavigation();
     }catch(e){
       console.error("Error cargando configuración de chasis:", e);
