@@ -27,7 +27,9 @@
         <th>Posición</th>
         <th>Marcado</th>
         <th>Notas</th>
-        <th style="width:240px;">Acción</th>
+        {% if can('empty_list.actions') %}
+          <th style="width:240px;">Acción</th>
+        {% endif %}
       </tr>
     </thead>
 
@@ -91,27 +93,31 @@
             {{ it.evacuation_notes or "—" }}
           </td>
 
-          <td>
-            <div class="evac-actions">
-              <a class="btn small" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">Ver</a>
+          {% if can('empty_list.actions') %}
+            <td>
+              <div class="evac-actions">
+                <a class="btn small" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">
+                  Ver
+                </a>
 
-              <form
-                method="POST"
-                action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}"
-                onsubmit="return confirm('¿Deseas regresar {{ it.code }} a Disponible?');"
-              >
-                <button class="btn danger small" type="submit">
-                  Regresar
-                </button>
-              </form>
-            </div>
-          </td>
+                <form
+                  method="POST"
+                  action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}"
+                  onsubmit="return confirm('¿Deseas regresar {{ it.code }} a Disponible?');"
+                >
+                  <button class="btn danger small" type="submit">
+                    Regresar
+                  </button>
+                </form>
+              </div>
+            </td>
+          {% endif %}
         </tr>
       {% endfor %}
 
       {% if not items %}
         <tr>
-          <td colspan="9" class="empty-cell">
+          <td colspan="{{ 9 if can('empty_list.actions') else 8 }}" class="empty-cell">
             No hay contenedores en lista de evacuación.
           </td>
         </tr>

@@ -17,12 +17,14 @@
           Lista de Vacíos
         </a>
 
+        {% if can('inventory.actions') %}
         <a
           class="btn success"
           href="{{ url_for('inventory.inventory_bulk_upload_view') }}"
         >
           Carga Masiva
         </a>
+        {% endif %}
 
         <a class="btn" href="{{ url_for('inventory.inventory_export', in_yard=in_yard, q=q) }}">
           ⬇ Exportar Excel
@@ -75,7 +77,9 @@
           <th>Estado</th>
           <th>Posición</th>
           <th>Notas</th>
+          {% if can('inventory.actions') %}
           <th>Acción</th>
+          {% endif %}
         </tr>
       </thead>
 
@@ -164,6 +168,7 @@
               {{ it.status_notes or "—" }}
             </td>
 
+            {% if can('inventory.actions') %}
             <td>
               <div class="inventory-actions">
                 <a class="btn small" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">
@@ -193,6 +198,7 @@
                 {% endif %}
               </div>
             </td>
+            {% endif %}
           </tr>
         {% endfor %}
 

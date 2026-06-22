@@ -13,7 +13,11 @@
 
     <div class="assigned-head-actions">
       <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Pendientes</a>
-      <a href="{{ url_for('dispatch.new_request') }}" class="btn success">+ Nueva Solicitud</a>
+      {% if can('dispatch.new_request') %}
+      <a href="{{ url_for('dispatch.new_request') }}" class="btn success">
+          + Nueva Solicitud
+      </a>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -82,7 +86,9 @@
                       <th>Estado asignación</th>
                       <th>Asignado</th>
                       <th>Montado</th>
+                      {% if can('dispatch.assigned.actions') %}
                       <th style="width:280px;">Acciones</th>
+                      {% endif %}
                     </tr>
                   </thead>
 
@@ -117,6 +123,7 @@
                           {% endif %}
                         </td>
 
+                        {% if can('dispatch.assigned.actions') %}
                         <td>
                           <div class="assignment-actions">
                             <form
@@ -159,6 +166,7 @@
                             </details>
                           </div>
                         </td>
+                        {% endif %}
                       </tr>
                     {% endfor %}
                   </tbody>
@@ -177,6 +185,7 @@
                   <span>Faltan contenedores por asignar en esta línea.</span>
                 </div>
 
+                {% if can('dispatch.assigned.actions') %}
                 <form
                   method="post"
                   action="{{ url_for('dispatch.release_pending_line', line_id=line.id) }}"
@@ -186,6 +195,7 @@
                     Liberar pendiente
                   </button>
                 </form>
+                {% endif %}
               </div>
             {% endif %}
           </div>
