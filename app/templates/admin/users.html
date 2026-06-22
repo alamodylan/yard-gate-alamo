@@ -23,6 +23,22 @@
       {% endfor %}
     </select>
 
+    <label>Predios habilitados</label>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px; margin:8px 0 16px;">
+      {% for site in sites %}
+        <label style="display:flex; align-items:center; gap:8px; padding:10px; border:1px solid #ddd; border-radius:10px;">
+          <input type="checkbox" name="site_ids" value="{{ site.id }}">
+          <span>{{ site.name }} / {{ site.code }}</span>
+        </label>
+      {% endfor %}
+    </div>
+
+    <small>
+      Para usuarios Admin no es obligatorio seleccionar predios. Admin puede acceder a todos.
+    </small>
+
+    <br><br>
+
     <button type="submit">Crear</button>
   </form>
 </div>
@@ -35,8 +51,9 @@
       <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">ID</th>
       <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Usuario</th>
       <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Rol</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Predios</th>
       <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Activo</th>
-      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Acción</th>
+      <th style="text-align:left; padding:8px; border-bottom:1px solid #ddd;">Estado</th>
     </tr>
 
     {% for u in users %}
@@ -49,6 +66,20 @@
         </td>
 
         <td style="padding:8px; border-bottom:1px solid #eee;">
+          {% if u.is_admin %}
+            Todos
+          {% elif u.user_sites %}
+            {% for us in u.user_sites %}
+              <span style="display:inline-block; padding:4px 8px; margin:2px; border-radius:999px; background:#eef3ff;">
+                {{ us.site.code }}
+              </span>
+            {% endfor %}
+          {% else %}
+            <span style="color:#b91c1c;">Sin predio</span>
+          {% endif %}
+        </td>
+
+        <td style="padding:8px; border-bottom:1px solid #eee;">
           {{ "Sí" if u.is_active else "No" }}
         </td>
 
@@ -57,6 +88,48 @@
             <button type="submit">
               {{ "Desactivar" if u.is_active else "Activar" }}
             </button>
+          </form>
+        </td>
+      </tr>
+
+      <tr>
+        <td colspan="6" style="padding:12px 8px 20px; border-bottom:1px solid #ddd; background:#fafafa;">
+          <form method="post" action="{{ url_for('admin.users_update', user_id=u.id) }}">
+            <div style="display:grid; grid-template-columns:220px 1fr auto; gap:12px; align-items:start;">
+              <div>
+                <label>Editar rol</label>
+                <select name="role" required>
+                  {% for role in allowed_roles %}
+                    <option value="{{ role }}" {% if u.role == role %}selected{% endif %}>
+                      {{ role.replace("_", " ")|title }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div>
+                <label>Editar predios</label>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px;">
+                  {% set assigned_site_ids = u.site_ids %}
+                  {% for site in sites %}
+                    <label style="display:flex; align-items:center; gap:8px; padding:8px; border:1px solid #ddd; border-radius:10px; background:white;">
+                      <input
+                        type="checkbox"
+                        name="site_ids"
+                        value="{{ site.id }}"
+                        {% if site.id in assigned_site_ids %}checked{% endif %}
+                      >
+                      <span>{{ site.code }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+                <small>Si el usuario es Admin, los predios se ignoran porque tiene acceso total.</small>
+              </div>
+
+              <div style="padding-top:24px;">
+                <button type="submit">Guardar</button>
+              </div>
+            </div>
           </form>
         </td>
       </tr>
