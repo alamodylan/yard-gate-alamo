@@ -237,7 +237,7 @@ def gate_in_post():
     has_container = (request.form.get("has_container") or "0").strip() == "1"
     is_merchant = has_container and not has_chassis
 
-    if gate_in_mode not in {"CHASSIS_CONTAINER", "CHASSIS_ONLY", "CONTAINER_ONLY"}:
+    if gate_in_mode not in {"CHASSIS_CONTAINER", "CHASSIS_ONLY", "CHASSIS_BUNDLE", "CONTAINER_ONLY"}:
         flash("Tipo de ingreso inválido.", "danger")
         return redirect(url_for("yard.gate_in_view"))
 
@@ -310,6 +310,16 @@ def gate_in_post():
     chassis_axle_seals_json_raw = (request.form.get("chassis_axle_seals_json") or "{}").strip()
     chassis_axle_seals = _parse_axle_seals_payload(chassis_axle_seals_json_raw)
 
+    chassis_bundle_json_raw = (request.form.get("chassis_bundle_json") or "[]").strip()
+
+    try:
+        chassis_bundle = json.loads(chassis_bundle_json_raw or "[]")
+        if not isinstance(chassis_bundle, list):
+            chassis_bundle = []
+    except Exception:
+        flash("La información del atado de chasis viene dañada.", "danger")
+        return redirect(url_for("yard.gate_in_view"))
+
     selected_chassis = None
     chassis_tire_checks = {}
     chassis_inspection = {}
@@ -352,7 +362,7 @@ def gate_in_post():
     # =========================
     # Validar / cargar chasis
     # =========================
-    if has_chassis:
+    if has_chassis and gate_in_mode != "CHASSIS_BUNDLE":
         if not chassis_id_raw:
             flash("Debes cargar un chasis para este tipo de ingreso.", "danger")
             return redirect(url_for("yard.gate_in_view"))
@@ -403,6 +413,63 @@ def gate_in_post():
         except Exception:
             flash("La clasificación estructural del chasis viene dañada.", "danger")
             return redirect(url_for("yard.gate_in_view"))
+        
+    # =========================
+    # Validar atado de chasis
+    # =========================
+    if gate_in_mode == "CHASSIS_BUNDLE":
+        if has_container:
+            flash("El modo Atado no debe incluir contenedor.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        if not chassis_bundle:
+            flash("Debes agregar al menos 2 chasis para registrar un atado.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        if len(chassis_bundle) < 2 or len(chassis_bundle) > 3:
+            flash("Un atado debe tener 2 o 3 chasis.", "danger")
+            return redirect(url_for("yard.gate_in_view"))
+
+        bundle_ids = []
+
+        for item in chassis_bundle:
+            chassis_id = item.get("chassis_id")
+
+            if not chassis_id:
+                flash("Todos los chasis del atado deben estar cargados.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+
+            try:
+                chassis_id = int(chassis_id)
+            except Exception:
+                flash("Uno de los chasis del atado es inválido.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+
+            if chassis_id in bundle_ids:
+                flash("No puedes repetir el mismo chasis dentro del atado.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+
+            bundle_ids.append(chassis_id)
+
+            ch = Chassis.query.get(chassis_id)
+
+            if not ch:
+                flash("Uno de los chasis del atado no existe.", "danger")
+                return redirect(url_for("yard.gate_in_view"))
+
+            active_inv = (
+                ChassisInventory.query
+                .filter_by(chassis_id=ch.id, is_in_yard=True)
+                .first()
+            )
+
+            if active_inv:
+                flash(
+                    f"El chasis {ch.chassis_number} ya está activo en inventario. "
+                    f"No puede registrarse dentro del atado.",
+                    "danger",
+                )
+                return redirect(url_for("yard.gate_in_view"))
 
     # =========================
     # Validar / procesar contenedor
@@ -539,6 +606,13 @@ def gate_in_post():
         bay_code = None
         depth_row = None
         tier = None
+
+    if gate_in_mode == "CHASSIS_BUNDLE":
+        flash(
+            "El modo Atado ya fue detectado, pero todavía falta implementar el guardado múltiple.",
+            "warning",
+        )
+        return redirect(url_for("yard.gate_in_view"))
 
     # =========================
     # Crear movimiento

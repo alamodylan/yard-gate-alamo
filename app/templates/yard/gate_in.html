@@ -116,7 +116,7 @@
 
   .mode-grid{
     display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
+    grid-template-columns:repeat(4,minmax(0,1fr));
     gap:12px;
   }
 
@@ -588,6 +588,14 @@
       </label>
 
       <label class="mode-card">
+        <input type="radio" name="gate_in_mode" value="CHASSIS_BUNDLE">
+        <span>
+          <strong>Atado</strong>
+          <small>Ingreso de 2 o 3 chasis en un solo proceso. El sistema los registra separados al guardar.</small>
+        </span>
+      </label>
+
+      <label class="mode-card">
         <input type="radio" name="gate_in_mode" value="CONTAINER_ONLY">
         <span>
           <strong>Solo Contenedor / Merchant</strong>
@@ -714,6 +722,7 @@
       <input type="hidden" name="chassis_tire_checks_json" id="chassis_tire_checks_json" value="{}">
       <input type="hidden" name="chassis_inspection_json" id="chassis_inspection_json" value="{}">
       <input type="hidden" name="chassis_axle_seals_json" id="chassis_axle_seals_json" value="{}">
+      <input type="hidden" name="chassis_bundle_json" id="chassis_bundle_json" value="[]">
 
       <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
         <div>
@@ -1365,6 +1374,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const chassisTireChecksHidden = document.getElementById("chassis_tire_checks_json");
   const chassisInspectionHidden = document.getElementById("chassis_inspection_json");
   const chassisAxleSealsHidden = document.getElementById("chassis_axle_seals_json");
+  const chassisBundleHidden = document.getElementById("chassis_bundle_json");
   const axleSealsBlock = document.getElementById("axleSealsBlock");
   const chassisPosTbody = document.getElementById("chassisPosTbody");
   const previousSealsBlock = document.getElementById("previousSealsBlock");
@@ -1415,6 +1425,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let chassisRowsMaster = [];
   let currentPos = null;
   let prefillTouched = false;
+  let chassisBundleCache = [];
 
   function esc(s){
     return (s ?? "").toString();
@@ -1427,9 +1438,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function modeHasChassis(){
     const mode = getGateInMode();
-    return mode === "CHASSIS_CONTAINER" || mode === "CHASSIS_ONLY";
+    return mode === "CHASSIS_CONTAINER"
+        || mode === "CHASSIS_ONLY"
+        || mode === "CHASSIS_BUNDLE";
   }
-
   function modeHasContainer(){
     const mode = getGateInMode();
     return mode === "CHASSIS_CONTAINER" || mode === "CONTAINER_ONLY";
@@ -1437,6 +1449,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function modeIsMerchant(){
     return getGateInMode() === "CONTAINER_ONLY";
+  }
+
+  function modeIsBundle(){
+    return getGateInMode() === "CHASSIS_BUNDLE";
   }
 
   function setRequired(el, required){
@@ -1482,7 +1498,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (submitBtn){
-      if (getGateInMode() === "CHASSIS_ONLY"){
+      if (getGateInMode() === "CHASSIS_BUNDLE"){
+        submitBtn.textContent = "Guardar atado de chasis";
+      } else if (getGateInMode() === "CHASSIS_ONLY"){
         submitBtn.textContent = "Guardar ingreso de chasis y generar ticket";
       } else if (getGateInMode() === "CONTAINER_ONLY"){
         submitBtn.textContent = "Guardar ingreso merchant y generar ticket";
@@ -1496,7 +1514,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadPreviousSeals(chassisId){
-
       if (!previousSealsBlock || !previousSealsRows){
           return;
       }
@@ -1504,16 +1521,21 @@ document.addEventListener("DOMContentLoaded", () => {
       previousSealsRows.innerHTML = "";
       previousSealsBlock.classList.add("hidden");
 
-      try{
+      const sideLabels = {
+          "AX1_L": "Eje 1 Izquierdo",
+          "AX1_R": "Eje 1 Derecho",
+          "AX2_L": "Eje 2 Izquierdo",
+          "AX2_R": "Eje 2 Derecho",
+          "AX3_L": "Eje 3 Izquierdo",
+          "AX3_R": "Eje 3 Derecho",
+      };
 
-          const r = await fetch(
-              `/api/chassis/${chassisId}/last-seals`,
-              {
-                  headers:{
-                      "Accept":"application/json"
-                  }
-              }
-          );
+      const sideOrder = ["AX1_L", "AX1_R", "AX2_L", "AX2_R", "AX3_L", "AX3_R"];
+
+      try{
+          const r = await fetch(`/api/chassis/${chassisId}/last-seals`, {
+              headers:{ "Accept":"application/json" }
+          });
 
           const data = await r.json();
 
@@ -1522,10 +1544,20 @@ document.addEventListener("DOMContentLoaded", () => {
           }
 
           const seals = data.seals || {};
+          const renderedSides = new Set();
 
-          Object.keys(seals).forEach(side => {
+          sideOrder.forEach(side => {
+              if (renderedSides.has(side)) return;
 
-              const item = seals[side] || {};
+              const item = seals[side];
+              if (!item) return;
+
+              const seal1 = item.seal_1 || "";
+              const seal2 = item.seal_2 || "";
+
+              if (!seal1 && !seal2) return;
+
+              renderedSides.add(side);
 
               previousSealsRows.insertAdjacentHTML(
                   "beforeend",
@@ -1535,19 +1567,20 @@ document.addEventListener("DOMContentLoaded", () => {
                       border-radius:12px;
                       padding:12px;
                       margin-bottom:10px;
+                      background:#ffffff;
                   ">
-                      <div style="font-weight:800;">
-                          ${side}
+                      <div style="font-weight:900; margin-bottom:8px;">
+                          ${sideLabels[side] || side}
                       </div>
 
-                      <div style="margin-top:6px;">
+                      <div>
                           Marchamo 1:
-                          <b>${item.seal_1 || "-"}</b>
+                          <b>${seal1 || "-"}</b>
                       </div>
 
                       <div>
                           Marchamo 2:
-                          <b>${item.seal_2 || "-"}</b>
+                          <b>${seal2 || "-"}</b>
                       </div>
 
                       <div style="margin-top:10px;">
@@ -1556,15 +1589,9 @@ document.addEventListener("DOMContentLoaded", () => {
                               data-side="${side}"
                               required
                           >
-                              <option value="">
-                                  Seleccione...
-                              </option>
-                              <option value="OK">
-                                  OK
-                              </option>
-                              <option value="DISTINTO">
-                                  DISTINTO
-                              </option>
+                              <option value="">Seleccione...</option>
+                              <option value="OK">OK</option>
+                              <option value="DISTINTO">DISTINTO</option>
                           </select>
                       </div>
                   </div>
@@ -1572,7 +1599,9 @@ document.addEventListener("DOMContentLoaded", () => {
               );
           });
 
-          previousSealsBlock.classList.remove("hidden");
+          if (renderedSides.size > 0){
+              previousSealsBlock.classList.remove("hidden");
+          }
 
       } catch(err){
           console.error(err);
@@ -2008,6 +2037,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (chassisTireChecksHidden) chassisTireChecksHidden.value = JSON.stringify(chassisChecksCache || {});
     if (chassisInspectionHidden) chassisInspectionHidden.value = JSON.stringify(buildInspectionPayload());
     if (chassisAxleSealsHidden) chassisAxleSealsHidden.value = JSON.stringify(buildAxleSealsPayload());
+
+    if (chassisBundleHidden) {
+      if (modeIsBundle()) {
+        chassisBundleHidden.value = JSON.stringify(chassisBundleCache || []);
+      } else {
+        chassisBundleHidden.value = "[]";
+      }
+    }
   }
 
   function refreshPlateObservedVisibility(){
@@ -2548,10 +2585,20 @@ document.addEventListener("DOMContentLoaded", () => {
     form.addEventListener("submit", (e) => {
       syncGateInMode();
 
-      if (modeHasChassis() && !selectedChassisId){
+      if (modeHasChassis() && !modeIsBundle() && !selectedChassisId){
         e.preventDefault();
         alert("Debes cargar un chasis para este tipo de ingreso.");
         return;
+      }
+
+      if (modeIsBundle()){
+        syncHiddenChassisPayloads();
+
+        if (!chassisBundleCache || chassisBundleCache.length < 2 || chassisBundleCache.length > 3){
+          e.preventDefault();
+          alert("El atado debe tener 2 o 3 chasis.");
+          return;
+        }
       }
 
       if (modeIsMerchant()){
