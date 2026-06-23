@@ -1487,118 +1487,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function makeEmptyBundleItem(){
-    return {
-      search: "",
-      chassis_id: null,
-      chassis_number: "",
-      plate: "",
-      axles: 2,
-      status: "",
-      tire_checks: {},
-      inspection: {},
-      axle_seals: {}
-    };
-  }
 
-  function saveCurrentInspectionToActiveBundle(){
-    if (!modeIsBundle()) return;
-    if (!chassisBundleCache[activeBundleIndex]) return;
-
-    chassisBundleCache[activeBundleIndex].tire_checks = JSON.parse(JSON.stringify(chassisChecksCache || {}));
-    chassisBundleCache[activeBundleIndex].inspection = buildInspectionPayload();
-    chassisBundleCache[activeBundleIndex].axle_seals = buildAxleSealsPayload();
-
-    syncHiddenChassisPayloads();
-  }
-
-  function loadInspectionPayloadToUi(payload){
-    payload = payload || {};
-
-    if (chassisGeneralStatus) chassisGeneralStatus.value = payload.general_chassis_status || "";
-    if (ci_structure) ci_structure.value = payload.structure_status || "";
-    if (ci_twistlocks) ci_twistlocks.value = payload.twistlocks_status || "";
-    if (ci_landing_gear) ci_landing_gear.value = payload.landing_gear_status || "";
-    if (ci_lights) ci_lights.value = payload.lights_status || "";
-    if (ci_mudflap) ci_mudflap.value = payload.mudflap_status || "";
-    if (ci_needs_workshop) ci_needs_workshop.value = payload.needs_workshop ? "1" : "0";
-
-    if (ci_plate_text) ci_plate_text.value = payload.plate_text || "";
-    if (ci_plate_validation_status) ci_plate_validation_status.value = payload.plate_validation_status || "";
-    if (ci_plate_text_observed) ci_plate_text_observed.value = payload.plate_text_observed || "";
-
-    if (ci_damage_summary) ci_damage_summary.value = payload.damage_summary || "";
-    if (ci_comments) ci_comments.value = payload.comments || "";
-    if (ci_driver_comments) ci_driver_comments.value = payload.driver_comments || "";
-
-    refreshPlateObservedVisibility();
-    refreshChassisIssueBadge();
-  }
-
-  function loadAxleSealsPayloadToUi(payload){
-    payload = payload || {};
-
-    document.querySelectorAll("[data-axle-seal-side]").forEach(input => {
-      const side = (input.dataset.axleSealSide || "").trim().toUpperCase();
-      const field = (input.dataset.sealField || "").trim();
-
-      input.value = payload?.[side]?.[field] || "";
-    });
-  }
-
-  async function loadBundleInspection(index){
-    saveCurrentInspectionToActiveBundle();
-
-    activeBundleIndex = index;
-
-    const item = chassisBundleCache[index];
-
-    if (!item || !item.chassis_id){
-      clearChassisPanel();
-      if (chassisBlock) chassisBlock.classList.add("hidden");
-      renderBundleRows();
-      return;
-    }
-
-    selectedChassisId = String(item.chassis_id);
-
-    if (chassisIdHidden) chassisIdHidden.value = selectedChassisId;
-    if (chassisSearch) chassisSearch.value = item.search || item.chassis_number || "";
-
-    selectedChassisAxles = Number(item.axles || 2);
-
-    if (chassisGeneralStatus) chassisGeneralStatus.value = item.status || "";
-    if (ci_plate_text) ci_plate_text.value = item.plate || "";
-
-    toggleAxles(selectedChassisAxles);
-
-    if (chassisBlock) chassisBlock.classList.remove("hidden");
-    if (axleSealsBlock) axleSealsBlock.classList.remove("hidden");
-
-    if (chassisSummaryPill) {
-      chassisSummaryPill.textContent = `Atado | Chasis ${index + 1}: ${item.chassis_number || item.search || ""}`;
-      chassisSummaryPill.className = "mini-pill";
-    }
-
-    await loadChassisConfig(selectedChassisId);
-
-    chassisChecksCache = JSON.parse(JSON.stringify(item.tire_checks || {}));
-
-    Object.keys(chassisChecksCache).forEach(pos => {
-      const chk = chassisChecksCache[pos] || {};
-      applyWheelState(pos, chk.tire_state || "OK");
-    });
-
-    loadInspectionPayloadToUi(item.inspection || {});
-    loadAxleSealsPayloadToUi(item.axle_seals || {});
-    await loadPreviousSeals(selectedChassisId);
-
-    renderChassisTable();
-    refreshChassisIssueBadge();
-    bindGateInSealScannerNavigation();
-    renderBundleRows();
-    syncHiddenChassisPayloads();
-  }
 
   chassisBundleCache = [
       makeEmptyBundleItem(),
@@ -2378,6 +2267,7 @@ document.addEventListener("DOMContentLoaded", () => {
     applyWheelState(currentPos, tireStateValue);
     renderChassisTable();
     refreshChassisIssueBadge();
+    saveCurrentInspectionToActiveBundle();
     closeChassisModal();
   }
 
@@ -2778,6 +2668,35 @@ document.addEventListener("DOMContentLoaded", () => {
   async function loadSelectedChassisFromInput(){
     const item = findChassisByInputValue(chassisSearch?.value || "");
 
+    if (modeIsBundle()){
+      if (!item){
+        alert("No se encontró el chasis. Escribe el número exacto o una placa exacta.");
+        return;
+      }
+
+      const oldItem = chassisBundleCache[activeBundleIndex] || makeEmptyBundleItem();
+
+      chassisBundleCache[activeBundleIndex] = {
+        ...oldItem,
+        search: chassisSearch?.value || "",
+        chassis_id: item.id,
+        chassis_number: item.chassis_number || "",
+        plate: item.plate || "",
+        axles: Number(item.axles || 2),
+        status: item.status || "",
+        tire_checks: {},
+        inspection: {
+          plate_text: item.plate || ""
+        },
+        axle_seals: {}
+      };
+
+      await loadBundleInspection(activeBundleIndex);
+      renderBundleRows();
+      syncHiddenChassisPayloads();
+      return;
+    }
+
     if (!item){
       alert("No se encontró el chasis. Escribe el número exacto o una placa exacta.");
       return;
@@ -2883,7 +2802,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   gateInModeRadios.forEach(radio => {
-    radio.addEventListener("change", syncGateInMode);
+    radio.addEventListener("change", () => {
+      saveCurrentInspectionToActiveBundle();
+      syncGateInMode();
+    });
   });
 
   document.querySelectorAll('select[name], input[name], textarea[name]').forEach(el => {
@@ -2971,8 +2893,15 @@ document.addEventListener("DOMContentLoaded", () => {
     ci_comments,
     ci_driver_comments
   ].filter(Boolean).forEach(el => {
-    el.addEventListener("change", refreshChassisIssueBadge);
-    el.addEventListener("input", refreshChassisIssueBadge);
+    el.addEventListener("change", () => {
+      refreshChassisIssueBadge();
+      saveCurrentInspectionToActiveBundle();
+    });
+
+    el.addEventListener("input", () => {
+      refreshChassisIssueBadge();
+      saveCurrentInspectionToActiveBundle();
+    });
   });
 
   if (ci_plate_validation_status) {
