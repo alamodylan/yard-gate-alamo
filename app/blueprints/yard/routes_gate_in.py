@@ -225,6 +225,428 @@ def api_chassis_last_seals(chassis_id: int):
         "seals": seals or {},
     })
 
+def _process_single_chassis_gate_in(
+    *,
+    site_id,
+    active_site,
+    username,
+    selected_chassis,
+    chassis_tire_checks,
+    chassis_inspection,
+    chassis_axle_seals,
+    movement_notes,
+    container_id=None,
+):
+    mv = Movement(
+        site_id=site_id,
+        container_id=container_id,
+        movement_type="GATE_IN",
+        occurred_at=datetime.utcnow(),
+        bay_code=None,
+        depth_row=None,
+        tier=None,
+        notes=movement_notes,
+        created_by_user_id=current_user.id,
+        created_at=datetime.utcnow(),
+    )
+    db.session.add(mv)
+    db.session.flush()
+
+    axles = int(getattr(selected_chassis, "axles", 2) or 2)
+    allowed = set(allowed_positions_for(axles))
+
+    structure_status = (
+        _normalize_structure_status_for_db(
+            _norm_enum(chassis_inspection.get("structure_status"))
+        )
+        or "OK"
+    )
+
+    twistlocks_status = (
+        _normalize_twistlocks_status_for_db(
+            _norm_enum(chassis_inspection.get("twistlocks_status"))
+        )
+        or "OK"
+    )
+
+    landing_gear_status = (
+        _normalize_landing_gear_status_for_db(
+            _norm_enum(chassis_inspection.get("landing_gear_status"))
+        )
+        or "OK"
+    )
+
+    lights_status = (
+        _normalize_lights_status_for_db(
+            _norm_enum(chassis_inspection.get("lights_status"))
+        )
+        or "OK"
+    )
+
+    mudflap_status = (
+        _normalize_mudflap_status_for_db(
+            _norm_enum(chassis_inspection.get("mudflap_status"))
+        )
+        or "OK"
+    )
+
+    plate_text = (chassis_inspection.get("plate_text") or "").strip()
+    plate_validation_status = _norm_enum(chassis_inspection.get("plate_validation_status"))
+
+    damage_summary = (chassis_inspection.get("damage_summary") or "").strip()
+    comments = (chassis_inspection.get("comments") or "").strip()
+    driver_comments = (chassis_inspection.get("driver_comments") or "").strip()
+
+    tire_lines = []
+    ticket_alert_lines = []
+    ticket_tire_rows = []
+    any_tire_issue = False
+    grouped_tire_readings = {}
+    print_job_ids = []
+    workshop_ticket_id = None
+
+    last_eir_for_seals = _fetch_last_final_eir_for_chassis(selected_chassis.id)
+    last_eir_id_for_seals = (
+        int(last_eir_for_seals["id"])
+        if last_eir_for_seals and last_eir_for_seals.get("id")
+        else None
+    )
+
+    expected_seals = {}
+    if last_eir_id_for_seals:
+        expected_seals = _get_axle_seals_for_event(
+            chassis_id=selected_chassis.id,
+            event_type="EIR_OUT",
+            event_id=last_eir_id_for_seals,
+        )
+
+    seal_differences = _compare_axle_seals(
+        expected_seals,
+        chassis_axle_seals,
+    )
+
+    _save_axle_seals_for_event(
+        site_id=site_id,
+        chassis_id=selected_chassis.id,
+        axles=axles,
+        seals_payload=chassis_axle_seals,
+        event_type="GATE_IN",
+        event_id=mv.id,
+        user_id=current_user.id,
+    )
+
+    if seal_differences:
+        seal_lines = _format_axle_seal_difference_lines(seal_differences)
+        tire_lines.extend(seal_lines)
+        ticket_alert_lines.extend(seal_lines)
+        any_tire_issue = True
+
+    tire_state_labels = {
+        "GASTADA": "REGULAR",
+        "PINCHADA": "DESINFLADA",
+        "CAMBIAR": "MAL ESTADO",
+        "NO_APTA": "ROJA",
+        "OK": "VERDE",
+    }
+
+    for pos, item in (chassis_tire_checks or {}).items():
+        pos = (pos or "").strip().upper()
+        if pos not in allowed:
+            continue
+
+        item = item or {}
+        seal_status = _norm_enum(item.get("seal_status")) or "OK"
+        tire_number_status = _norm_enum(item.get("tire_number_status")) or "OK"
+        pressure_psi = item.get("pressure_psi")
+
+        estrias_mm_raw = item.get("estrias_mm")
+        is_flat = bool(item.get("is_flat"))
+
+        estrias_mm = None
+        if estrias_mm_raw not in (None, ""):
+            try:
+                estrias_mm = int(estrias_mm_raw)
+            except Exception:
+                estrias_mm = None
+
+        tire_state = _calc_tire_state_from_data(estrias_mm, is_flat)
+
+        if seal_status not in {"OK", "DISTINTO"}:
+            seal_status = "OK"
+
+        if tire_number_status not in {"OK", "DISTINTO"}:
+            tire_number_status = "OK"
+
+        if tire_state not in TIRE_STATES:
+            tire_state = "OK"
+
+        row = ChassisTire.query.filter_by(
+            chassis_id=selected_chassis.id,
+            position_code=pos,
+        ).first()
+
+        if not row:
+            row = ChassisTire(
+                chassis_id=selected_chassis.id,
+                position_code=pos,
+            )
+            db.session.add(row)
+            db.session.flush()
+
+        marchamo_config = row.marchamo
+        tire_number_config = row.tire.tire_number if row.tire else None
+
+        master_pos = _normalize_position_for_tire_master(pos)
+        if master_pos:
+            grp = grouped_tire_readings.setdefault(master_pos, {
+                "states": [],
+                "pressures": [],
+                "comments": [],
+                "seal_issue": False,
+                "seal_2": None,
+            })
+
+            grp["states"].append(tire_state)
+
+            if pressure_psi not in (None, ""):
+                grp["pressures"].append(pressure_psi)
+
+            if seal_status != "OK":
+                grp["seal_issue"] = True
+
+            detail_parts = [
+                f"{pos}",
+                f"SEAL={seal_status}",
+                f"STATE={tire_state}",
+            ]
+
+            if estrias_mm not in (None, ""):
+                detail_parts.append(f"MM={estrias_mm}")
+            if is_flat:
+                detail_parts.append("FLAT=SI")
+            if pressure_psi not in (None, ""):
+                detail_parts.append(f"PSI={pressure_psi}")
+
+            grp["comments"].append(" | ".join(detail_parts))
+
+        row.estrias_mm = estrias_mm
+        row.is_flat = is_flat
+        row.tire_state = tire_state
+        row.updated_at = datetime.utcnow()
+        db.session.add(row)
+
+        if seal_status == "DISTINTO":
+            any_tire_issue = True
+            tire_lines.append(f"{pos}: MARCHAMO DISTINTO")
+            ticket_alert_lines.append(f"MARCHAMO DISTINTO EN {pos}")
+
+        if tire_number_status == "DISTINTO":
+            any_tire_issue = True
+            tire_lines.append(f"{pos}: NUMERO DE LLANTA DISTINTO")
+            ticket_alert_lines.append(f"NUMERO DE LLANTA DISTINTO EN {pos}")
+
+        if is_flat:
+            any_tire_issue = True
+            tire_lines.append(f"{pos}: PINCHADA (DESINFLADA)")
+        elif tire_state != "OK":
+            any_tire_issue = True
+            tire_lines.append(
+                f"{pos}: ESTADO {tire_state} ({tire_state_labels.get(tire_state, tire_state)})"
+            )
+
+        ticket_tire_rows.append({
+            "pos": pos,
+            "marchamo_config": marchamo_config,
+            "seal_status": seal_status,
+            "tire_number_config": tire_number_config,
+            "tire_number_status": tire_number_status,
+            "estrias_mm": estrias_mm,
+            "is_flat": is_flat,
+            "tire_state": tire_state,
+            "pressure_psi": pressure_psi,
+        })
+
+    _save_grouped_tire_readings(
+        site_id=site_id,
+        chassis_id=selected_chassis.id,
+        axles=axles,
+        grouped_readings=grouped_tire_readings,
+        user_id=current_user.id,
+        event_type="GATE_IN",
+        event_id=mv.id,
+    )
+
+    structure_lines = []
+
+    if structure_status in {"GOLPE", "DOBLADO", "SOLDADURA"}:
+        structure_lines.append(f"Estructura: {structure_status}")
+
+    if twistlocks_status in {"DANADOS"}:
+        structure_lines.append(f"Twistlocks: {twistlocks_status}")
+
+    if landing_gear_status in {"DANADAS"}:
+        structure_lines.append(f"Patas: {landing_gear_status}")
+
+    if lights_status in {"IZQ_DANADA", "DER_DANADA"}:
+        structure_lines.append(f"Luces: {lights_status}")
+
+    if mudflap_status in {"NO_TRAE"}:
+        structure_lines.append(f"Faldones: {mudflap_status}")
+
+    if plate_validation_status in {"DISTINTA", "NO_TRAE"}:
+        line = f"Placa: {plate_validation_status}"
+        if plate_text:
+            line += f" (CONFIGURADA: {plate_text})"
+        structure_lines.append(line)
+
+    if damage_summary:
+        structure_lines.append(f"Resumen: {damage_summary}")
+
+    if comments:
+        structure_lines.append(f"Chequeador: {comments}")
+
+    if driver_comments:
+        structure_lines.append(f"Chofer: {driver_comments}")
+
+    chassis_needs_workshop_manual = bool(chassis_inspection.get("needs_workshop"))
+    needs_workshop_chassis = (
+        bool(structure_lines)
+        or bool(any_tire_issue)
+        or chassis_needs_workshop_manual
+    )
+
+    inspection_id = _insert_dynamic("yard_gate_alamo", "chassis_inspections", {
+        "site_id": site_id,
+        "chassis_id": selected_chassis.id,
+        "inspected_at": datetime.utcnow(),
+        "inspected_by_user_id": current_user.id,
+        "structure_status": structure_status or None,
+        "twistlocks_status": twistlocks_status or None,
+        "landing_gear_status": landing_gear_status or None,
+        "lights_status": lights_status or None,
+        "mudflap_status": mudflap_status or None,
+        "plate_text": plate_text or None,
+        "plate_validation_status": plate_validation_status or None,
+        "comments": comments or None,
+        "driver_comments": driver_comments or None,
+        "needs_workshop": needs_workshop_chassis,
+        "damage_summary": damage_summary or None,
+        "movement_id": mv.id,
+    })
+
+    selected_chassis.site_id = site_id
+    selected_chassis.is_in_yard = True
+    selected_chassis.updated_at = datetime.utcnow()
+    db.session.add(selected_chassis)
+
+    inv = ChassisInventory.query.filter_by(chassis_id=selected_chassis.id).first()
+    if not inv:
+        inv = ChassisInventory(
+            site_id=site_id,
+            chassis_id=selected_chassis.id,
+            chassis_code=selected_chassis.chassis_number,
+            is_in_yard=True,
+        )
+    else:
+        inv.site_id = site_id
+        inv.chassis_code = selected_chassis.chassis_number
+        inv.is_in_yard = True
+        inv.updated_at = datetime.utcnow()
+
+    db.session.add(inv)
+
+    chassis_classification_ticket_payload = _build_chassis_gate_in_ticket_text(
+        site_name=(active_site.name if active_site else ""),
+        username=username,
+        occurred_at=mv.occurred_at or datetime.utcnow(),
+        chassis_number=selected_chassis.chassis_number,
+        plate=selected_chassis.plate,
+        structure_status=structure_status,
+        twistlocks_status=twistlocks_status,
+        landing_gear_status=landing_gear_status,
+        lights_status=lights_status,
+        mudflap_status=mudflap_status,
+        plate_validation_status=plate_validation_status,
+        damage_summary=damage_summary or None,
+        comments=comments or None,
+        driver_comments=driver_comments or None,
+        tire_rows=ticket_tire_rows,
+        alert_lines=ticket_alert_lines,
+    )
+
+    if needs_workshop_chassis:
+        last_eir = _fetch_last_final_eir_for_chassis(selected_chassis.id)
+        eir_prev_id = int(last_eir["id"]) if last_eir and last_eir.get("id") else None
+
+        body = _build_workshop_ticket_text(
+            chassis_number=selected_chassis.chassis_number,
+            axles=axles,
+            structure_lines=structure_lines,
+            tire_lines=tire_lines,
+            eir_prev_id=eir_prev_id,
+        )
+
+        workshop_ticket_id = _insert_dynamic("yard_gate_alamo", "workshop_tickets", {
+            "site_id": site_id,
+            "chassis_id": selected_chassis.id,
+            "inspection_id": inspection_id,
+            "created_at": datetime.utcnow(),
+            "created_by_user_id": current_user.id,
+            "status": "OPEN",
+            "ticket_type": "CHASSIS_DAMAGE",
+            "movement_id": mv.id,
+            "payload_text": body,
+            "notes": body,
+        })
+
+        audit_log(
+            current_user.id,
+            "WORKSHOP_TICKET_CREATED_FROM_GATE_IN",
+            "workshop_ticket",
+            workshop_ticket_id,
+            {
+                "site_id": site_id,
+                "movement_id": mv.id,
+                "chassis_id": selected_chassis.id,
+                "container_id": container_id,
+                "seal_mismatch": bool(seal_differences),
+            },
+        )
+
+    if chassis_classification_ticket_payload:
+        print_job_id = _enqueue_print_job(
+            payload_text=chassis_classification_ticket_payload,
+            requested_by=username,
+            request_origin="GATE_IN_CHASSIS",
+            ticket_id=workshop_ticket_id,
+        )
+        print_job_ids.append(print_job_id)
+
+        _send_ticket_to_print_agent(chassis_classification_ticket_payload)
+
+    audit_log(
+        current_user.id,
+        "CHASSIS_CLASSIFIED_FROM_GATE_IN",
+        "chassis",
+        selected_chassis.id,
+        {
+            "site_id": site_id,
+            "movement_id": mv.id,
+            "container_id": container_id,
+            "needs_workshop": needs_workshop_chassis,
+            "classification_ticket": bool(chassis_classification_ticket_payload),
+            "seal_mismatch": bool(seal_differences),
+            "print_job_ids": print_job_ids,
+        },
+    )
+
+    return {
+        "movement_id": mv.id,
+        "chassis_id": selected_chassis.id,
+        "chassis_number": selected_chassis.chassis_number,
+        "workshop_ticket_id": workshop_ticket_id,
+        "print_job_ids": print_job_ids,
+    }
 
 @yard_bp.post("/gate-in")
 @login_required
@@ -607,13 +1029,86 @@ def gate_in_post():
         depth_row = None
         tier = None
 
-    if gate_in_mode == "CHASSIS_BUNDLE":
-        flash(
-            "El modo Atado ya fue detectado, pero todavía falta implementar el guardado múltiple.",
-            "warning",
-        )
-        return redirect(url_for("yard.gate_in_view"))
+        if gate_in_mode == "CHASSIS_BUNDLE":
+            bundle_results = []
+            bundle_print_job_ids = []
+            bundle_workshop_ticket_ids = []
+            bundle_code = f"ATADO-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
 
+            for idx, item in enumerate(chassis_bundle, start=1):
+                chassis_id = int(item.get("chassis_id"))
+
+                selected_bundle_chassis = Chassis.query.get(chassis_id)
+
+                item_tire_checks = item.get("tire_checks") or {}
+                if not isinstance(item_tire_checks, dict):
+                    item_tire_checks = {}
+
+                item_inspection = item.get("inspection") or {}
+                if not isinstance(item_inspection, dict):
+                    item_inspection = {}
+
+                item_axle_seals_raw = item.get("axle_seals") or {}
+                if not isinstance(item_axle_seals_raw, dict):
+                    item_axle_seals_raw = {}
+
+                item_axle_seals = _parse_axle_seals_payload(
+                    json.dumps(item_axle_seals_raw)
+                )
+
+                result = _process_single_chassis_gate_in(
+                    site_id=site_id,
+                    active_site=active_site,
+                    username=username,
+                    selected_chassis=selected_bundle_chassis,
+                    chassis_tire_checks=item_tire_checks,
+                    chassis_inspection=item_inspection,
+                    chassis_axle_seals=item_axle_seals,
+                    movement_notes=(
+                        f"INGRESO ATADO DE CHASIS | {bundle_code} | "
+                        f"CHASIS {idx}/{len(chassis_bundle)}"
+                    ),
+                    container_id=None,
+                )
+
+                bundle_results.append(result)
+                bundle_print_job_ids.extend(result.get("print_job_ids") or [])
+
+                if result.get("workshop_ticket_id"):
+                    bundle_workshop_ticket_ids.append(result["workshop_ticket_id"])
+
+            audit_log(
+                current_user.id,
+                "GATE_IN_CHASSIS_BUNDLE_CREATED",
+                "movement",
+                None,
+                {
+                    "site_id": site_id,
+                    "bundle_code": bundle_code,
+                    "total_chassis": len(bundle_results),
+                    "chassis_ids": [r["chassis_id"] for r in bundle_results],
+                    "chassis_numbers": [r["chassis_number"] for r in bundle_results],
+                    "movement_ids": [r["movement_id"] for r in bundle_results],
+                    "workshop_ticket_ids": bundle_workshop_ticket_ids,
+                    "print_job_ids": bundle_print_job_ids,
+                },
+            )
+
+            db.session.commit()
+
+            msg = (
+                f"Atado registrado correctamente: {len(bundle_results)} chasis. "
+                f"Código de grupo: {bundle_code}."
+            )
+
+            if bundle_print_job_ids:
+                msg += " Tickets enviados a cola de impresión."
+
+            if bundle_workshop_ticket_ids:
+                msg += " Se generaron tickets de taller por hallazgos."
+
+            flash(msg, "success")
+            return redirect(url_for("yard.gate_in_view"))
     # =========================
     # Crear movimiento
     # =========================
