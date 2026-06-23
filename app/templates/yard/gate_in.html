@@ -724,6 +724,24 @@
       <input type="hidden" name="chassis_axle_seals_json" id="chassis_axle_seals_json" value="{}">
       <input type="hidden" name="chassis_bundle_json" id="chassis_bundle_json" value="[]">
 
+      <div id="bundleSection" class="section-card hidden">
+        <h3 style="margin:0;">Atado de chasis</h3>
+        <div class="hint" style="margin-top:6px;">
+          Agrega 2 o 3 chasis. El sistema los registrará separados al guardar.
+        </div>
+
+        <div id="bundleRows" style="display:grid; gap:10px; margin-top:12px;"></div>
+
+        <div style="display:flex; gap:10px; margin-top:12px;">
+          <button type="button" class="btn" id="btnAddBundleChassis">
+            + Agregar chasis
+          </button>
+          <button type="button" class="btn btn-ghost" id="btnClearBundle">
+            Limpiar atado
+          </button>
+        </div>
+      </div>
+
       <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
         <div>
           <label>Buscar / seleccionar chasis</label>
@@ -1375,6 +1393,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const chassisInspectionHidden = document.getElementById("chassis_inspection_json");
   const chassisAxleSealsHidden = document.getElementById("chassis_axle_seals_json");
   const chassisBundleHidden = document.getElementById("chassis_bundle_json");
+  const bundleSection = document.getElementById("bundleSection");
+  const bundleRows = document.getElementById("bundleRows");
+  const btnAddBundleChassis = document.getElementById("btnAddBundleChassis");
+  const btnClearBundle = document.getElementById("btnClearBundle");
   const axleSealsBlock = document.getElementById("axleSealsBlock");
   const chassisPosTbody = document.getElementById("chassisPosTbody");
   const previousSealsBlock = document.getElementById("previousSealsBlock");
@@ -1464,6 +1486,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  chassisBundleCache = [
+      { search:"", chassis_id:null },
+      { search:"", chassis_id:null }
+  ];
+
+  renderBundleRows();
+
   function syncGateInMode(){
     const hasChassis = modeHasChassis();
     const hasContainer = modeHasContainer();
@@ -1507,6 +1536,14 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         submitBtn.textContent = "Guardar Gate In y generar ticket";
       }
+    }
+
+    if (bundleSection){
+        bundleSection.classList.toggle("hidden", !modeIsBundle());
+    }
+
+    if (chassisBlock){
+        chassisBlock.classList.toggle("hidden", modeIsBundle());
     }
 
     buildSummary();
@@ -2389,6 +2426,82 @@ document.addEventListener("DOMContentLoaded", () => {
       });
   }
 
+  function renderBundleRows(){
+
+      if (!bundleRows) return;
+
+      bundleRows.innerHTML = "";
+
+      chassisBundleCache.forEach((item, idx) => {
+
+          bundleRows.insertAdjacentHTML(
+              "beforeend",
+              `
+              <div class="card" style="padding:12px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                      <strong>Chasis ${idx + 1}</strong>
+
+                      ${
+                          idx > 0
+                          ? `<button
+                              type="button"
+                              class="btn btn-ghost btn-remove-bundle"
+                              data-index="${idx}">
+                              Quitar
+                            </button>`
+                          : ""
+                      }
+                  </div>
+
+                  <input
+                      type="text"
+                      class="bundle-chassis-input"
+                      data-index="${idx}"
+                      placeholder="Número de chasis o placa"
+                      value="${item.search || ""}"
+                      style="margin-top:10px;"
+                      list="chassisList"
+                  >
+              </div>
+              `
+          );
+      });
+
+      document
+          .querySelectorAll(".bundle-chassis-input")
+          .forEach(input => {
+
+              input.addEventListener("change", () => {
+
+                  const idx = Number(input.dataset.index);
+
+                  const found = findChassisByInputValue(input.value);
+
+                  chassisBundleCache[idx] = {
+                      search: input.value,
+                      chassis_id: found ? found.id : null
+                  };
+
+                  syncHiddenChassisPayloads();
+              });
+          });
+
+      document
+          .querySelectorAll(".btn-remove-bundle")
+          .forEach(btn => {
+
+              btn.addEventListener("click", () => {
+
+                  const idx = Number(btn.dataset.index);
+
+                  chassisBundleCache.splice(idx, 1);
+
+                  renderBundleRows();
+                  syncHiddenChassisPayloads();
+              });
+          });
+  }
+
   async function loadSelectedChassisFromInput(){
     const item = findChassisByInputValue(chassisSearch?.value || "");
 
@@ -2536,6 +2649,39 @@ document.addEventListener("DOMContentLoaded", () => {
         loadSelectedChassisFromInput();
       }
     });
+  }
+
+  if (btnAddBundleChassis){
+
+      btnAddBundleChassis.addEventListener("click", () => {
+
+          if (chassisBundleCache.length >= 3){
+              alert("Máximo 3 chasis por atado.");
+              return;
+          }
+
+          chassisBundleCache.push({
+              search: "",
+              chassis_id: null
+          });
+
+          renderBundleRows();
+          syncHiddenChassisPayloads();
+      });
+  }
+
+  if (btnClearBundle){
+
+      btnClearBundle.addEventListener("click", () => {
+
+          chassisBundleCache = [
+              { search:"", chassis_id:null },
+              { search:"", chassis_id:null }
+          ];
+
+          renderBundleRows();
+          syncHiddenChassisPayloads();
+      });
   }
 
   [
