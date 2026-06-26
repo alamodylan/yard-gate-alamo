@@ -100,6 +100,7 @@ def _get_container_prefill_data(code: str) -> dict:
         "status_notes": container.status_notes if container else None,
         "site_id": container.site_id if container else None,
         "is_in_yard": bool(container.is_in_yard) if container else False,
+        "gate_in_origin_port": container.gate_in_origin_port if container else None,
 
         "shipping_line": last_class["shipping_line"] if last_class else None,
         "max_gross_kg": last_class["max_gross_kg"] if last_class else None,
@@ -677,6 +678,13 @@ def gate_in_post():
     driver_id_doc = (request.form.get("driver_id_doc") or "").strip()
     truck_plate = (request.form.get("truck_plate") or "").strip()
 
+    gate_in_origin_port = (
+        request.form.get("gate_in_origin_port") or ""
+    ).strip().upper()
+
+    if gate_in_origin_port not in {"", "LIMON", "CALDERA"}:
+        gate_in_origin_port = ""
+
     block_code = (request.form.get("block") or "").strip().upper()
     bay_number_raw = (request.form.get("bay_number") or "").strip()
 
@@ -950,6 +958,7 @@ def gate_in_post():
                 size=size,
                 year=year,
                 status_notes=final_status_notes or None,
+                gate_in_origin_port=gate_in_origin_port or None,
                 is_in_yard=True,
                 site_id=site_id,
                 dispatch_status="NORMAL",
@@ -962,6 +971,7 @@ def gate_in_post():
             c.dispatch_status = "NORMAL"
             c.dispatch_marked_at = None
             c.dispatch_marked_by_user_id = None
+            c.gate_in_origin_port = gate_in_origin_port or None
 
             if hasattr(c, "mounted_at"):
                 c.mounted_at = None

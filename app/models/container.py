@@ -30,6 +30,7 @@ class Container(db.Model):
     evacuation_destination = db.Column(db.String(100), nullable=True)
     evacuation_type = db.Column(db.String(50), nullable=True)
     evacuation_notes = db.Column(db.Text, nullable=True)
+    gate_in_origin_port = db.Column(db.String(20), nullable=True)
 
     is_in_yard = db.Column(db.Boolean, nullable=False, default=True)
 

@@ -658,7 +658,7 @@
       </div>
     </div>
 
-    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px;">
+    <div class="grid" style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; margin-top:12px;">
       <div>
         <label>Naviera (opcional)</label>
         <select id="shipping_line" name="shipping_line">
@@ -675,6 +675,20 @@
           <label>Indica cuál</label>
           <input id="shipping_line_other" name="shipping_line_other" placeholder="Ej: Hapag, CMA, etc.">
         </div>
+      </div>
+
+      <div>
+          <label>Origen de ingreso</label>
+
+          <select id="gate_in_origin_port" name="gate_in_origin_port">
+              <option value="" selected>Sin definir</option>
+              <option value="LIMON">Limón</option>
+              <option value="CALDERA">Caldera</option>
+          </select>
+
+          <div class="hint" style="margin-top:6px;">
+              Indica desde qué puerto ingresó este contenedor.
+          </div>
       </div>
 
       <div>
@@ -1980,6 +1994,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (containerPrefillHint) {
           containerPrefillHint.textContent = "Contenedor nuevo. Completa la información para el primer registro.";
         }
+
+        const gateInOriginSelect = document.getElementById("gate_in_origin_port");
+
+        if (gateInOriginSelect){
+            gateInOriginSelect.value = "";
+        }
+
         return;
       }
 
@@ -1990,6 +2011,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       setShippingLineValue(data.shipping_line);
+
+      const gateInOriginSelect = document.getElementById("gate_in_origin_port");
+
+      if (gateInOriginSelect) {
+          gateInOriginSelect.value = data.gate_in_origin_port || "";
+      }
 
       setMaxGrossValue(data.max_gross_kg);
 
