@@ -221,10 +221,13 @@ def sites_select():
 @login_required
 def home():
     allowed = _allowed_sites_for_user(current_user)
+
     if len(allowed) == 1:
         _set_active_site_id(allowed[0].id)
-        return redirect(url_for("yard.map_view"))
-    return redirect(url_for("yard.sites_dashboard"))
+    else:
+        _ensure_active_site()
+
+    return render_template("home.html")
 
 
 @yard_bp.get("/map")

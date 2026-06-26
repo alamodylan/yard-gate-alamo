@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+
+<div class="welcome-page">
+
+    <img
+        src="{{ url_for('static', filename='img/icon-512.png') }}"
+        class="welcome-logo"
+        alt="Yard Gate Álamo">
+
+    <h1>Bienvenido a</h1>
+
+    <h2>Yard Gate Álamo</h2>
+
+    <div class="welcome-user">
+
+        {{ current_user.username }}
+
+    </div>
+
+    <div class="welcome-role">
+
+        {{ current_user.role.replace("_"," ").title() }}
+
+    </div>
+
+    {% if active_site %}
+    <div class="welcome-site">
+
+        Predio activo:
+        <strong>{{ active_site.name }}</strong>
+
+    </div>
+    {% endif %}
+
+    <div class="welcome-text">
+
+        Selecciona un módulo desde el menú superior para comenzar.
+
+    </div>
+
+</div>
+
+<style>
+
+.welcome-page{
+
+    min-height:calc(100vh - 140px);
+
+    display:flex;
+
+    flex-direction:column;
+
+    justify-content:center;
+
+    align-items:center;
+
+    text-align:center;
+
+    background:#fff;
+
+}
+
+.welcome-logo{
+
+    width:190px;
+
+    max-width:40vw;
+
+    margin-bottom:35px;
+
+    animation:fadeLogo .35s ease;
+
+}
+
+.welcome-page h1{
+
+    margin:0;
+
+    color:#0f3b63;
+
+    font-size:38px;
+
+    font-weight:800;
+
+}
+
+.welcome-page h2{
+
+    margin:8px 0 30px;
+
+    color:#2b2b2b;
+
+    font-size:26px;
+
+    font-weight:600;
+
+}
+
+.welcome-user{
+
+    font-size:28px;
+
+    font-weight:800;
+
+    color:#111827;
+
+}
+
+.welcome-role{
+
+    margin-top:10px;
+
+    font-size:18px;
+
+    color:#64748b;
+
+    font-weight:700;
+
+}
+
+.welcome-site{
+
+    margin-top:10px;
+
+    font-size:17px;
+
+    color:#475569;
+
+}
+
+.welcome-text{
+
+    margin-top:45px;
+
+    color:#64748b;
+
+    font-size:16px;
+
+}
+
+@keyframes fadeLogo{
+
+    from{
+
+        opacity:0;
+
+        transform:translateY(10px);
+
+    }
+
+    to{
+
+        opacity:1;
+
+        transform:none;
+
+    }
+
+}
+
+</style>
+
+{% endblock %}
