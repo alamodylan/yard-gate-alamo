@@ -96,10 +96,13 @@ ROLE_PERMISSIONS = {
 
     "control_equipo": {
         "inventory.view",
+        "inventory.actions",
+
         "empty_list.view",
+        "empty_list.actions",
+
         "eir.view",
         "reports.view",
-        "reports.export",
     },
 
     "despachador": {
