@@ -21,6 +21,7 @@ from datetime import datetime
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import PatternFill
 from app.models.container_classification import ContainerClassification
+from app.services.audit import audit_log
 
 
 # =========================================================
@@ -1272,3 +1273,37 @@ def inventory_bulk_upload_post():
         },
         errors=[],
     )
+
+@inventory_bp.post("/inventory/<int:container_id>/update-gate-in-origin")
+@login_required
+def update_gate_in_origin(container_id: int):
+    c = Container.query.get_or_404(container_id)
+
+    gate_in_origin_port = (
+        request.form.get("gate_in_origin_port") or ""
+    ).strip().upper()
+
+    if gate_in_origin_port not in {"", "LIMON", "CALDERA"}:
+        flash("Origen de ingreso inválido.", "danger")
+        return redirect(url_for("inventory.inventory_detail", container_id=c.id))
+
+    c.gate_in_origin_port = gate_in_origin_port or None
+    c.updated_at = datetime.utcnow()
+
+    db.session.add(c)
+
+    audit_log(
+        current_user.id,
+        "CONTAINER_GATE_IN_ORIGIN_UPDATED",
+        "container",
+        c.id,
+        {
+            "container_code": c.code,
+            "gate_in_origin_port": c.gate_in_origin_port,
+        },
+    )
+
+    db.session.commit()
+
+    flash("Origen de ingreso actualizado.", "success")
+    return redirect(url_for("inventory.inventory_detail", container_id=c.id))
