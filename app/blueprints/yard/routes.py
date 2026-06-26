@@ -214,7 +214,7 @@ def sites_select():
         return redirect(url_for("yard.sites_dashboard"))
 
     _set_active_site_id(site_id)
-    return redirect(url_for("yard.map_view"))
+    return redirect(url_for("yard.home"))
 
 
 @yard_bp.get("/")
