@@ -94,10 +94,15 @@ def _ensure_active_site():
 # Query principal de inventario
 # =========================================================
 
-def _inventory_query(site_id: int, in_yard: str | None, qtext: str):
-
+def _inventory_query(
+    site_id: int,
+    in_yard: str | None,
+    qtext: str,
+    shipping_line: str = "",
+):
     # Inventario por defecto = solo lo que está en patio
     in_yard = (in_yard or "1").strip()
+    shipping_line = (shipping_line or "").strip().upper()
 
     q = (
         db.session.query(Container, ContainerPosition, YardBay)
@@ -114,6 +119,18 @@ def _inventory_query(site_id: int, in_yard: str | None, qtext: str):
 
     if qtext:
         q = q.filter(db.func.upper(Container.code).like(f"%{qtext}%"))
+
+    if shipping_line:
+        q = (
+            q.join(
+                ContainerClassification,
+                ContainerClassification.container_id == Container.id,
+            )
+            .filter(
+                ContainerClassification.site_id == site_id,
+                db.func.upper(ContainerClassification.shipping_line) == shipping_line,
+            )
+        )
 
     return q.order_by(Container.updated_at.desc())
 
@@ -194,7 +211,14 @@ def inventory_index():
 
     qtext = (request.args.get("q") or "").strip().upper()
 
-    rows = _inventory_query(site_id, in_yard, qtext).all()
+    shipping_line = (request.args.get("shipping_line") or "").strip().upper()
+
+    rows = _inventory_query(
+        site_id,
+        in_yard,
+        qtext,
+        shipping_line,
+    ).all()
 
     container_ids = [c.id for c, _, _ in rows]
 
@@ -212,6 +236,7 @@ def inventory_index():
             {
                 "id": c.id,
                 "code": c.code,
+                "gate_in_origin_port": c.gate_in_origin_port,
                 "size": c.size,
                 "year": (cls.get("manufacture_year") if cls else c.year),
                 "shipping_line": (cls.get("shipping_line") if cls else ""),
@@ -236,10 +261,27 @@ def inventory_index():
             }
         )
 
+    shipping_lines = [
+        r[0]
+        for r in (
+            db.session.query(ContainerClassification.shipping_line)
+            .filter(
+                ContainerClassification.site_id == site_id,
+                ContainerClassification.shipping_line.isnot(None),
+                ContainerClassification.shipping_line != "",
+            )
+            .distinct()
+            .order_by(ContainerClassification.shipping_line)
+            .all()
+        )
+    ]
+
     return render_template(
         "inventory/index.html",
         items=items,
         in_yard=in_yard,
+        shipping_lines=shipping_lines,
+        shipping_line=shipping_line,
         q=qtext,
     )
 
@@ -258,7 +300,14 @@ def inventory_export():
 
     qtext = (request.args.get("q") or "").strip().upper()
 
-    rows = _inventory_query(site_id, in_yard, qtext).all()
+    shipping_line = (request.args.get("shipping_line") or "").strip().upper()
+
+    rows = _inventory_query(
+        site_id,
+        in_yard,
+        qtext,
+        shipping_line,
+    ).all()
 
     container_ids = [c.id for c, _, _ in rows]
 
