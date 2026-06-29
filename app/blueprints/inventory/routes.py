@@ -618,6 +618,7 @@ BULK_HEADERS = [
     "MAX_GROSS",
     "TARA",
     "NOTAS",
+    "ORIGEN",
     "ESTIBA",
     "FILA",
     "NIVEL",
@@ -877,7 +878,6 @@ def inventory_bulk_upload_template():
         cell.font = header_font
         cell.fill = header_fill
         cell.alignment = Alignment(horizontal="center")
-
         ws.column_dimensions[get_column_letter(col_idx)].width = max(len(header) + 4, 18)
 
     example = [
@@ -889,6 +889,7 @@ def inventory_bulk_upload_template():
         32500,
         3800,
         "Piso OK",
+        "",      # ORIGEN: vacío, LIMON o CALDERA
         "A1E",
         1,
         1,
@@ -911,6 +912,12 @@ def inventory_bulk_upload_template():
         allow_blank=False,
     )
 
+    dv_origin = DataValidation(
+        type="list",
+        formula1='"LIMON,CALDERA"',
+        allow_blank=True,
+    )
+
     dv_dest = DataValidation(
         type="list",
         formula1='"LIMON,CALDERA,OTRO"',
@@ -925,13 +932,15 @@ def inventory_bulk_upload_template():
 
     ws.add_data_validation(dv_size)
     ws.add_data_validation(dv_status)
+    ws.add_data_validation(dv_origin)
     ws.add_data_validation(dv_dest)
     ws.add_data_validation(dv_type)
 
     dv_size.add("B2:B5000")
     dv_status.add("D2:D5000")
-    dv_dest.add("L2:L5000")
-    dv_type.add("M2:M5000")
+    dv_origin.add("I2:I5000")
+    dv_dest.add("M2:M5000")
+    dv_type.add("N2:N5000")
 
     ws2 = wb.create_sheet("INSTRUCCIONES")
 
@@ -939,7 +948,7 @@ def inventory_bulk_upload_template():
         ["CARGA MASIVA DE CONTENEDORES", ""],
         ["", ""],
         ["Campos obligatorios", "CONTENEDOR, TAMAÑO, NAVIERA, ESTADO"],
-        ["Campos opcionales", "AÑO, MAX_GROSS, TARA, NOTAS, ESTIBA, FILA, NIVEL, DESTINO_EVACUACION, TIPO_EVACUACION, OBS_EVACUACION"],
+        ["Campos opcionales", "AÑO, MAX_GROSS, TARA, NOTAS, ORIGEN, ESTIBA, FILA, NIVEL, DESTINO_EVACUACION, TIPO_EVACUACION, OBS_EVACUACION"],
         ["", ""],
         ["Regla de ubicación", "Si ESTIBA, FILA y NIVEL vienen completos, se ubicará automáticamente."],
         ["Regla de ubicación", "Si falta alguno de los tres, quedará en patio pendiente de ubicar."],
@@ -955,6 +964,7 @@ def inventory_bulk_upload_template():
         ["Tamaños permitidos", "20ST, 20OT, 20RF, 20TQ, 40ST, 40HC, 40RF, 40OT, 45HC"],
         ["Tipos evacuación", "RT, BARCO, EVACUACION"],
         ["Destinos evacuación", "LIMON, CALDERA, OTRO"],
+        ["Origen", "Puede venir vacío, LIMON o CALDERA"],
     ]
 
     for row in instructions:
@@ -1049,6 +1059,7 @@ def inventory_bulk_upload_post():
         max_gross_kg = _bulk_int(_bulk_get(row, headers, "MAX_GROSS"))
         tare_kg = _bulk_int(_bulk_get(row, headers, "TARA"))
         notes = _bulk_clean(_bulk_get(row, headers, "NOTAS"))
+        origin = _bulk_upper(_bulk_get(row, headers, "ORIGEN"))
 
         bay_code = _bulk_upper(_bulk_get(row, headers, "ESTIBA"))
         depth_row = _bulk_int(_bulk_get(row, headers, "FILA"))
@@ -1102,6 +1113,9 @@ def inventory_bulk_upload_post():
         if tare_kg is not None and tare_kg <= 0:
             row_errors.append("TARA debe ser mayor a 0.")
 
+        if origin and origin not in {"LIMON", "CALDERA"}:
+            row_errors.append(f"ORIGEN inválido: {origin}. Debe ser LIMON, CALDERA o vacío.")
+
         if evac_type and evac_type not in BULK_VALID_EVAC_TYPES:
             row_errors.append(f"TIPO_EVACUACION inválido: {evac_type}.")
 
@@ -1149,6 +1163,7 @@ def inventory_bulk_upload_post():
             "max_gross_kg": max_gross_kg,
             "tare_kg": tare_kg,
             "notes": notes,
+            "origin": origin,
             "position": position_result,
             "evac_destination": evac_destination,
             "evac_type": evac_type,
@@ -1191,6 +1206,7 @@ def inventory_bulk_upload_post():
                 size=item["size"],
                 year=item["year"],
                 status_notes=status_notes,
+                gate_in_origin_port=item["origin"] or None,
                 is_in_yard=True,
                 dispatch_status=item["dispatch_status"],
             )
