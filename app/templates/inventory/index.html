@@ -76,8 +76,9 @@
           <th>Naviera</th>
           <th>Año</th>
           <th>Max Gross</th>
-          <th>Fecha EIR</th>
-          <th>En patio</th>
+          <th>Clasificación</th>
+          <th>Fecha ingreso</th>
+          <th>Días en predio</th>
           <th>Estado</th>
           <th>Posición</th>
           <th>Notas</th>
@@ -140,18 +141,26 @@
             </td>
 
             <td>
-              {% if it.eir_trip_date %}
-                <span class="date-chip">{{ it.eir_trip_date }}</span>
+              {% if it.classification %}
+                <span class="classification-chip">{{ it.classification }}</span>
               {% else %}
                 <span class="muted-text">—</span>
               {% endif %}
             </td>
 
             <td>
-              {% if it.is_in_yard %}
-                <span class="yard-chip yard-yes">Sí</span>
+              {% if it.gate_in_at %}
+                <span class="date-chip">{{ it.gate_in_at.strftime("%Y-%m-%d") }}</span>
               {% else %}
-                <span class="yard-chip yard-no">No</span>
+                <span class="muted-text">—</span>
+              {% endif %}
+            </td>
+
+            <td>
+              {% if it.days_in_yard is not none %}
+                <span class="days-chip">{{ it.days_in_yard }}</span>
+              {% else %}
+                <span class="muted-text">—</span>
               {% endif %}
             </td>
 
@@ -227,7 +236,7 @@
 
         {% if not items %}
           <tr>
-            <td colspan="{% if can('inventory.actions') %}12{% else %}11{% endif %}" class="empty-cell">
+            <td colspan="{% if can('inventory.actions') %}13{% else %}12{% endif %}" class="empty-cell">
               No hay registros con ese filtro.
             </td>
           </tr>
@@ -491,7 +500,7 @@
 
     .inventory-table{
       width:100%;
-      min-width:1500px;
+      min-width:1600px;
       border-collapse:separate;
       border-spacing:0;
     }
@@ -548,6 +557,8 @@
     .line-chip,
     .date-chip,
     .yard-chip,
+    .classification-chip,
+    .days-chip,
     .position-chip,
     .level-chip{
       display:inline-flex;
@@ -819,6 +830,20 @@
     .origin-empty{
       background:#f1f5f9;
       color:#64748b;
+      border-color:#cbd5e1;
+    }
+
+    .classification-chip{
+      padding:6px 10px;
+      background:#eef2ff;
+      color:#3730a3;
+      border-color:#c7d2fe;
+    }
+
+    .days-chip{
+      padding:6px 10px;
+      background:#f8fafc;
+      color:#0f172a;
       border-color:#cbd5e1;
     }
   </style>

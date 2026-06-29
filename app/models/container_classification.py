@@ -46,6 +46,7 @@ class ContainerClassification(db.Model):
 
     summary_text = db.Column(db.Text, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    final_classification = db.Column(db.String(20), nullable=True)
 
     container = db.relationship(
         "Container",

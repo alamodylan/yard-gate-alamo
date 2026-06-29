@@ -153,10 +153,11 @@ def _last_classification_by_container_ids(container_ids: list[int]) -> dict[int,
                 max_gross_kg,
                 manufacture_year,
                 summary_text,
+                final_classification,
                 classified_at
             FROM yard_gate_alamo.container_classifications
             WHERE container_id IN :ids
-            ORDER BY container_id, classified_at DESC
+            ORDER BY container_id, classified_at DESC, id DESC
             """
         )
         .bindparams(bindparam("ids", expanding=True))
@@ -171,7 +172,7 @@ def _last_classification_by_container_ids(container_ids: list[int]) -> dict[int,
 # Último EIR por contenedor
 # =========================================================
 
-def _last_eir_trip_date_by_container_ids(container_ids: list[int]) -> dict[int, dict]:
+def _last_gate_in_by_container_ids(container_ids: list[int]) -> dict[int, dict]:
 
     if not container_ids:
         return {}
@@ -181,11 +182,12 @@ def _last_eir_trip_date_by_container_ids(container_ids: list[int]) -> dict[int, 
             """
             SELECT DISTINCT ON (container_id)
                 container_id,
-                trip_date
-            FROM yard_gate_alamo.eirs
+                occurred_at AS gate_in_at
+            FROM yard_gate_alamo.movements
             WHERE container_id IN :ids
-              AND trip_date IS NOT NULL
-            ORDER BY container_id, id DESC
+              AND movement_type = 'GATE_IN'
+              AND occurred_at IS NOT NULL
+            ORDER BY container_id, occurred_at DESC, id DESC
             """
         )
         .bindparams(bindparam("ids", expanding=True))

@@ -697,6 +697,25 @@ def gate_in_post():
     summary_text = (request.form.get("summary_text") or "").strip()
     classification_notes = (request.form.get("classification_notes") or "").strip()
 
+    final_classification = (
+        request.form.get("final_classification") or ""
+    ).strip().upper()
+
+    VALID_FINAL_CLASSIFICATIONS = {
+        "A+",
+        "A-",
+        "B+",
+        "B-",
+        "C",
+        "A2",
+        "B2",
+        "CHATARRA",
+    }
+
+    if final_classification and final_classification not in VALID_FINAL_CLASSIFICATIONS:
+        flash("Clasificación final del contenedor inválida.", "danger")
+        return redirect(url_for("yard.gate_in_view"))
+
     shipping_line = (request.form.get("shipping_line") or "").strip().upper()
     shipping_line_other = (request.form.get("shipping_line_other") or "").strip().upper()
     if shipping_line == "VASI":
@@ -992,6 +1011,7 @@ def gate_in_post():
         should_insert_class = any([
             bool(shipping_line),
             bool(summary_text),
+            bool(final_classification),
             max_gross_kg is not None,
             tare_kg is not None,
             year is not None,
