@@ -1026,13 +1026,35 @@ def gate_in_post():
 
             db.session.execute(text("""
                 INSERT INTO yard_gate_alamo.container_classifications
-                (site_id, container_id, classified_at, classified_by_user_id,
-                 shipping_line, max_gross_kg, tare_kg, manufacture_year,
-                 needs_workshop, summary_text, notes)
+                (
+                    site_id,
+                    container_id,
+                    classified_at,
+                    classified_by_user_id,
+                    shipping_line,
+                    max_gross_kg,
+                    tare_kg,
+                    manufacture_year,
+                    needs_workshop,
+                    summary_text,
+                    notes,
+                    final_classification
+                )
                 VALUES
-                (:site_id, :container_id, NOW(), :uid,
-                 :shipping_line, :max_gross_kg, :tare_kg, :manufacture_year,
-                 :needs_workshop, :summary_text, :notes)
+                (
+                    :site_id,
+                    :container_id,
+                    NOW(),
+                    :uid,
+                    :shipping_line,
+                    :max_gross_kg,
+                    :tare_kg,
+                    :manufacture_year,
+                    :needs_workshop,
+                    :summary_text,
+                    :notes,
+                    :final_classification
+                )
             """), {
                 "site_id": site_id,
                 "container_id": c.id,
@@ -1044,6 +1066,7 @@ def gate_in_post():
                 "needs_workshop": bool(needs_workshop),
                 "summary_text": (summary_text or None),
                 "notes": (classification_notes or None),
+                "final_classification": (final_classification or None),
             })
 
         # =========================
