@@ -17,7 +17,7 @@ from app.models.yard import YardBay
 from app.models.movement import Movement, MovementPhoto
 from app.models.site import Site, UserSite
 from flask import render_template, request, send_file, session, abort, redirect, url_for, flash
-from datetime import datetime
+from datetime import datetime, date
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import PatternFill
 from app.models.container_classification import ContainerClassification
@@ -632,6 +632,8 @@ BULK_HEADERS = [
     "TAMAÑO",
     "NAVIERA",
     "ESTADO",
+    "CLASIFICACION",
+    "FECHA_INGRESO",
     "AÑO",
     "MAX_GROSS",
     "TARA",
@@ -680,6 +682,17 @@ BULK_VALID_EVAC_TYPES = {
     "EVACUACION",
 }
 
+BULK_VALID_CLASSIFICATIONS = {
+    "A+",
+    "A-",
+    "B+",
+    "B-",
+    "C",
+    "A2",
+    "B2",
+    "CHATARRA",
+}
+
 
 def _bulk_clean(value):
     if value is None:
@@ -701,6 +714,25 @@ def _bulk_int(value):
     except Exception:
         return None
 
+def _bulk_date(value):
+    if value is None or value == "":
+        return None
+
+    if isinstance(value, datetime):
+        return value.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+
+    raw = str(value).strip()
+
+    if not raw:
+        return None
+
+    try:
+        return datetime.strptime(raw, "%Y-%m-%d")
+    except Exception:
+        return "INVALID"
 
 def _bulk_normalize_container_code(value):
     raw = _bulk_upper(value)
@@ -903,6 +935,8 @@ def inventory_bulk_upload_template():
         "40HC",
         "ONE",
         "DISPONIBLE",
+        "A+",
+        "2026-06-29",
         2015,
         32500,
         3800,
@@ -930,6 +964,12 @@ def inventory_bulk_upload_template():
         allow_blank=False,
     )
 
+    dv_classification = DataValidation(
+        type="list",
+        formula1='"A+,A-,B+,B-,C,A2,B2,CHATARRA"',
+        allow_blank=True,
+    )
+
     dv_origin = DataValidation(
         type="list",
         formula1='"LIMON,CALDERA"',
@@ -953,12 +993,15 @@ def inventory_bulk_upload_template():
     ws.add_data_validation(dv_origin)
     ws.add_data_validation(dv_dest)
     ws.add_data_validation(dv_type)
+    ws.add_data_validation(dv_classification)
 
     dv_size.add("B2:B5000")
     dv_status.add("D2:D5000")
-    dv_origin.add("I2:I5000")
-    dv_dest.add("M2:M5000")
-    dv_type.add("N2:N5000")
+    dv_origin.add("K2:K5000")
+    dv_dest.add("O2:O5000")
+    dv_type.add("P2:P5000")
+    dv_status.add("D2:D5000")
+    dv_classification.add("E2:E5000")
 
     ws2 = wb.create_sheet("INSTRUCCIONES")
 
@@ -966,7 +1009,7 @@ def inventory_bulk_upload_template():
         ["CARGA MASIVA DE CONTENEDORES", ""],
         ["", ""],
         ["Campos obligatorios", "CONTENEDOR, TAMAÑO, NAVIERA, ESTADO"],
-        ["Campos opcionales", "AÑO, MAX_GROSS, TARA, NOTAS, ORIGEN, ESTIBA, FILA, NIVEL, DESTINO_EVACUACION, TIPO_EVACUACION, OBS_EVACUACION"],
+        ["Campos opcionales", "CLASIFICACION, FECHA_INGRESO, AÑO, MAX_GROSS, TARA, NOTAS, ORIGEN, ESTIBA, FILA, NIVEL, DESTINO_EVACUACION, TIPO_EVACUACION, OBS_EVACUACION"],
         ["", ""],
         ["Regla de ubicación", "Si ESTIBA, FILA y NIVEL vienen completos, se ubicará automáticamente."],
         ["Regla de ubicación", "Si falta alguno de los tres, quedará en patio pendiente de ubicar."],
@@ -983,6 +1026,8 @@ def inventory_bulk_upload_template():
         ["Tipos evacuación", "RT, BARCO, EVACUACION"],
         ["Destinos evacuación", "LIMON, CALDERA, OTRO"],
         ["Origen", "Puede venir vacío, LIMON o CALDERA"],
+        ["Clasificación", "Valores permitidos: A+, A-, B+, B-, C, A2, B2, CHATARRA"],
+        ["Fecha ingreso", "Formato obligatorio: YYYY-MM-DD. Ejemplo: 2026-06-29"],
     ]
 
     for row in instructions:
@@ -1072,6 +1117,8 @@ def inventory_bulk_upload_post():
         size = _bulk_upper(_bulk_get(row, headers, "TAMAÑO"))
         shipping_line = _bulk_upper(_bulk_get(row, headers, "NAVIERA"))
         status_excel = _bulk_upper(_bulk_get(row, headers, "ESTADO"))
+        final_classification = _bulk_upper(_bulk_get(row, headers, "CLASIFICACION"))
+        entry_date = _bulk_date(_bulk_get(row, headers, "FECHA_INGRESO"))
 
         year = _bulk_int(_bulk_get(row, headers, "AÑO"))
         max_gross_kg = _bulk_int(_bulk_get(row, headers, "MAX_GROSS"))
@@ -1108,6 +1155,16 @@ def inventory_bulk_upload_post():
         if not dispatch_status:
             row_errors.append(f"Estado inválido: {status_excel}.")
 
+        if final_classification and final_classification not in BULK_VALID_CLASSIFICATIONS:
+            row_errors.append(
+                f"CLASIFICACION inválida: {final_classification}. "
+                "Valores permitidos: A+, A-, B+, B-, C, A2, B2, CHATARRA."
+            )
+
+        if entry_date == "INVALID":
+            row_errors.append(
+                "FECHA_INGRESO inválida. Use formato YYYY-MM-DD, ejemplo: 2026-06-29."
+            )
         if code in seen_codes:
             row_errors.append(f"El contenedor {code} está duplicado dentro del Excel.")
 
@@ -1182,6 +1239,8 @@ def inventory_bulk_upload_post():
             "tare_kg": tare_kg,
             "notes": notes,
             "origin": origin,
+            "final_classification": final_classification,
+            "entry_date": entry_date,
             "position": position_result,
             "evac_destination": evac_destination,
             "evac_type": evac_type,
@@ -1247,14 +1306,31 @@ def inventory_bulk_upload_post():
                 ContainerClassification(
                     site_id=site_id,
                     container_id=c.id,
-                    classified_at=datetime.utcnow(),
+                    classified_at=entry_at,
                     classified_by_user_id=current_user.id,
                     shipping_line=item["shipping_line"],
                     max_gross_kg=item["max_gross_kg"],
                     tare_kg=item["tare_kg"],
                     manufacture_year=item["year"],
+                    final_classification=item["final_classification"] or None,
                     summary_text=item["notes"] or None,
                     notes=item["notes"] or None,
+                )
+            )
+
+            entry_at = item["entry_date"] or datetime.utcnow()
+
+            db.session.add(
+                Movement(
+                    site_id=site_id,
+                    container_id=c.id,
+                    movement_type="GATE_IN",
+                    occurred_at=entry_at,
+                    bay_code=None,
+                    depth_row=None,
+                    tier=None,
+                    created_by_user_id=current_user.id,
+                    notes="BULK_IMPORT_GATE_IN",
                 )
             )
 
@@ -1266,7 +1342,7 @@ def inventory_bulk_upload_post():
                         site_id=site_id,
                         container_id=c.id,
                         movement_type="MOVE",
-                        occurred_at=datetime.utcnow(),
+                        occurred_at=entry_at,
                         bay_code=None,
                         depth_row=None,
                         tier=None,
@@ -1295,7 +1371,7 @@ def inventory_bulk_upload_post():
                         site_id=site_id,
                         container_id=c.id,
                         movement_type="MOVE",
-                        occurred_at=datetime.utcnow(),
+                        occurred_at=entry_at,
                         bay_code=bay.code,
                         depth_row=depth_row,
                         tier=tier,
@@ -1312,7 +1388,7 @@ def inventory_bulk_upload_post():
                         site_id=site_id,
                         container_id=c.id,
                         movement_type="MOVE",
-                        occurred_at=datetime.utcnow(),
+                        occurred_at=entry_at,
                         bay_code=None,
                         depth_row=None,
                         tier=None,
