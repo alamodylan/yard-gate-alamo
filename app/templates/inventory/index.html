@@ -512,20 +512,20 @@
       z-index:2;
       background:#f8fafc;
       color:#334155;
-      font-size:11px;
+      font-size:10px;
       font-weight:900;
-      padding:11px 8px;
+      padding:10px 6px;
       border-bottom:1px solid #dbe3ef;
       text-align:left;
       white-space:nowrap;
       text-transform:uppercase;
-      letter-spacing:.035em;
+      letter-spacing:.015em;
     }
 
     .inventory-table td{
       color:#0f172a;
-      font-size:12px;
-      padding:10px 8px;
+      font-size:11px;
+      padding:9px 6px;
       border-bottom:1px solid #edf2f7;
       vertical-align:middle;
     }
@@ -672,9 +672,9 @@
     .position-stack{
       display:flex;
       flex-wrap:wrap;
-      gap:5px;
+      gap:4px;
       align-items:center;
-      min-width:150px;
+      min-width:0;
     }
 
     .position-chip{
@@ -708,11 +708,17 @@
     }
 
     .inventory-actions{
-      display:flex;
-      gap:8px;
-      align-items:center;
-      flex-wrap:wrap;
-      min-width:190px;
+      display:grid;
+      grid-template-columns:1fr;
+      gap:6px;
+      align-items:start;
+      min-width:0;
+    }
+
+    .inventory-actions .btn.small{
+      width:64px;
+      padding:7px 8px;
+      font-size:11px;
     }
 
     .inventory-actions form{
@@ -849,7 +855,7 @@
     }
 
     .inventory-table th:nth-child(1),
-    .inventory-table td:nth-child(1){ width:120px; }
+    .inventory-table td:nth-child(1){ width:115px; }
 
     .inventory-table th:nth-child(2),
     .inventory-table td:nth-child(2){ width:90px; }
@@ -870,21 +876,21 @@
     .inventory-table td:nth-child(7){ width:95px; }
 
     .inventory-table th:nth-child(8),
-    .inventory-table td:nth-child(8){ width:105px; }
+    .inventory-table td:nth-child(8){ width:98px; }
 
     .inventory-table th:nth-child(9),
     .inventory-table td:nth-child(9){ width:90px; }
 
     .inventory-table th:nth-child(10),
-    .inventory-table td:nth-child(10){ width:105px; }
+    .inventory-table td:nth-child(10){ width:95px; }
 
     .inventory-table th:nth-child(11),
-    .inventory-table td:nth-child(11){ width:150px; }
+    .inventory-table td:nth-child(11){ width:125px; }
 
     .inventory-table th:nth-child(12),
     .inventory-table td:nth-child(12){ width:auto; }
 
     .inventory-table th:nth-child(13),
-    .inventory-table td:nth-child(13){ width:105px; }
+    .inventory-table td:nth-child(13){ width:78px; }
   </style>
 {% endblock %}
