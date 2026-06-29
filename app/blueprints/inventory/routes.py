@@ -1313,6 +1313,7 @@ def inventory_bulk_upload_post():
                     max_gross_kg=item["max_gross_kg"],
                     tare_kg=item["tare_kg"],
                     manufacture_year=item["year"],
+                    needs_workshop=False,
                     final_classification=item["final_classification"] or None,
                     summary_text=item["notes"] or None,
                     notes=item["notes"] or None,
