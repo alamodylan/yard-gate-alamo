@@ -225,14 +225,20 @@ def inventory_index():
     container_ids = [c.id for c, _, _ in rows]
 
     cls_by_container = _last_classification_by_container_ids(container_ids)
-    eir_by_container = _last_eir_trip_date_by_container_ids(container_ids)
+    gate_in_by_container = _last_gate_in_by_container_ids(container_ids)
 
     items = []
 
     for c, pos, bay in rows:
 
         cls = cls_by_container.get(c.id)
-        eir = eir_by_container.get(c.id)
+        gate_in = gate_in_by_container.get(c.id)
+
+        gate_in_at = gate_in.get("gate_in_at") if gate_in else None
+        days_in_yard = None
+
+        if gate_in_at:
+            days_in_yard = (datetime.utcnow().date() - gate_in_at.date()).days
 
         items.append(
             {
@@ -243,7 +249,9 @@ def inventory_index():
                 "year": (cls.get("manufacture_year") if cls else c.year),
                 "shipping_line": (cls.get("shipping_line") if cls else ""),
                 "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
-                "eir_trip_date": (eir.get("trip_date") if eir else None),
+                "classification": (cls.get("final_classification") if cls else "") or "",
+                "gate_in_at": gate_in_at,
+                "days_in_yard": days_in_yard,
                 "is_in_yard": bool(c.is_in_yard),
                 "evacuation_destination": c.evacuation_destination,
                 "evacuation_type": c.evacuation_type,
@@ -314,7 +322,7 @@ def inventory_export():
     container_ids = [c.id for c, _, _ in rows]
 
     cls_by_container = _last_classification_by_container_ids(container_ids)
-    eir_by_container = _last_eir_trip_date_by_container_ids(container_ids)
+    gate_in_by_container = _last_gate_in_by_container_ids(container_ids)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -327,8 +335,9 @@ def inventory_export():
         "NAVIERA",
         "AÑO",
         "MAX_GROSS_KG",
-        "FECHA_SALIDA_EIR",
-        "EN_PATIO",
+        "CLASIFICACION",
+        "FECHA_INGRESO",
+        "DIAS_EN_PREDIO",
         "ESTIBA",
         "FILA",
         "NIVEL",
@@ -345,14 +354,20 @@ def inventory_export():
     for c, pos, bay in rows:
 
         cls = cls_by_container.get(c.id)
-        eir = eir_by_container.get(c.id)
+        gate_in = gate_in_by_container.get(c.id)
+        gate_in_at = gate_in.get("gate_in_at") if gate_in else None
+
+        gate_in_date_str = gate_in_at.strftime("%Y-%m-%d") if gate_in_at else ""
+
+        days_in_yard = ""
+        if gate_in_at:
+            days_in_yard = (datetime.utcnow().date() - gate_in_at.date()).days
+
+        classification = (cls.get("final_classification") if cls else "") or ""
 
         naviera = (cls.get("shipping_line") if cls else "") or ""
         year = (cls.get("manufacture_year") if cls else c.year) or ""
         max_gross = (cls.get("max_gross_kg") if cls else "") or ""
-
-        trip_date = eir.get("trip_date") if eir else None
-        trip_date_str = trip_date.strftime("%Y-%m-%d") if trip_date else ""
 
         notes = (cls.get("summary_text") if cls else (c.status_notes or "")) or ""
 
@@ -364,8 +379,9 @@ def inventory_export():
                 naviera,
                 year,
                 max_gross,
-                trip_date_str,
-                "SI" if c.is_in_yard else "NO",
+                classification,
+                gate_in_date_str,
+                days_in_yard,
                 (bay.code if (pos and bay) else "") or "",
                 (pos.depth_row if pos else "") or "",
                 (pos.tier if pos else "") or "",
