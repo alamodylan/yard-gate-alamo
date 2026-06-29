@@ -1000,7 +1000,6 @@ def inventory_bulk_upload_template():
     dv_origin.add("K2:K5000")
     dv_dest.add("O2:O5000")
     dv_type.add("P2:P5000")
-    dv_status.add("D2:D5000")
     dv_classification.add("E2:E5000")
 
     ws2 = wb.create_sheet("INSTRUCCIONES")
@@ -1301,6 +1300,8 @@ def inventory_bulk_upload_post():
 
             db.session.add(c)
             db.session.flush()
+
+            entry_at = item["entry_date"] or datetime.utcnow()
 
             db.session.add(
                 ContainerClassification(
