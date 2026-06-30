@@ -27,6 +27,7 @@ from .routes import (
 )
 
 EIR_VALIDATE_CHASSIS_SEALS = False
+ENFORCE_CHASSIS_SITE_VALIDATION = False
 
 @yard_bp.get("/gate-out")
 @login_required
@@ -176,13 +177,13 @@ def api_gate_out_search_chassis():
     q = (request.args.get("q") or "").strip()
     q_like = f"%{q}%"
 
-    query = (
-        Chassis.query
-        .filter(
+    query = Chassis.query
+
+    if ENFORCE_CHASSIS_SITE_VALIDATION:
+        query = query.filter(
             Chassis.site_id == site_id,
-            Chassis.is_in_yard == True,  # noqa: E712
+            Chassis.is_in_yard == True,
         )
-    )
 
     if q:
         query = query.filter(
@@ -521,7 +522,7 @@ def gate_out_post():
                         return redirect(url_for("yard.gate_out_view"))
                     ch = None
 
-                if ch and (ch.site_id != site_id or not ch.is_in_yard):
+                if ch and ENFORCE_CHASSIS_SITE_VALIDATION and (ch.site_id != site_id or not ch.is_in_yard):
                     if not is_draft:
                         flash("Ese chasis no está disponible en este predio.", "danger")
                         return redirect(url_for("yard.gate_out_view"))

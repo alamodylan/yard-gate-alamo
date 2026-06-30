@@ -46,6 +46,13 @@ from .routes import (
     _enqueue_print_job,
 )
 
+# ==========================================================
+# TEMPORAL
+# Durante el periodo de estabilización NO validar si un chasis
+# ya existe en otro predio.
+# Cuando toda la operación esté alineada cambiar a True.
+# ==========================================================
+ENFORCE_CHASSIS_SITE_VALIDATION = False
 
 def _get_container_prefill_data(code: str) -> dict:
     """
@@ -831,7 +838,7 @@ def gate_in_post():
             .first()
         )
 
-        if active_inv:
+        if ENFORCE_CHASSIS_SITE_VALIDATION and active_inv:
             inv_site = Site.query.get(active_inv.site_id)
             inv_site_name = inv_site.name if inv_site else f"ID {active_inv.site_id}"
 
@@ -912,7 +919,7 @@ def gate_in_post():
                 .first()
             )
 
-            if active_inv:
+            if ENFORCE_CHASSIS_SITE_VALIDATION and active_inv:
                 flash(
                     f"El chasis {ch.chassis_number} ya está activo en inventario. "
                     f"No puede registrarse dentro del atado.",
