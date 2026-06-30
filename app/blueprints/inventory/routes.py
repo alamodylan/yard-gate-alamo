@@ -22,6 +22,10 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import PatternFill
 from app.models.container_classification import ContainerClassification
 from app.services.audit import audit_log
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 
 # =========================================================
@@ -1519,3 +1523,145 @@ def update_gate_in_origin(container_id: int):
 
     flash("Origen de ingreso actualizado.", "success")
     return redirect(url_for("inventory.inventory_detail", container_id=c.id))
+
+@inventory_bp.get("/inventory/evacuation-list/pdf")
+@login_required
+def evacuation_list_pdf():
+    site_id = _ensure_active_site()
+
+    size_filter = (request.args.get("size") or "").strip().upper()
+    shipping_line_filter = (request.args.get("shipping_line") or "").strip().upper()
+    destination_filter = (request.args.get("destination") or "").strip().upper()
+    type_filter = (request.args.get("evacuation_type") or "").strip().upper()
+
+    rows = (
+        db.session.query(Container, ContainerPosition, YardBay)
+        .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
+        .outerjoin(YardBay, YardBay.id == ContainerPosition.bay_id)
+        .filter(
+            Container.site_id == site_id,
+            Container.is_in_yard == True,  # noqa: E712
+            db.func.coalesce(Container.dispatch_status, "NORMAL") == "PARA_EVACUAR",
+        )
+        .order_by(Container.updated_at.desc())
+        .all()
+    )
+
+    container_ids = [c.id for c, _, _ in rows]
+    cls_by_container = _last_classification_by_container_ids(container_ids)
+
+    items = []
+
+    for c, pos, bay in rows:
+        cls = cls_by_container.get(c.id)
+        shipping_line = ((cls.get("shipping_line") if cls else "") or "").strip().upper()
+        destination = (c.evacuation_destination or "").strip().upper()
+        evacuation_type = (c.evacuation_type or "").strip().upper()
+
+        if size_filter and (c.size or "").strip().upper() != size_filter:
+            continue
+
+        if shipping_line_filter and shipping_line != shipping_line_filter:
+            continue
+
+        if destination_filter and destination != destination_filter:
+            continue
+
+        if type_filter and evacuation_type != type_filter:
+            continue
+
+        position_txt = "—"
+        if pos:
+            position_txt = f"{bay.code if bay else ''} F{int(pos.depth_row):02d} N{pos.tier}"
+
+        marked_txt = ""
+        if c.dispatch_marked_at:
+            marked_txt = c.dispatch_marked_at.strftime("%d/%m/%Y %I:%M %p")
+
+        items.append([
+            c.code or "",
+            c.size or "",
+            shipping_line or "—",
+            destination or "—",
+            evacuation_type or "—",
+            position_txt,
+            marked_txt,
+            c.evacuation_notes or "",
+        ])
+
+    bio = BytesIO()
+
+    doc = SimpleDocTemplate(
+        bio,
+        pagesize=landscape(letter),
+        rightMargin=24,
+        leftMargin=24,
+        topMargin=24,
+        bottomMargin=24,
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    title = Paragraph("<b>Lista de Vacíos / Evacuación</b>", styles["Title"])
+    elements.append(title)
+
+    filters_txt = (
+        f"Tamaño: {size_filter or 'Todos'} | "
+        f"Naviera: {shipping_line_filter or 'Todas'} | "
+        f"Destino: {destination_filter or 'Todos'} | "
+        f"Tipo: {type_filter or 'Todos'}"
+    )
+
+    elements.append(Paragraph(filters_txt, styles["Normal"]))
+    elements.append(Spacer(1, 12))
+
+    table_data = [
+        [
+            "Contenedor",
+            "Tamaño",
+            "Naviera",
+            "Destino",
+            "Tipo",
+            "Posición",
+            "Marcado",
+            "Notas",
+        ]
+    ]
+
+    table_data.extend(items)
+
+    if len(table_data) == 1:
+        table_data.append(["—", "—", "—", "—", "—", "—", "—", "Sin registros"])
+
+    table = Table(
+        table_data,
+        repeatRows=1,
+        colWidths=[90, 55, 70, 90, 55, 80, 105, 210],
+    )
+
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F3B63")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8),
+        ("FONTSIZE", (0, 1), (-1, -1), 7),
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+    ]))
+
+    elements.append(table)
+
+    doc.build(elements)
+
+    bio.seek(0)
+
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name="lista_vacios_evacuacion.pdf",
+        mimetype="application/pdf",
+    )

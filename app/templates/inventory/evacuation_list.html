@@ -12,8 +12,20 @@
     </div>
 
     <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
+
+    <a class="btn secondary"
+      href="{{ url_for(
+        'inventory.evacuation_list_pdf',
+        size=size_filter,
+        shipping_line=shipping_line_filter,
+        destination=destination_filter,
+        evacuation_type=type_filter
+      ) }}">
+      Imprimir PDF
+    </a>
   </div>
 </div>
+
 
 <form method="GET" class="evac-filters">
   <div>
