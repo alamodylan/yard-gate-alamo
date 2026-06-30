@@ -21,6 +21,7 @@
       <tr>
         <th>Contenedor</th>
         <th>Tamaño</th>
+        <th>Naviera</th>
         <th>Destino</th>
         <th>Tipo</th>
         <th>Estado</th>
@@ -44,6 +45,14 @@
           </td>
 
           <td><span class="plain-chip">{{ it.size or "—" }}</span></td>
+
+          <td>
+            {% if it.shipping_line %}
+              <span class="line-chip">{{ it.shipping_line }}</span>
+            {% else %}
+              <span class="muted-text">—</span>
+            {% endif %}
+          </td>
 
           <td>
             {% if dest == "LIMON" or dest == "LIMÓN" %}
@@ -117,7 +126,7 @@
 
       {% if not items %}
         <tr>
-          <td colspan="{{ 9 if can('empty_list.actions') else 8 }}" class="empty-cell">
+          <td colspan="{{ 10 if can('empty_list.actions') else 9 }}" class="empty-cell">
             No hay contenedores en lista de evacuación.
           </td>
         </tr>
@@ -154,7 +163,7 @@
 
 .evac-table{
   width:100%;
-  min-width:1200px;
+  min-width:1320px;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -193,6 +202,7 @@
 .container-code-cell a:hover{color:#1d4ed8;}
 
 .plain-chip,
+.line-chip,
 .dest-chip,
 .type-chip,
 .op-badge,
@@ -213,6 +223,14 @@
   padding:5px 9px;
   background:#f8fafc;
   color:#334155;
+}
+
+.line-chip{
+  padding:6px 10px;
+  background:#ffffff;
+  color:#0f172a;
+  border-color:#cbd5e1;
+  box-shadow:0 2px 8px rgba(15,23,42,.04);
 }
 
 .dest-chip{

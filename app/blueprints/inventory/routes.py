@@ -592,13 +592,19 @@ def evacuation_list():
         .all()
     )
 
+    container_ids = [c.id for c, _, _ in rows]
+    cls_by_container = _last_classification_by_container_ids(container_ids)
+
     items = []
 
     for c, pos, bay in rows:
+        cls = cls_by_container.get(c.id)
+
         items.append({
             "id": c.id,
             "code": c.code,
             "size": c.size,
+            "shipping_line": (cls.get("shipping_line") if cls else "") or "",
             "dispatch_status": c.dispatch_status or "NORMAL",
             "dispatch_marked_at": c.dispatch_marked_at,
             "evacuation_destination": c.evacuation_destination,
