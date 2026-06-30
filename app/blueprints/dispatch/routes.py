@@ -354,6 +354,7 @@ def request_detail(request_id: int):
                 "code": c.code,
                 "size": c.size,
                 "shipping_line": shipping_line or "SIN NAVIERA",
+                "gate_in_origin_port": c.gate_in_origin_port or "",
                 "dispatch_status": c.dispatch_status or "NORMAL",
                 "position": None if not pos else {
                     "bay_code": bay.code if bay else None,
