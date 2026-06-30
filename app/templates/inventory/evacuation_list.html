@@ -15,6 +15,53 @@
   </div>
 </div>
 
+<form method="GET" class="evac-filters">
+  <div>
+    <label>Tamaño</label>
+    <select name="size">
+      <option value="">Todos</option>
+      {% for opt in size_options %}
+        <option value="{{ opt }}" {% if size_filter == opt %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label>Naviera</label>
+    <select name="shipping_line">
+      <option value="">Todas</option>
+      {% for opt in shipping_line_options %}
+        <option value="{{ opt }}" {% if shipping_line_filter == opt %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label>Destino</label>
+    <select name="destination">
+      <option value="">Todos</option>
+      {% for opt in destination_options %}
+        <option value="{{ opt }}" {% if destination_filter == opt %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div>
+    <label>Tipo</label>
+    <select name="evacuation_type">
+      <option value="">Todos</option>
+      {% for opt in type_options %}
+        <option value="{{ opt }}" {% if type_filter == opt %}selected{% endif %}>{{ opt }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="evac-filter-actions">
+    <button class="btn small" type="submit">Filtrar</button>
+    <a class="btn secondary small" href="{{ url_for('inventory.evacuation_list') }}">Limpiar</a>
+  </div>
+</form>
+
 <div class="evac-table-wrap">
   <table class="evac-table">
     <thead>
@@ -328,6 +375,49 @@
   padding:22px !important;
   text-align:center;
   font-weight:800;
+}
+
+.evac-filters{
+  margin:0 0 16px;
+  padding:14px;
+  display:grid;
+  grid-template-columns:repeat(4, minmax(150px, 1fr)) auto;
+  gap:10px;
+  align-items:end;
+  border:1px solid #dbe3ef;
+  border-radius:18px;
+  background:#fff;
+  box-shadow:0 8px 22px rgba(15,23,42,.05);
+}
+
+.evac-filters label{
+  display:block;
+  margin-bottom:6px;
+  color:#334155;
+  font-size:12px;
+  font-weight:900;
+}
+
+.evac-filters select{
+  width:100%;
+  padding:9px 10px;
+  border:1px solid #cbd5e1;
+  border-radius:12px;
+  background:#fff;
+  color:#0f172a;
+  font-weight:800;
+}
+
+.evac-filter-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+@media(max-width:900px){
+  .evac-filters{
+    grid-template-columns:1fr;
+  }
 }
 </style>
 {% endblock %}

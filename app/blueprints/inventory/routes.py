@@ -579,6 +579,11 @@ def unmark_container_evacuation(container_id: int):
 def evacuation_list():
     site_id = _ensure_active_site()
 
+    size_filter = (request.args.get("size") or "").strip().upper()
+    shipping_line_filter = (request.args.get("shipping_line") or "").strip().upper()
+    destination_filter = (request.args.get("destination") or "").strip().upper()
+    type_filter = (request.args.get("evacuation_type") or "").strip().upper()
+
     rows = (
         db.session.query(Container, ContainerPosition, YardBay)
         .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -599,12 +604,27 @@ def evacuation_list():
 
     for c, pos, bay in rows:
         cls = cls_by_container.get(c.id)
+        shipping_line = ((cls.get("shipping_line") if cls else "") or "").strip().upper()
+        destination = (c.evacuation_destination or "").strip().upper()
+        evacuation_type = (c.evacuation_type or "").strip().upper()
+
+        if size_filter and (c.size or "").strip().upper() != size_filter:
+            continue
+
+        if shipping_line_filter and shipping_line != shipping_line_filter:
+            continue
+
+        if destination_filter and destination != destination_filter:
+            continue
+
+        if type_filter and evacuation_type != type_filter:
+            continue
 
         items.append({
             "id": c.id,
             "code": c.code,
             "size": c.size,
-            "shipping_line": (cls.get("shipping_line") if cls else "") or "",
+            "shipping_line": shipping_line,
             "dispatch_status": c.dispatch_status or "NORMAL",
             "dispatch_marked_at": c.dispatch_marked_at,
             "evacuation_destination": c.evacuation_destination,
@@ -617,9 +637,34 @@ def evacuation_list():
             },
         })
 
+    size_options = sorted({(c.size or "").strip().upper() for c, _, _ in rows if c.size})
+    shipping_line_options = sorted({
+        ((cls_by_container.get(c.id) or {}).get("shipping_line") or "").strip().upper()
+        for c, _, _ in rows
+        if ((cls_by_container.get(c.id) or {}).get("shipping_line") or "").strip()
+    })
+    destination_options = sorted({
+        (c.evacuation_destination or "").strip().upper()
+        for c, _, _ in rows
+        if (c.evacuation_destination or "").strip()
+    })
+    type_options = sorted({
+        (c.evacuation_type or "").strip().upper()
+        for c, _, _ in rows
+        if (c.evacuation_type or "").strip()
+    })
+
     return render_template(
         "inventory/evacuation_list.html",
         items=items,
+        size_options=size_options,
+        shipping_line_options=shipping_line_options,
+        destination_options=destination_options,
+        type_options=type_options,
+        size_filter=size_filter,
+        shipping_line_filter=shipping_line_filter,
+        destination_filter=destination_filter,
+        type_filter=type_filter,
     )
 
 # =========================================================
