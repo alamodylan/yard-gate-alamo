@@ -10,6 +10,7 @@ from app.models.dispatch import DispatchAssignment, UserNotification
 from app.blueprints.dispatch import dispatch_bp
 from app.models.yard import YardBay
 from app.extensions import db
+from sqlalchemy.orm import selectinload, joinedload
 from app.models.site import Site, UserSite
 from app.models.dispatch import (
     DispatchContainerSize,
@@ -259,6 +260,10 @@ def pending_requests():
 
     requests = (
         DispatchRequest.query
+        .options(
+            selectinload(DispatchRequest.lines)
+            .selectinload(DispatchRequestLine.assignments)
+        )
         .filter(
             DispatchRequest.site_id == site_id,
             DispatchRequest.status.in_(["PENDIENTE", "PARCIAL"]),
@@ -277,26 +282,34 @@ def pending_requests():
 def request_detail(request_id: int):
     site_id = _ensure_active_site()
 
-    req = DispatchRequest.query.get_or_404(request_id)
+    req = (
+        DispatchRequest.query
+        .options(
+            selectinload(DispatchRequest.lines)
+            .selectinload(DispatchRequestLine.assignments)
+        )
+        .filter(DispatchRequest.id == request_id)
+        .first_or_404()
+    )
 
     if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
         abort(403)
+
+    latest_classification_subquery = (
+        db.session.query(
+            ContainerClassification.container_id,
+            db.func.max(ContainerClassification.classified_at).label("max_classified_at")
+        )
+        .filter(ContainerClassification.site_id == site_id)
+        .group_by(ContainerClassification.container_id)
+        .subquery()
+    )
 
     line_data = []
 
     for line in req.lines:
         assigned_count = len(line.assignments)
         pending_count = max(int(line.quantity or 0) - assigned_count, 0)
-
-        latest_classification_subquery = (
-            db.session.query(
-                ContainerClassification.container_id,
-                db.func.max(ContainerClassification.classified_at).label("max_classified_at")
-            )
-            .filter(ContainerClassification.site_id == site_id)
-            .group_by(ContainerClassification.container_id)
-            .subquery()
-        )
 
         if req.request_type == "VACIO":
             status_filter = "PARA_EVACUAR"
@@ -362,7 +375,6 @@ def request_detail(request_id: int):
         req=req,
         line_data=line_data,
     )
-
 
 @dispatch_bp.post("/request/<int:request_id>/assign/<int:line_id>")
 @login_required
@@ -485,6 +497,11 @@ def assigned_requests():
 
     requests = (
         DispatchRequest.query
+        .options(
+            selectinload(DispatchRequest.lines)
+            .selectinload(DispatchRequestLine.assignments)
+            .joinedload(DispatchAssignment.container)
+        )
         .filter(
             DispatchRequest.site_id == site_id,
             DispatchRequest.status.in_(["PARCIAL", "ASIGNADA"])
@@ -506,7 +523,6 @@ def assigned_requests():
 def agenda():
     site_id = _ensure_active_site()
 
-    from datetime import datetime
     import pytz
 
     cr_tz = pytz.timezone("America/Costa_Rica")
@@ -514,6 +530,11 @@ def agenda():
 
     lines = (
         DispatchRequestLine.query
+        .options(
+            joinedload(DispatchRequestLine.request),
+            selectinload(DispatchRequestLine.assignments)
+            .joinedload(DispatchAssignment.container)
+        )
         .join(
             DispatchRequest,
             DispatchRequest.id == DispatchRequestLine.request_id
@@ -540,7 +561,7 @@ def agenda():
 def prelist():
     site_id = _ensure_active_site()
 
-    from datetime import datetime, timedelta
+    from datetime import timedelta
     import pytz
 
     cr_tz = pytz.timezone("America/Costa_Rica")
@@ -552,6 +573,11 @@ def prelist():
 
     lines = (
         DispatchRequestLine.query
+        .options(
+            joinedload(DispatchRequestLine.request),
+            selectinload(DispatchRequestLine.assignments)
+            .joinedload(DispatchAssignment.container)
+        )
         .join(
             DispatchRequest,
             DispatchRequest.id == DispatchRequestLine.request_id
