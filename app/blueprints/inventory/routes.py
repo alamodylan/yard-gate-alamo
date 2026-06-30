@@ -1219,6 +1219,7 @@ def inventory_bulk_upload_post():
             row_errors.append(
                 "FECHA_INGRESO inválida. Use formato YYYY-MM-DD, ejemplo: 2026-06-29."
             )
+
         if code in seen_codes:
             row_errors.append(f"El contenedor {code} está duplicado dentro del Excel.")
 
@@ -1320,11 +1321,13 @@ def inventory_bulk_upload_post():
     positioned_count = 0
     pending_location_count = 0
     mounted_count = 0
+    BATCH_SIZE = 50
 
     try:
         for item in parsed_rows:
             position = item["position"]
             has_position = bool(position.get("has_position"))
+            entry_at = item["entry_date"] or datetime.utcnow()
 
             status_notes = None
 
@@ -1343,20 +1346,18 @@ def inventory_bulk_upload_post():
             )
 
             if item["dispatch_status"] == "PARA_EVACUAR":
-                c.dispatch_marked_at = datetime.utcnow()
+                c.dispatch_marked_at = entry_at
                 c.dispatch_marked_by_user_id = current_user.id
                 c.evacuation_destination = item["evac_destination"] or None
                 c.evacuation_type = item["evac_type"] or None
                 c.evacuation_notes = item["evac_notes"] or None
 
             if item["dispatch_status"] in {"DESPACHO_MONTADO", "EVACUACION_MONTADA"}:
-                c.mounted_at = datetime.utcnow()
+                c.mounted_at = entry_at
                 c.mounted_by_user_id = current_user.id
 
             db.session.add(c)
-            db.session.flush()
-
-            entry_at = item["entry_date"] or datetime.utcnow()
+            db.session.flush([c])
 
             db.session.add(
                 ContainerClassification(
@@ -1374,8 +1375,6 @@ def inventory_bulk_upload_post():
                     notes=item["notes"] or None,
                 )
             )
-
-            entry_at = item["entry_date"] or datetime.utcnow()
 
             db.session.add(
                 Movement(
@@ -1419,6 +1418,7 @@ def inventory_bulk_upload_post():
                         bay_id=bay.id,
                         depth_row=depth_row,
                         tier=tier,
+                        placed_at=entry_at,
                         placed_by_user_id=current_user.id,
                     )
                 )
@@ -1457,6 +1457,9 @@ def inventory_bulk_upload_post():
                 pending_location_count += 1
 
             created_count += 1
+
+            if created_count % BATCH_SIZE == 0:
+                db.session.commit()
 
         db.session.commit()
 
