@@ -26,43 +26,118 @@
         </a>
         {% endif %}
 
-        <a class="btn" href="{{ url_for('inventory.inventory_export', in_yard=in_yard, q=q, shipping_line=shipping_line) }}">
+        <a class="btn" href="{{ url_for(
+            'inventory.inventory_export',
+            in_yard=in_yard,
+            q=q,
+            shipping_line=shipping_line,
+            origin=origin,
+            size=size,
+            classification=classification,
+            dispatch_status=dispatch_status
+        ) }}">
           ⬇ Exportar Excel
         </a>
       </div>
     </div>
 
     <form method="get" class="inventory-filters">
+
       <div class="inventory-search">
         <label>Buscar por código</label>
+
         <input
           class="input"
           type="text"
           name="q"
           value="{{ q or '' }}"
-          placeholder="Ej: MSCU-123456-7"
-        >
+          placeholder="Ej: MSCU-123456-7">
+      </div>
+
+      <div class="inventory-filter-select">
+        <label>Origen</label>
+
+        <select class="select" name="origin">
+          <option value="">Todos</option>
+
+          {% for o in origin_options %}
+            <option value="{{ o }}" {% if origin==o %}selected{% endif %}>
+              {{ o }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="inventory-filter-select">
+        <label>Tamaño</label>
+
+        <select class="select" name="size">
+          <option value="">Todos</option>
+
+          {% for s in size_options %}
+            <option value="{{ s }}" {% if size==s %}selected{% endif %}>
+              {{ s }}
+            </option>
+          {% endfor %}
+        </select>
       </div>
 
       <div class="inventory-filter-select">
         <label>Naviera</label>
+
         <select class="select" name="shipping_line">
           <option value="">Todas</option>
+
           {% for line in shipping_lines %}
-            <option value="{{ line }}" {% if shipping_line == line %}selected{% endif %}>
+            <option value="{{ line }}" {% if shipping_line==line %}selected{% endif %}>
               {{ line }}
             </option>
           {% endfor %}
         </select>
       </div>
 
-      <div class="inventory-filter-actions">
-        <button class="btn primary" type="submit">Filtrar</button>
+      <div class="inventory-filter-select">
+        <label>Clasificación</label>
 
-        {% if in_yard or q or shipping_line %}
-          <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Limpiar</a>
-        {% endif %}
+        <select class="select" name="classification">
+          <option value="">Todas</option>
+
+          {% for c in classification_options %}
+            <option value="{{ c }}" {% if classification==c %}selected{% endif %}>
+              {{ c }}
+            </option>
+          {% endfor %}
+        </select>
       </div>
+
+      <div class="inventory-filter-select">
+        <label>Estado</label>
+
+        <select class="select" name="dispatch_status">
+          <option value="">Todos</option>
+
+          {% for s in status_options %}
+            <option value="{{ s }}" {% if dispatch_status==s %}selected{% endif %}>
+              {{ s }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="inventory-filter-actions">
+
+        <button class="btn primary" type="submit">
+          Filtrar
+        </button>
+
+        <a
+          class="btn"
+          href="{{ url_for('inventory.inventory_index') }}">
+          Limpiar
+        </a>
+
+      </div>
+
     </form>
   </div>
 
@@ -467,11 +542,14 @@
     }
 
     .inventory-filters{
-      margin-top:16px;
-      display:grid;
-      grid-template-columns:minmax(260px, 1fr) 220px 220px auto;
-      gap:10px;
-      align-items:end;
+        margin-top:16px;
+        display:grid;
+        grid-template-columns:
+            minmax(260px,2fr)
+            repeat(5,170px)
+            auto;
+        gap:10px;
+        align-items:end;
     }
 
     .inventory-search label,

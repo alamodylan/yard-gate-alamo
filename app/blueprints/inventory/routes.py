@@ -103,10 +103,14 @@ def _inventory_query(
     in_yard: str | None,
     qtext: str,
     shipping_line: str = "",
+    origin: str = "",
+    size: str = "",
 ):
-    # Inventario por defecto = solo lo que está en patio
     in_yard = (in_yard or "1").strip()
+    qtext = (qtext or "").strip().upper()
     shipping_line = (shipping_line or "").strip().upper()
+    origin = (origin or "").strip().upper()
+    size = (size or "").strip().upper()
 
     q = (
         db.session.query(Container, ContainerPosition, YardBay)
@@ -117,12 +121,19 @@ def _inventory_query(
 
     if in_yard == "1":
         q = q.filter(Container.is_in_yard == True)  # noqa: E712
-
     elif in_yard == "0":
         q = q.filter(Container.is_in_yard == False)  # noqa: E712
 
     if qtext:
         q = q.filter(db.func.upper(Container.code).like(f"%{qtext}%"))
+
+    if origin:
+        q = q.filter(
+            db.func.upper(db.func.coalesce(Container.gate_in_origin_port, "")) == origin
+        )
+
+    if size:
+        q = q.filter(db.func.upper(Container.size) == size)
 
     if shipping_line:
         q = (
@@ -209,21 +220,23 @@ def _last_gate_in_by_container_ids(container_ids: list[int]) -> dict[int, dict]:
 @inventory_bp.get("/inventory")
 @login_required
 def inventory_index():
-
     site_id = _ensure_active_site()
 
-    # Inventario por defecto = solo en patio
     in_yard = (request.args.get("in_yard") or "1").strip()
-
     qtext = (request.args.get("q") or "").strip().upper()
-
     shipping_line = (request.args.get("shipping_line") or "").strip().upper()
+    origin = (request.args.get("origin") or "").strip().upper()
+    size = (request.args.get("size") or "").strip().upper()
+    classification = (request.args.get("classification") or "").strip().upper()
+    dispatch_status = (request.args.get("dispatch_status") or "").strip().upper()
 
     rows = _inventory_query(
         site_id,
         in_yard,
         qtext,
         shipping_line,
+        origin,
+        size,
     ).all()
 
     container_ids = [c.id for c, _, _ in rows]
@@ -234,9 +247,17 @@ def inventory_index():
     items = []
 
     for c, pos, bay in rows:
-
         cls = cls_by_container.get(c.id)
         gate_in = gate_in_by_container.get(c.id)
+
+        current_classification = ((cls.get("final_classification") if cls else "") or "").strip().upper()
+        current_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+        if classification and current_classification != classification:
+            continue
+
+        if dispatch_status and current_status != dispatch_status:
+            continue
 
         gate_in_at = gate_in.get("gate_in_at") if gate_in else None
         days_in_yard = None
@@ -244,36 +265,29 @@ def inventory_index():
         if gate_in_at:
             days_in_yard = (datetime.utcnow().date() - gate_in_at.date()).days
 
-        items.append(
-            {
-                "id": c.id,
-                "code": c.code,
-                "gate_in_origin_port": c.gate_in_origin_port,
-                "size": c.size,
-                "year": (cls.get("manufacture_year") if cls else c.year),
-                "shipping_line": (cls.get("shipping_line") if cls else ""),
-                "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
-                "classification": (cls.get("final_classification") if cls else "") or "",
-                "gate_in_at": gate_in_at,
-                "days_in_yard": days_in_yard,
-                "is_in_yard": bool(c.is_in_yard),
-                "evacuation_destination": c.evacuation_destination,
-                "evacuation_type": c.evacuation_type,
-                "evacuation_notes": c.evacuation_notes,
-
-                # Estado operativo real del contenedor
-                "dispatch_status": c.dispatch_status or "NORMAL",
-
-                "status_notes": (cls.get("summary_text") if cls else (c.status_notes or "")),
-                "position": None
-                if not pos
-                else {
-                    "bay_code": bay.code if bay else None,
-                    "depth_row": pos.depth_row,
-                    "tier": pos.tier,
-                },
-            }
-        )
+        items.append({
+            "id": c.id,
+            "code": c.code,
+            "gate_in_origin_port": c.gate_in_origin_port,
+            "size": c.size,
+            "year": (cls.get("manufacture_year") if cls else c.year),
+            "shipping_line": (cls.get("shipping_line") if cls else ""),
+            "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
+            "classification": current_classification,
+            "gate_in_at": gate_in_at,
+            "days_in_yard": days_in_yard,
+            "is_in_yard": bool(c.is_in_yard),
+            "evacuation_destination": c.evacuation_destination,
+            "evacuation_type": c.evacuation_type,
+            "evacuation_notes": c.evacuation_notes,
+            "dispatch_status": current_status,
+            "status_notes": (cls.get("summary_text") if cls else (c.status_notes or "")),
+            "position": None if not pos else {
+                "bay_code": bay.code if bay else None,
+                "depth_row": pos.depth_row,
+                "tier": pos.tier,
+            },
+        })
 
     shipping_lines = [
         r[0]
@@ -290,12 +304,57 @@ def inventory_index():
         )
     ]
 
+    origin_options = ["CALDERA", "LIMON"]
+
+    size_options = [
+        r[0]
+        for r in (
+            db.session.query(Container.size)
+            .filter(
+                Container.site_id == site_id,
+                Container.size.isnot(None),
+                Container.size != "",
+            )
+            .distinct()
+            .order_by(Container.size)
+            .all()
+        )
+    ]
+
+    classification_options = [
+        "A+",
+        "A-",
+        "B+",
+        "B-",
+        "C",
+        "A2",
+        "B2",
+        "CHATARRA",
+    ]
+
+    status_options = [
+        "NORMAL",
+        "PARA_DESPACHO",
+        "PARA_EVACUAR",
+        "EVACUAR_SOLICITADO",
+        "DESPACHO_MONTADO",
+        "EVACUACION_MONTADA",
+    ]
+
     return render_template(
         "inventory/index.html",
         items=items,
         in_yard=in_yard,
         shipping_lines=shipping_lines,
         shipping_line=shipping_line,
+        origin_options=origin_options,
+        size_options=size_options,
+        classification_options=classification_options,
+        status_options=status_options,
+        origin=origin,
+        size=size,
+        classification=classification,
+        dispatch_status=dispatch_status,
         q=qtext,
     )
 
@@ -307,20 +366,23 @@ def inventory_index():
 @inventory_bp.get("/inventory/export")
 @login_required
 def inventory_export():
-
     site_id = _ensure_active_site()
 
     in_yard = (request.args.get("in_yard") or "1").strip()
-
     qtext = (request.args.get("q") or "").strip().upper()
-
     shipping_line = (request.args.get("shipping_line") or "").strip().upper()
+    origin = (request.args.get("origin") or "").strip().upper()
+    size = (request.args.get("size") or "").strip().upper()
+    classification_filter = (request.args.get("classification") or "").strip().upper()
+    dispatch_status_filter = (request.args.get("dispatch_status") or "").strip().upper()
 
     rows = _inventory_query(
         site_id,
         in_yard,
         qtext,
         shipping_line,
+        origin,
+        size,
     ).all()
 
     container_ids = [c.id for c, _, _ in rows]
@@ -335,6 +397,7 @@ def inventory_export():
     headers = [
         "ID",
         "CONTENEDOR",
+        "ORIGEN",
         "TAMAÑO",
         "NAVIERA",
         "AÑO",
@@ -342,6 +405,7 @@ def inventory_export():
         "CLASIFICACION",
         "FECHA_INGRESO",
         "DIAS_EN_PREDIO",
+        "ESTADO",
         "ESTIBA",
         "FILA",
         "NIVEL",
@@ -356,10 +420,18 @@ def inventory_export():
         cell.alignment = Alignment(horizontal="center")
 
     for c, pos, bay in rows:
-
         cls = cls_by_container.get(c.id)
         gate_in = gate_in_by_container.get(c.id)
         gate_in_at = gate_in.get("gate_in_at") if gate_in else None
+
+        classification = ((cls.get("final_classification") if cls else "") or "").strip().upper()
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+        if classification_filter and classification != classification_filter:
+            continue
+
+        if dispatch_status_filter and dispatch_status != dispatch_status_filter:
+            continue
 
         gate_in_date_str = gate_in_at.strftime("%Y-%m-%d") if gate_in_at else ""
 
@@ -367,34 +439,30 @@ def inventory_export():
         if gate_in_at:
             days_in_yard = (datetime.utcnow().date() - gate_in_at.date()).days
 
-        classification = (cls.get("final_classification") if cls else "") or ""
-
         naviera = (cls.get("shipping_line") if cls else "") or ""
         year = (cls.get("manufacture_year") if cls else c.year) or ""
         max_gross = (cls.get("max_gross_kg") if cls else "") or ""
-
         notes = (cls.get("summary_text") if cls else (c.status_notes or "")) or ""
 
-        ws.append(
-            [
-                c.id,
-                c.code or "",
-                c.size or "",
-                naviera,
-                year,
-                max_gross,
-                classification,
-                gate_in_date_str,
-                days_in_yard,
-                (bay.code if (pos and bay) else "") or "",
-                (pos.depth_row if pos else "") or "",
-                (pos.tier if pos else "") or "",
-                notes,
-            ]
-        )
+        ws.append([
+            c.id,
+            c.code or "",
+            c.gate_in_origin_port or "",
+            c.size or "",
+            naviera,
+            year,
+            max_gross,
+            classification,
+            gate_in_date_str,
+            days_in_yard,
+            dispatch_status,
+            (bay.code if (pos and bay) else "") or "",
+            (pos.depth_row if pos else "") or "",
+            (pos.tier if pos else "") or "",
+            notes,
+        ])
 
     for col_idx in range(1, len(headers) + 1):
-
         col_letter = get_column_letter(col_idx)
         max_len = 0
 
