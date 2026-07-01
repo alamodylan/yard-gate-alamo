@@ -260,15 +260,25 @@ def pending_requests():
 
     q = (request.args.get("q") or "").strip().upper()
 
+    next_move_subq = (
+        db.session.query(
+            DispatchRequestLine.request_id.label("request_id"),
+            db.func.min(DispatchRequestLine.load_date).label("next_load_date"),
+            db.func.min(DispatchRequestLine.load_time).label("next_load_time"),
+        )
+        .group_by(DispatchRequestLine.request_id)
+        .subquery()
+    )
+
     query = (
         DispatchRequest.query
         .options(
             selectinload(DispatchRequest.lines)
             .selectinload(DispatchRequestLine.assignments)
         )
-        .join(
-            DispatchRequestLine,
-            DispatchRequestLine.request_id == DispatchRequest.id,
+        .outerjoin(
+            next_move_subq,
+            next_move_subq.c.request_id == DispatchRequest.id,
         )
         .filter(
             DispatchRequest.site_id == site_id,
@@ -286,11 +296,10 @@ def pending_requests():
     requests = (
         query
         .order_by(
-            DispatchRequestLine.load_date.asc(),
-            DispatchRequestLine.load_time.asc().nulls_last(),
+            next_move_subq.c.next_load_date.asc().nulls_last(),
+            next_move_subq.c.next_load_time.asc().nulls_last(),
             DispatchRequest.requested_at.asc(),
         )
-        .distinct()
         .all()
     )
 
@@ -299,7 +308,6 @@ def pending_requests():
         requests=requests,
         q=q,
     )
-
 @dispatch_bp.get("/request/<int:request_id>")
 @login_required
 def request_detail(request_id: int):
