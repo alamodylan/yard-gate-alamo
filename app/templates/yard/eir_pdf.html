@@ -497,32 +497,39 @@
     <table class="table">
       <thead>
         <tr>
-          <th style="width:22%;">Posición</th>
-          <th style="width:11%;">Marchamo</th>
-          <th style="width:14%;">Número llanta</th>
-          <th style="width:12%;">Marca</th>
-          <th style="width:10%;">Estado</th>
-          <th style="width:8%;">Estrías</th>
-          <th style="width:8%;">Pinchada</th>
+          <th style="width:40%;">Eje / lado</th>
+          <th style="width:30%;">Marchamo 1</th>
+          <th style="width:30%;">Marchamo 2</th>
         </tr>
       </thead>
 
       <tbody>
-        {% for tire in chassis_snapshot.get('tires', []) %}
-          <tr>
-            <td>{{ tire_labels.get(tire.get('position_code'), tire.get('position_code') or '') }}</td>
-            <td>{{ tire.get('marchamo') or '' }}</td>
-            <td>{{ tire.get('tire_number') or '' }}</td>
-            <td>{{ tire.get('brand') or '' }}</td>
-            <td>{{ tire.get('tire_state') or '' }}</td>
-            <td>{{ tire.get('estrias_mm') if tire.get('estrias_mm') is not none else '' }}</td>
-            <td>{{ 'SI' if tire.get('is_flat') else 'NO' }}</td>
-          </tr>
-        {% else %}
-          <tr>
-            <td colspan="7">Sin llantas registradas en snapshot</td>
-          </tr>
+        {% set axle_seals_entered = chassis_snapshot.get('axle_seals_entered', {}) or {} %}
+
+        {% for side_code, side_label in [
+          ('AX1_L', 'Eje 1 izquierdo'),
+          ('AX2_L', 'Eje 2 izquierdo'),
+          ('AX3_L', 'Eje 3 izquierdo'),
+          ('AX3_R', 'Eje 3 derecho'),
+          ('AX2_R', 'Eje 2 derecho'),
+          ('AX1_R', 'Eje 1 derecho')
+        ] %}
+          {% set seal_row = axle_seals_entered.get(side_code, {}) %}
+
+          {% if seal_row.get('seal_1') or seal_row.get('seal_2') %}
+            <tr>
+              <td>{{ side_label }}</td>
+              <td>{{ seal_row.get('seal_1') or '' }}</td>
+              <td>{{ seal_row.get('seal_2') or '' }}</td>
+            </tr>
+          {% endif %}
         {% endfor %}
+
+        {% if not axle_seals_entered %}
+          <tr>
+            <td colspan="3">Sin marchamos registrados en el EIR</td>
+          </tr>
+        {% endif %}
       </tbody>
     </table>
   {% endif %}
