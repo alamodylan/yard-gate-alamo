@@ -18,6 +18,16 @@ from app.models.dispatch import (
     DispatchRequest,
     DispatchRequestLine,
 )
+from io import BytesIO
+from datetime import datetime, date, time, timedelta
+from flask import send_file
+from app.models.eir import EIR
+from app.models.chassis import Chassis
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
 
 def _allowed_sites_for_user(user):
@@ -804,3 +814,325 @@ def reschedule_assignment(assignment_id: int):
 
     flash("Asignación reagendada correctamente.", "success")
     return redirect(url_for("dispatch.assigned_requests"))
+
+@dispatch_bp.get("/prelist/pdf")
+@login_required
+def prelist_pdf():
+    site_id = _ensure_active_site()
+
+    import pytz
+
+    cr_tz = pytz.timezone("America/Costa_Rica")
+    now_cr = datetime.now(cr_tz)
+
+    today = now_cr.date()
+    tomorrow = today + timedelta(days=1)
+    current_time = now_cr.time()
+
+    active_site = Site.query.get(site_id)
+    site_name = active_site.name if active_site else f"Predio {site_id}"
+
+    lines = (
+        DispatchRequestLine.query
+        .options(
+            joinedload(DispatchRequestLine.request),
+            selectinload(DispatchRequestLine.assignments)
+            .joinedload(DispatchAssignment.container)
+        )
+        .join(
+            DispatchRequest,
+            DispatchRequest.id == DispatchRequestLine.request_id
+        )
+        .filter(
+            DispatchRequest.site_id == site_id,
+            DispatchRequest.status != "CANCELADA",
+            DispatchRequestLine.load_date.in_([today, tomorrow])
+        )
+        .order_by(
+            DispatchRequestLine.load_date.asc(),
+            DispatchRequestLine.load_time.asc().nulls_last(),
+            DispatchRequest.shipping_line.asc(),
+            DispatchRequest.booking.asc().nulls_last(),
+        )
+        .all()
+    )
+
+    prelist_lines = []
+
+    for line in lines:
+        if line.load_date == tomorrow:
+            prelist_lines.append(line)
+            continue
+
+        if line.load_date == today:
+            if line.load_time is None or line.load_time > current_time:
+                prelist_lines.append(line)
+
+    assignment_ids = []
+    container_ids = []
+    chassis_ids = set()
+
+    for line in prelist_lines:
+        for a in line.assignments:
+            assignment_ids.append(a.id)
+
+            if a.container_id:
+                container_ids.append(a.container_id)
+
+            if a.chassis_id:
+                chassis_ids.add(a.chassis_id)
+
+    eirs = []
+
+    if container_ids:
+        eirs = (
+            EIR.query
+            .filter(
+                EIR.site_id == site_id,
+                EIR.container_id.in_(container_ids),
+                EIR.chassis_id.isnot(None),
+                EIR.status.in_(["PENDING", "CONFIRMED"]),
+            )
+            .order_by(EIR.container_id.asc(), EIR.id.desc())
+            .all()
+        )
+
+    eir_by_container = {}
+
+    for eir in eirs:
+        if eir.container_id not in eir_by_container:
+            eir_by_container[eir.container_id] = eir
+
+        if eir.chassis_id:
+            chassis_ids.add(eir.chassis_id)
+
+    chassis_by_id = {}
+
+    if chassis_ids:
+        chassis_rows = (
+            Chassis.query
+            .filter(Chassis.id.in_(list(chassis_ids)))
+            .all()
+        )
+
+        chassis_by_id = {
+            ch.id: ch
+            for ch in chassis_rows
+        }
+
+    def _container_type(size_value):
+        size_value = (size_value or "").strip().upper()
+
+        if size_value.startswith("20"):
+            return "20"
+
+        if size_value.startswith("45"):
+            return "45"
+
+        if size_value.startswith("40"):
+            return "40"
+
+        return size_value or ""
+
+    def _format_date_no_year(value):
+        if not value:
+            return ""
+
+        return value.strftime("%d/%m")
+
+    def _format_time(value):
+        if not value:
+            return ""
+
+        return value.strftime("%I:%M %p")
+
+    data = [[
+        "Predio",
+        "Naviera",
+        "Contenedor",
+        "Chasis",
+        "Tipo",
+        "Formato",
+        "Fecha",
+        "Hora",
+        "Cliente / Planta",
+        "Producto",
+        "Destino",
+        "Comentario",
+        "Siempre carga",
+    ]]
+
+    tomorrow_after_11_rows = []
+
+    for line in prelist_lines:
+        req = line.request
+        assignments = list(line.assignments or [])
+
+        for a in assignments:
+            container = a.container
+            eir = eir_by_container.get(a.container_id)
+
+            chassis_id = a.chassis_id or (eir.chassis_id if eir else None)
+            chassis = chassis_by_id.get(chassis_id) if chassis_id else None
+
+            container_size = container.size if container else line.container_size
+            tipo = _container_type(container_size)
+
+            formato = ""
+            if chassis and getattr(chassis, "axles", None):
+                formato = f"{tipo}x{chassis.axles}"
+
+            row = [
+                site_name,
+                req.shipping_line or "",
+                container.code if container else "",
+                chassis.chassis_number if chassis else "",
+                container_size or "",
+                formato,
+                _format_date_no_year(line.load_date),
+                _format_time(line.load_time),
+                req.client_name or "",
+                req.product_name or "",
+                req.port_out or "",
+                a.assignment_notes or "",
+                "☐",
+            ]
+
+            data.append(row)
+
+            is_tomorrow_after_11 = (
+                line.load_date == tomorrow
+                and line.load_time is not None
+                and line.load_time >= time(11, 0)
+            )
+
+            if is_tomorrow_after_11:
+                tomorrow_after_11_rows.append(len(data) - 1)
+
+        assigned_count = len(assignments)
+        pending_count = max(int(line.quantity or 0) - assigned_count, 0)
+
+        for _ in range(pending_count):
+            row = [
+                site_name,
+                req.shipping_line or "",
+                "",
+                "",
+                line.container_size or "",
+                "",
+                _format_date_no_year(line.load_date),
+                _format_time(line.load_time),
+                req.client_name or "",
+                req.product_name or "",
+                req.port_out or "",
+                "PENDIENTE DE ASIGNAR",
+                "☐",
+            ]
+
+            data.append(row)
+
+            is_tomorrow_after_11 = (
+                line.load_date == tomorrow
+                and line.load_time is not None
+                and line.load_time >= time(11, 0)
+            )
+
+            if is_tomorrow_after_11:
+                tomorrow_after_11_rows.append(len(data) - 1)
+
+    if len(data) == 1:
+        data.append([
+            site_name,
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+            "Sin registros",
+            "—",
+            "—",
+            "—",
+            "☐",
+        ])
+
+    bio = BytesIO()
+
+    doc = SimpleDocTemplate(
+        bio,
+        pagesize=landscape(letter),
+        rightMargin=14,
+        leftMargin=14,
+        topMargin=16,
+        bottomMargin=16,
+    )
+
+    styles = getSampleStyleSheet()
+    elements = []
+
+    printed_at = now_cr.strftime("%d/%m/%Y %I:%M %p")
+
+    elements.append(Paragraph("<b>Prelista Operativa</b>", styles["Title"]))
+    elements.append(Paragraph(f"Impreso: {printed_at}", styles["Normal"]))
+    elements.append(Spacer(1, 8))
+
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[
+            55,   # Predio
+            50,   # Naviera
+            78,   # Contenedor
+            70,   # Chasis
+            45,   # Tipo
+            45,   # Formato
+            42,   # Fecha
+            58,   # Hora
+            85,   # Cliente
+            75,   # Producto
+            55,   # Destino
+            125,  # Comentario
+            55,   # Siempre carga
+        ],
+    )
+
+    table_style = [
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F3B63")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 6),
+        ("FONTSIZE", (0, 1), (-1, -1), 5.6),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+    ]
+
+    for row_idx in tomorrow_after_11_rows:
+        table_style.extend([
+            ("BACKGROUND", (0, row_idx), (-1, row_idx), colors.black),
+            ("TEXTCOLOR", (0, row_idx), (-1, row_idx), colors.white),
+            ("FONTNAME", (0, row_idx), (-1, row_idx), "Helvetica-Bold"),
+        ])
+
+    table.setStyle(TableStyle(table_style))
+
+    elements.append(table)
+    doc.build(elements)
+
+    bio.seek(0)
+
+    response = send_file(
+        bio,
+        as_attachment=False,
+        download_name="prelista_operativa.pdf",
+        mimetype="application/pdf",
+    )
+
+    response.headers["Content-Disposition"] = "inline; filename=prelista_operativa.pdf"
+
+    return response

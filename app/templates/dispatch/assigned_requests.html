@@ -120,7 +120,16 @@
                     {% for a in line.assignments %}
                       <tr>
                         <td>
+
                           <strong>{{ a.container.code }}</strong>
+
+                          {% if a.assignment_notes %}
+                            <div class="assignment-notes">
+                              <b>Comentario:</b><br>
+                              {{ a.assignment_notes }}
+                            </div>
+                          {% endif %}
+
                         </td>
 
                         <td>
@@ -349,6 +358,18 @@
   min-width:980px;
   border-collapse:separate;
   border-spacing:0;
+}
+
+.assignment-notes{
+    margin-top:8px;
+    padding:8px 10px;
+    border-radius:12px;
+    background:#f8fafc;
+    border-left:4px solid #3b82f6;
+    color:#475569;
+    font-size:12px;
+    line-height:1.45;
+    white-space:pre-wrap;
 }
 
 .assigned-table th{
