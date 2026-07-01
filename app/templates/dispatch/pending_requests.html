@@ -18,6 +18,30 @@
 </div>
 
 <div class="card card-pad" style="margin-top:14px;">
+  <form method="get" class="pending-search-form">
+    <div>
+      <label>Buscar por booking</label>
+      <input
+        type="text"
+        name="q"
+        value="{{ q or '' }}"
+        placeholder="Ej: BK123456"
+      >
+    </div>
+
+    <div class="pending-search-actions">
+      <button class="btn primary" type="submit">Buscar</button>
+
+      {% if q %}
+        <a class="btn" href="{{ url_for('dispatch.pending_requests') }}">
+          Limpiar
+        </a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+<div class="card card-pad" style="margin-top:14px;">
   {% if not requests %}
     <div class="hint">No hay solicitudes pendientes.</div>
   {% else %}
@@ -126,6 +150,25 @@
 .line-mini {
   padding:6px 0;
   border-bottom:1px solid rgba(148,163,184,.12);
+}
+
+.pending-search-form{
+  display:grid;
+  grid-template-columns:minmax(240px, 1fr) auto;
+  gap:10px;
+  align-items:end;
+}
+
+.pending-search-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+@media(max-width:900px){
+  .pending-search-form{
+    grid-template-columns:1fr;
+  }
 }
 </style>
 {% endblock %}

@@ -151,6 +151,8 @@
                   type="checkbox"
                   name="container_ids[]"
                   value="{{ c.id }}"
+                  class="available-checkbox"
+                  data-container-id="{{ c.id }}"
                 >
 
                 <div class="available-card-body">
@@ -171,6 +173,10 @@
                     {{ c.size }}
                     · {{ c.shipping_line }}
 
+                    {% if c.classification %}
+                      · Clasificación {{ c.classification }}
+                    {% endif %}
+
                     {% if c.position %}
                       · {{ c.position.bay_code }}
                       F{{ "%02d"|format(c.position.depth_row) }}
@@ -180,6 +186,21 @@
                     {% endif %}
                   </div>
 
+                  {% if c.notes %}
+                    <div class="available-notes" title="{{ c.notes }}">
+                      {{ c.notes }}
+                    </div>
+                  {% endif %}
+
+                </div>
+
+                <div class="assignment-note-wrap" id="assignmentNoteWrap-{{ c.id }}">
+                  <label>Comentario de asignación</label>
+                  <textarea
+                    name="assignment_notes_{{ c.id }}"
+                    rows="2"
+                    placeholder="Comentario opcional para {{ c.code }}..."
+                  ></textarea>
                 </div>
 
               </label>
@@ -346,6 +367,44 @@
     grid-template-columns:1fr;
   }
 }
+
+.available-notes{
+  margin-top:6px;
+  padding:7px 9px;
+  border-radius:12px;
+  background:rgba(248,250,252,.85);
+  border:1px solid rgba(148,163,184,.22);
+  color:#475569;
+  font-size:11px;
+  font-weight:750;
+  line-height:1.35;
+  max-height:48px;
+  overflow:hidden;
+}
+
+.assignment-note-wrap{
+  display:none;
+  margin-top:8px;
+}
+
+.assignment-note-wrap label{
+  margin-top:0;
+  margin-bottom:4px;
+  font-size:11px;
+  font-weight:900;
+  color:#334155;
+}
+
+.assignment-note-wrap textarea{
+  width:100%;
+  min-height:58px;
+  padding:8px 10px;
+  border:1px solid #cbd5e1;
+  border-radius:12px;
+  font-size:12px;
+  font-weight:750;
+  resize:vertical;
+}
 </style>
 
 <script>
@@ -364,6 +423,22 @@ document.addEventListener("DOMContentLoaded", function(){
         const text = (card.dataset.searchText || "").toUpperCase();
         card.classList.toggle("is-hidden", q && !text.includes(q));
       });
+    });
+  });
+
+  document.querySelectorAll(".available-checkbox").forEach(function(checkbox){
+    checkbox.addEventListener("change", function(){
+      const containerId = checkbox.dataset.containerId;
+      const wrap = document.getElementById("assignmentNoteWrap-" + containerId);
+
+      if (!wrap) return;
+
+      wrap.style.display = checkbox.checked ? "block" : "none";
+
+      if (!checkbox.checked) {
+        const textarea = wrap.querySelector("textarea");
+        if (textarea) textarea.value = "";
+      }
     });
   });
 });

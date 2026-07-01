@@ -258,23 +258,46 @@ def new_request():
 def pending_requests():
     site_id = _ensure_active_site()
 
-    requests = (
+    q = (request.args.get("q") or "").strip().upper()
+
+    query = (
         DispatchRequest.query
         .options(
             selectinload(DispatchRequest.lines)
             .selectinload(DispatchRequestLine.assignments)
         )
+        .join(
+            DispatchRequestLine,
+            DispatchRequestLine.request_id == DispatchRequest.id,
+        )
         .filter(
             DispatchRequest.site_id == site_id,
             DispatchRequest.status.in_(["PENDIENTE", "PARCIAL"]),
         )
-        .order_by(DispatchRequest.requested_at.desc())
+    )
+
+    if q:
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(DispatchRequest.booking, "")
+            ).like(f"%{q}%")
+        )
+
+    requests = (
+        query
+        .order_by(
+            DispatchRequestLine.load_date.asc(),
+            DispatchRequestLine.load_time.asc().nulls_last(),
+            DispatchRequest.requested_at.asc(),
+        )
+        .distinct()
         .all()
     )
 
     return render_template(
         "dispatch/pending_requests.html",
         requests=requests,
+        q=q,
     )
 
 @dispatch_bp.get("/request/<int:request_id>")
@@ -355,6 +378,8 @@ def request_detail(request_id: int):
                 "size": c.size,
                 "shipping_line": shipping_line or "SIN NAVIERA",
                 "gate_in_origin_port": c.gate_in_origin_port or "",
+                "classification": ((cls.final_classification if cls else "") or "").strip().upper(),
+                "notes": ((cls.summary_text if cls else "") or c.status_notes or "").strip(),
                 "dispatch_status": c.dispatch_status or "NORMAL",
                 "position": None if not pos else {
                     "bay_code": bay.code if bay else None,
@@ -440,12 +465,18 @@ def assign_containers(request_id: int, line_id: int):
     assigned_codes = []
 
     for c in containers:
+        assignment_notes = (
+            request.form.get(f"assignment_notes_{c.id}") or ""
+        ).strip()
+
         assignment = DispatchAssignment(
             request_line_id=line.id,
             container_id=c.id,
             assigned_by_user_id=current_user.id,
             status="ASIGNADO",
+            assignment_notes=assignment_notes or None,
         )
+
         db.session.add(assignment)
 
         c.dispatch_status = next_status
@@ -496,7 +527,9 @@ def assign_containers(request_id: int, line_id: int):
 def assigned_requests():
     site_id = _ensure_active_site()
 
-    requests = (
+    q = (request.args.get("q") or "").strip().upper()
+
+    query = (
         DispatchRequest.query
         .options(
             selectinload(DispatchRequest.lines)
@@ -507,6 +540,17 @@ def assigned_requests():
             DispatchRequest.site_id == site_id,
             DispatchRequest.status.in_(["PARCIAL", "ASIGNADA"])
         )
+    )
+
+    if q:
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(DispatchRequest.booking, "")
+            ).like(f"%{q}%")
+        )
+
+    requests = (
+        query
         .order_by(
             DispatchRequest.updated_at.desc(),
             DispatchRequest.requested_at.desc()
@@ -517,6 +561,7 @@ def assigned_requests():
     return render_template(
         "dispatch/assigned_requests.html",
         requests=requests,
+        q=q,
     )
 
 @dispatch_bp.get("/agenda")

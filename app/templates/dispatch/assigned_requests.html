@@ -22,6 +22,30 @@
   </div>
 </div>
 
+<div class="card card-pad" style="margin-top:14px;">
+  <form method="get" class="assigned-search-form">
+    <div>
+      <label>Buscar por booking</label>
+      <input
+        type="text"
+        name="q"
+        value="{{ q or '' }}"
+        placeholder="Ej: BK123456"
+      >
+    </div>
+
+    <div class="assigned-search-actions">
+      <button class="btn primary" type="submit">Buscar</button>
+
+      {% if q %}
+        <a class="btn" href="{{ url_for('dispatch.assigned_requests') }}">
+          Limpiar
+        </a>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
 {% if not requests %}
   <div class="card card-pad" style="margin-top:14px;">
     <div class="hint">No hay solicitudes asignadas.</div>
@@ -437,6 +461,25 @@
 
   .assigned-table{
     min-width:920px;
+  }
+}
+
+.assigned-search-form{
+  display:grid;
+  grid-template-columns:minmax(240px, 1fr) auto;
+  gap:10px;
+  align-items:end;
+}
+
+.assigned-search-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+@media(max-width:900px){
+  .assigned-search-form{
+    grid-template-columns:1fr;
   }
 }
 </style>
