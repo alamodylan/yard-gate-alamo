@@ -25,7 +25,7 @@ from app.models.eir import EIR
 from app.models.chassis import Chassis
 
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import letter, landscape
+from reportlab.lib.pagesizes import letter, legal, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 
@@ -868,14 +868,11 @@ def prelist_pdf():
             if line.load_time is None or line.load_time > current_time:
                 prelist_lines.append(line)
 
-    assignment_ids = []
     container_ids = []
     chassis_ids = set()
 
     for line in prelist_lines:
         for a in line.assignments:
-            assignment_ids.append(a.id)
-
             if a.container_id:
                 container_ids.append(a.container_id)
 
@@ -946,20 +943,34 @@ def prelist_pdf():
 
         return value.strftime("%I:%M %p")
 
+    def _short_site(value):
+        value = (value or "").strip().upper()
+
+        if "COYOL" in value:
+            return "COYOL"
+
+        if "CALDERA" in value:
+            return "CALDERA"
+
+        if "LIMON" in value or "LIMÓN" in value:
+            return "LIMON"
+
+        return value[:10]
+
     data = [[
-        "Predio",
-        "Naviera",
-        "Contenedor",
-        "Chasis",
-        "Tipo",
-        "Formato",
-        "Fecha",
-        "Hora",
-        "Cliente / Planta",
-        "Producto",
-        "Destino",
-        "Comentario",
-        "Siempre carga",
+        "PREDIO",
+        "NAVIERA",
+        "CONTENEDOR",
+        "CHASIS",
+        "TIPO",
+        "FORMATO",
+        "FECHA",
+        "HORA",
+        "CLIENTE / PLANTA",
+        "PRODUCTO",
+        "DESTINO",
+        "COMENTARIO",
+        "SIEMPRE CARGA",
     ]]
 
     tomorrow_after_11_rows = []
@@ -983,7 +994,7 @@ def prelist_pdf():
                 formato = f"{tipo}x{chassis.axles}"
 
             row = [
-                site_name,
+                _short_site(site_name),
                 req.shipping_line or "",
                 container.code if container else "",
                 chassis.chassis_number if chassis else "",
@@ -1014,7 +1025,7 @@ def prelist_pdf():
 
         for _ in range(pending_count):
             row = [
-                site_name,
+                _short_site(site_name),
                 req.shipping_line or "",
                 "",
                 "",
@@ -1042,7 +1053,7 @@ def prelist_pdf():
 
     if len(data) == 1:
         data.append([
-            site_name,
+            _short_site(site_name),
             "—",
             "—",
             "—",
@@ -1061,55 +1072,74 @@ def prelist_pdf():
 
     doc = SimpleDocTemplate(
         bio,
-        pagesize=landscape(letter),
-        rightMargin=14,
-        leftMargin=14,
-        topMargin=16,
-        bottomMargin=16,
+        pagesize=landscape(legal),
+        rightMargin=10,
+        leftMargin=10,
+        topMargin=10,
+        bottomMargin=10,
     )
 
     styles = getSampleStyleSheet()
+    title_style = styles["Normal"]
+    title_style.fontName = "Helvetica-Bold"
+    title_style.fontSize = 8
+    title_style.leading = 9
+
+    small_style = styles["Normal"]
+    small_style.fontSize = 6
+    small_style.leading = 7
+
     elements = []
 
     printed_at = now_cr.strftime("%d/%m/%Y %I:%M %p")
 
-    elements.append(Paragraph("<b>Prelista Operativa</b>", styles["Title"]))
-    elements.append(Paragraph(f"Impreso: {printed_at}", styles["Normal"]))
-    elements.append(Spacer(1, 8))
+    elements.append(Paragraph("<b>PRELISTA OPERATIVA</b>", title_style))
+    elements.append(Paragraph(f"Impreso: {printed_at}", small_style))
+    elements.append(Spacer(1, 5))
 
     table = Table(
         data,
         repeatRows=1,
         colWidths=[
-            55,   # Predio
-            50,   # Naviera
-            78,   # Contenedor
-            70,   # Chasis
-            45,   # Tipo
-            45,   # Formato
-            42,   # Fecha
-            58,   # Hora
-            85,   # Cliente
-            75,   # Producto
-            55,   # Destino
-            125,  # Comentario
+            45,   # Predio
+            42,   # Naviera
+            70,   # Contenedor
+            62,   # Chasis
+            38,   # Tipo
+            42,   # Formato
+            36,   # Fecha
+            50,   # Hora
+            108,  # Cliente / Planta
+            105,  # Producto
+            108,  # Destino
+            105,  # Comentario
             55,   # Siempre carga
         ],
     )
 
     table_style = [
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F3B63")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.black),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 6),
-        ("FONTSIZE", (0, 1), (-1, -1), 5.6),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+        ("FONTSIZE", (0, 0), (-1, 0), 5.5),
+
+        ("FONTSIZE", (0, 1), (-1, -1), 5.2),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.black),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("ALIGN", (8, 1), (11, -1), "LEFT"),
+
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
+            colors.white,
+            colors.HexColor("#F3F4F6"),
+        ]),
     ]
 
     for row_idx in tomorrow_after_11_rows:
