@@ -293,6 +293,27 @@
         {% endfor %}
       </tbody>
     </table>
+    {% if pagination and pagination.pages > 1 %}
+    <div class="actions" style="margin-top:14px;justify-content:center;">
+      {% if pagination.has_prev %}
+        <a class="btn btn-soft"
+          href="{{ url_for('yard.eir_list_view', page=pagination.prev_num, q=q, date_from=date_from, date_to=date_to, status=status) }}">
+          Anterior
+        </a>
+      {% endif %}
+
+      <span class="badge">
+        Página {{ pagination.page }} de {{ pagination.pages }}
+      </span>
+
+      {% if pagination.has_next %}
+        <a class="btn btn-soft"
+          href="{{ url_for('yard.eir_list_view', page=pagination.next_num, q=q, date_from=date_from, date_to=date_to, status=status) }}">
+          Siguiente
+        </a>
+      {% endif %}
+    </div>
+  {% endif %}
   </div>
 </div>
 {% endblock %}

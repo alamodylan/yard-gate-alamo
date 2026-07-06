@@ -26,6 +26,8 @@ UTC_TZ = pytz.utc
 @yard_bp.get("/eir")
 @login_required
 def eir_list_view():
+    from sqlalchemy.orm import joinedload
+
     site_id = _ensure_active_site()
 
     q = (request.args.get("q") or "").strip().upper()
@@ -33,8 +35,17 @@ def eir_list_view():
     date_to = (request.args.get("date_to") or "").strip()
     status = (request.args.get("status") or "").strip().upper()
 
+    page = request.args.get("page", 1, type=int)
+    per_page = 50
+
     query = (
         EIR.query
+        .options(
+            joinedload(EIR.site),
+            joinedload(EIR.container),
+            joinedload(EIR.chassis),
+            joinedload(EIR.created_by),
+        )
         .filter(EIR.site_id == site_id)
         .outerjoin(Container, Container.id == EIR.container_id)
         .outerjoin(Chassis, Chassis.id == EIR.chassis_id)
@@ -67,11 +78,18 @@ def eir_list_view():
     if status:
         query = query.filter(EIR.status == status)
 
-    rows = query.order_by(EIR.id.desc()).all()
+    pagination = (
+        query
+        .order_by(EIR.id.desc())
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+
+    rows = pagination.items
 
     return render_template(
         "yard/eir_list.html",
         rows=rows,
+        pagination=pagination,
         q=q,
         date_from=date_from,
         date_to=date_to,
