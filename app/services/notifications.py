@@ -85,6 +85,8 @@ def create_notifications_for_roles(
 
         db.session.add(notification)
         created.append(notification)
+        db.session.flush()
+        trim_user_notifications(user.id, site_id, keep=20)
 
     return created
 
@@ -109,3 +111,18 @@ def notification_url(notification):
         return "inventory.evacuation_list", {}
 
     return None, {}
+
+def trim_user_notifications(user_id: int, site_id: int, keep: int = 20):
+    old_rows = (
+        UserNotification.query
+        .filter(
+            UserNotification.user_id == user_id,
+            UserNotification.site_id == site_id,
+        )
+        .order_by(UserNotification.created_at.desc(), UserNotification.id.desc())
+        .offset(keep)
+        .all()
+    )
+
+    for row in old_rows:
+        db.session.delete(row)

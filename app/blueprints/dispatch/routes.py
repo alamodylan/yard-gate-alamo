@@ -628,6 +628,36 @@ def assign_containers(request_id: int, line_id: int):
 
     db.session.flush()
 
+    pending_gps = (
+        GpsAssignment.query
+        .filter(
+            GpsAssignment.site_id == site_id,
+            GpsAssignment.dispatch_request_id == req.id,
+            GpsAssignment.dispatch_request_line_id == line.id,
+            GpsAssignment.status == "ASIGNADO",
+            db.or_(
+                GpsAssignment.dispatch_assignment_id.is_(None),
+                GpsAssignment.container_id.is_(None),
+            ),
+        )
+        .order_by(GpsAssignment.assigned_at.asc(), GpsAssignment.id.asc())
+        .first()
+    )
+
+    if pending_gps:
+        first_assignment = (
+            DispatchAssignment.query
+            .filter_by(request_line_id=line.id)
+            .order_by(DispatchAssignment.assigned_at.asc(), DispatchAssignment.id.asc())
+            .first()
+        )
+
+        if first_assignment:
+            pending_gps.dispatch_assignment_id = first_assignment.id
+            pending_gps.container_id = first_assignment.container_id
+            pending_gps.chassis_id = first_assignment.chassis_id
+            pending_gps.updated_at = datetime.utcnow()
+
     total_assigned_after = already_assigned + len(containers)
 
     if total_assigned_after >= int(line.quantity or 0):
@@ -659,6 +689,8 @@ def assign_containers(request_id: int, line_id: int):
     )
 
     db.session.commit()
+
+    
 
     flash(f"Se asignaron {len(containers)} contenedores correctamente.", "success")
     return redirect(url_for("dispatch.request_detail", request_id=req.id))
@@ -699,10 +731,38 @@ def assigned_requests():
         .all()
     )
 
+    request_ids = [r.id for r in requests]
+
+    gps_rows = []
+
+    if request_ids:
+        gps_rows = (
+            GpsAssignment.query
+            .options(joinedload(GpsAssignment.gps_device))
+            .filter(
+                GpsAssignment.site_id == site_id,
+                GpsAssignment.dispatch_request_id.in_(request_ids),
+                GpsAssignment.status == "ASIGNADO",
+            )
+            .all()
+        )
+
+    gps_by_assignment_id = {}
+    gps_by_line_id = {}
+
+    for gps in gps_rows:
+        if gps.dispatch_assignment_id:
+            gps_by_assignment_id[gps.dispatch_assignment_id] = gps
+
+        if gps.dispatch_request_line_id:
+            gps_by_line_id[gps.dispatch_request_line_id] = gps
+
     return render_template(
         "dispatch/assigned_requests.html",
         requests=requests,
         q=q,
+        gps_by_assignment_id=gps_by_assignment_id,
+        gps_by_line_id=gps_by_line_id,
     )
 
 @dispatch_bp.get("/agenda")

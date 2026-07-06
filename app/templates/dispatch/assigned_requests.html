@@ -110,6 +110,7 @@
                       <th>Estado asignación</th>
                       <th>Asignado</th>
                       <th>Montado</th>
+                      <th>GPS</th>
                       {% if can('dispatch.assigned.actions') %}
                       <th style="width:280px;">Acciones</th>
                       {% endif %}
@@ -153,6 +154,30 @@
                             </span>
                           {% else %}
                             —
+                          {% endif %}
+                        </td>
+
+                        <td>
+                          {% set gps = gps_by_assignment_id.get(a.id) or gps_by_line_id.get(line.id) %}
+
+                          {% if gps and gps.gps_device %}
+                            <div class="gps-assigned-box">
+                              <span class="gps-pill">
+                                GPS {{ gps.gps_device.gps_number }}
+                              </span>
+
+                              {% if gps.gps_device.battery_range %}
+                                <small>Batería: {{ gps.gps_device.battery_range }}</small>
+                              {% endif %}
+
+                              {% if gps.assigned_at %}
+                                <small>{{ gps.assigned_at|dt_cr("%d/%m/%Y %I:%M %p") }}</small>
+                              {% endif %}
+                            </div>
+                          {% elif r.requires_gps %}
+                            <span class="gps-pending-pill">GPS pendiente</span>
+                          {% else %}
+                            <span class="muted-gps">—</span>
                           {% endif %}
                         </td>
 
@@ -355,7 +380,7 @@
 
 .assigned-table{
   width:100%;
-  min-width:980px;
+  min-width:1080px;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -503,5 +528,52 @@
     grid-template-columns:1fr;
   }
 }
+
+.gps-assigned-box{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.gps-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:max-content;
+  border-radius:999px;
+  padding:5px 10px;
+  background:#dbeafe;
+  color:#1d4ed8;
+  border:1px solid #93c5fd;
+  font-size:11px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.gps-assigned-box small{
+  color:#64748b;
+  font-size:11px;
+  font-weight:800;
+}
+
+.gps-pending-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:5px 10px;
+  background:#fef3c7;
+  color:#92400e;
+  border:1px solid #fcd34d;
+  font-size:11px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.muted-gps{
+  color:#94a3b8;
+  font-weight:800;
+}
+
 </style>
 {% endblock %}
