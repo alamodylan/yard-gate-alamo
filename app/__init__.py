@@ -105,40 +105,34 @@ def create_app():
 
         active_site_id = session.get("active_site_id")
 
-        query = UserNotification.query.filter(
+        unread_query = UserNotification.query.filter(
             UserNotification.user_id == current_user.id,
             UserNotification.is_read == False,  # noqa: E712
         )
 
-        if active_site_id:
-            query = query.filter(UserNotification.site_id == active_site_id)
+        list_query = UserNotification.query.filter(
+            UserNotification.user_id == current_user.id,
+        )
 
-        unread_notifications = (
-            query
+        if active_site_id:
+            unread_query = unread_query.filter(UserNotification.site_id == int(active_site_id))
+            list_query = list_query.filter(UserNotification.site_id == int(active_site_id))
+
+        latest_notifications = (
+            list_query
             .order_by(UserNotification.created_at.desc())
-            .limit(8)
+            .limit(10)
             .all()
         )
 
-        count_query = UserNotification.query.filter(
-            UserNotification.user_id == current_user.id,
-            UserNotification.is_read == False,  # noqa: E712
-        )
-
-        if active_site_id:
-            count_query = count_query.filter(UserNotification.site_id == active_site_id)
-
         notification_items = []
 
-        for n in unread_notifications:
+        for n in latest_notifications:
             endpoint, params = notification_url(n)
 
             href = "#"
             if endpoint and endpoint in current_app.view_functions:
-                try:
-                    href = url_for("dispatch.read_notification", notification_id=n.id)
-                except Exception:
-                    href = "#"
+                href = url_for("dispatch.read_notification", notification_id=n.id)
 
             notification_items.append({
                 "id": n.id,
@@ -147,11 +141,12 @@ def create_app():
                 "related_type": n.related_type,
                 "related_id": n.related_id,
                 "created_at": n.created_at,
+                "is_read": n.is_read,
                 "href": href,
             })
 
         return dict(
-            notification_count=count_query.count(),
+            notification_count=unread_query.count(),
             notification_items=notification_items,
         )
 
