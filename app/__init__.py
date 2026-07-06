@@ -90,6 +90,70 @@ def create_app():
             active_site=site,
             get_active_site_id=get_active_site_id
         )
+    
+        # ✅ Notificaciones globales para campanita
+    @app.context_processor
+    def inject_notifications():
+        from app.models.dispatch import UserNotification
+        from app.services.notifications import notification_url
+
+        if not current_user.is_authenticated:
+            return dict(
+                notification_count=0,
+                notification_items=[],
+            )
+
+        active_site_id = session.get("active_site_id")
+
+        query = UserNotification.query.filter(
+            UserNotification.user_id == current_user.id,
+            UserNotification.is_read == False,  # noqa: E712
+        )
+
+        if active_site_id:
+            query = query.filter(UserNotification.site_id == active_site_id)
+
+        unread_notifications = (
+            query
+            .order_by(UserNotification.created_at.desc())
+            .limit(8)
+            .all()
+        )
+
+        count_query = UserNotification.query.filter(
+            UserNotification.user_id == current_user.id,
+            UserNotification.is_read == False,  # noqa: E712
+        )
+
+        if active_site_id:
+            count_query = count_query.filter(UserNotification.site_id == active_site_id)
+
+        notification_items = []
+
+        for n in unread_notifications:
+            endpoint, params = notification_url(n)
+
+            href = "#"
+            if endpoint and endpoint in current_app.view_functions:
+                try:
+                    href = url_for("dispatch.read_notification", notification_id=n.id)
+                except Exception:
+                    href = "#"
+
+            notification_items.append({
+                "id": n.id,
+                "title": n.title,
+                "message": n.message,
+                "related_type": n.related_type,
+                "related_id": n.related_id,
+                "created_at": n.created_at,
+                "href": href,
+            })
+
+        return dict(
+            notification_count=count_query.count(),
+            notification_items=notification_items,
+        )
 
     # Blueprints
     from app.blueprints.auth import auth_bp
