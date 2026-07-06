@@ -20,25 +20,24 @@ def users_for_notification_roles(site_id: int, roles: set[str]):
     if not site_id or not roles:
         return []
 
-    query = (
+    users = (
         db.session.query(User)
         .outerjoin(UserSite, UserSite.user_id == User.id)
         .filter(
             User.is_active == True,  # noqa: E712
             User.role.in_(roles),
         )
+        .all()
     )
-
-    users = query.all()
 
     result = []
     seen_ids = set()
 
     for user in users:
-        role = (user.role or "").strip().lower()
-
         if user.id in seen_ids:
             continue
+
+        role = (user.role or "").strip().lower()
 
         if role == "admin" or user.can_access_site(site_id):
             result.append(user)
@@ -59,7 +58,7 @@ def create_notifications_for_roles(
 ):
     exclude_user_ids = exclude_user_ids or set()
 
-    final_roles = set(roles or set())
+    final_roles = _normalize_roles(roles or set())
     final_roles.add("admin")
 
     users = users_for_notification_roles(site_id, final_roles)
@@ -67,7 +66,10 @@ def create_notifications_for_roles(
     created = []
 
     for user in users:
-        if user.id in exclude_user_ids:
+        role = (user.role or "").strip().lower()
+
+        # Admin recibe todo, aunque sea quien generó la acción.
+        if role != "admin" and user.id in exclude_user_ids:
             continue
 
         notification = UserNotification(
