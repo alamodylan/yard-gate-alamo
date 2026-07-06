@@ -110,7 +110,7 @@
             </a>
           {% endif %}
 
-          {% if can('dispatch.prelist.view') and has_endpoint('dispatch.gps_inventory') %}
+          {% if can('tracking.view') and has_endpoint('dispatch.gps_inventory') %}
             <a class="navlink" href="{{ url_for('dispatch.gps_inventory') }}">
               Tracking
             </a>
@@ -376,7 +376,7 @@
             <a href="{{ url_for('dispatch.prelist') }}">Prelista</a>
           {% endif %}
 
-          {% if can('dispatch.prelist.view') and has_endpoint('dispatch.gps_inventory') %}
+          {% if can('tracking.view') and has_endpoint('dispatch.gps_inventory') %}
             <a href="{{ url_for('dispatch.gps_inventory') }}">Tracking</a>
           {% endif %}
 

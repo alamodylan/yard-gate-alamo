@@ -24,6 +24,7 @@ class User(db.Model, UserMixin):
     ROLE_DESPACHADOR = "despachador"
     ROLE_OPERADOR = "operador"
     ROLE_TALLER = "taller"
+    ROLE_TRACKING = "tracking"
 
     # Compatibilidad temporal con usuarios existentes
     ROLE_PREDIO = "predio"

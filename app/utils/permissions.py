@@ -132,6 +132,14 @@ ROLE_PERMISSIONS = {
         # Pendiente definir
     },
 
+    "tracking": {
+        "dispatch.prelist.view",
+        "tracking.view",
+        "tracking.inventory.view",
+        "tracking.requests.view",
+        "tracking.assigned.view",
+    },
+
     # Compatibilidad temporal con usuarios viejos.
     # Se comporta como patio para no romper operación existente.
     "predio": {
