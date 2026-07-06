@@ -2,7 +2,7 @@
 
 from datetime import datetime, date, time
 
-from flask import render_template, request, redirect, url_for, flash, session, abort
+from flask import render_template, request, redirect, url_for, flash, session, abort, jsonify
 from flask_login import login_required, current_user
 from app.models.container import Container, ContainerPosition
 from app.models.container_classification import ContainerClassification
@@ -28,6 +28,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, legal, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from app.services.notifications import create_notifications_for_roles, notification_url
 
 
 def _allowed_sites_for_user(user):
@@ -112,6 +113,59 @@ def _recompute_dispatch_status(req: DispatchRequest):
 
     req.updated_at = datetime.utcnow()
 
+@dispatch_bp.get("/notifications/<int:notification_id>/read")
+@login_required
+def read_notification(notification_id: int):
+    site_id = _ensure_active_site()
+
+    notification = UserNotification.query.get_or_404(notification_id)
+
+    if notification.user_id != current_user.id:
+        abort(403)
+
+    if notification.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    if not notification.is_read:
+        notification.is_read = True
+        notification.read_at = datetime.utcnow()
+        db.session.commit()
+
+    endpoint, params = notification_url(notification)
+
+    if endpoint:
+        return redirect(url_for(endpoint, **params))
+
+    return redirect(url_for("dispatch.pending_requests"))
+
+
+@dispatch_bp.post("/notifications/mark-read")
+@login_required
+def mark_notifications_read():
+    site_id = _ensure_active_site()
+
+    query = UserNotification.query.filter(
+        UserNotification.user_id == current_user.id,
+        UserNotification.is_read == False,  # noqa: E712
+    )
+
+    if site_id:
+        query = query.filter(UserNotification.site_id == site_id)
+
+    notifications = query.all()
+
+    now = datetime.utcnow()
+
+    for notification in notifications:
+        notification.is_read = True
+        notification.read_at = now
+
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "marked": len(notifications),
+    })
 
 
 @dispatch_bp.get("/")
@@ -194,6 +248,7 @@ def new_request():
 
         load_date = _parse_date(line_dates[idx] if idx < len(line_dates) else "")
         load_time = _parse_time(line_times[idx] if idx < len(line_times) else "")
+
         condition = (
             line_conditions[idx]
             if idx < len(line_conditions)
@@ -257,6 +312,27 @@ def new_request():
                 condition_type=line["condition_type"],
                 status="PENDIENTE",
             )
+        )
+
+    create_notifications_for_roles(
+        site_id=site_id,
+        roles={"patio", "inspeccion"},
+        title=f"Nueva solicitud #{req.id}",
+        message=f"Solicitud {request_type} creada para {shipping_line}.",
+        related_type="DISPATCH_REQUEST",
+        related_id=req.id,
+        exclude_user_ids={current_user.id},
+    )
+
+    if requires_gps:
+        create_notifications_for_roles(
+            site_id=site_id,
+            roles={"tracking"},
+            title=f"Solicitud GPS #{req.id}",
+            message=f"La solicitud #{req.id} requiere GPS.",
+            related_type="GPS_REQUEST",
+            related_id=req.id,
+            exclude_user_ids={current_user.id},
         )
 
     db.session.commit()
@@ -572,15 +648,15 @@ def assign_containers(request_id: int, line_id: int):
 
     req.updated_at = datetime.utcnow()
 
-    notification = UserNotification(
+    create_notifications_for_roles(
         site_id=site_id,
-        user_id=req.requested_by_user_id,
-        title=f"Solicitud #{req.id} actualizada",
+        roles={"despachador"},
+        title=f"Contenedor asignado solicitud #{req.id}",
         message="Se asignaron contenedores: " + ", ".join(assigned_codes),
-        related_type="DISPATCH_REQUEST",
+        related_type="CONTAINER_ASSIGNED",
         related_id=req.id,
+        exclude_user_ids={current_user.id},
     )
-    db.session.add(notification)
 
     db.session.commit()
 
@@ -1463,6 +1539,26 @@ def gps_assign(line_id: int):
     gps.updated_at = datetime.utcnow()
 
     db.session.add(gps_assignment)
+    db.session.flush()
+
+    container_code = ""
+    if first_assignment and first_assignment.container:
+        container_code = first_assignment.container.code or ""
+
+    message = f"GPS {gps.gps_number} asignado a solicitud #{req.id}."
+    if container_code:
+        message += f" Contenedor: {container_code}."
+
+    create_notifications_for_roles(
+        site_id=site_id,
+        roles={"supervision", "despachador"},
+        title=f"GPS asignado solicitud #{req.id}",
+        message=message,
+        related_type="GPS_ASSIGNED",
+        related_id=req.id,
+        exclude_user_ids={current_user.id},
+    )
+
     db.session.commit()
 
     flash(f"GPS {gps.gps_number} asignado correctamente.", "success")

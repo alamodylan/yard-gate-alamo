@@ -182,6 +182,70 @@
         {% if current_user.is_authenticated %}
           <div class="nav-group nav-group-session">
 
+            <div class="notification-wrap">
+              <button
+                type="button"
+                class="notification-btn"
+                id="notificationBtn"
+                title="Notificaciones"
+                aria-label="Notificaciones"
+              >
+                <span class="notification-icon">🔔</span>
+
+                {% if notification_count and notification_count > 0 %}
+                  <span class="notification-count" id="notificationCount">
+                    {{ notification_count }}
+                  </span>
+                {% else %}
+                  <span class="notification-count is-empty" id="notificationCount">0</span>
+                {% endif %}
+              </button>
+
+              <div class="notification-panel" id="notificationPanel">
+                <div class="notification-head">
+                  <strong>Notificaciones</strong>
+                  <span>{{ notification_count or 0 }} sin leer</span>
+                </div>
+
+                <div class="notification-list">
+                  {% if notification_items %}
+                    {% for n in notification_items %}
+                      <a class="notification-item" href="{{ n.href }}">
+                        <div class="notification-item-icon">
+                          {% if n.related_type == "DISPATCH_REQUEST" %}
+                            📄
+                          {% elif n.related_type == "CONTAINER_ASSIGNED" %}
+                            📦
+                          {% elif n.related_type == "GPS_REQUEST" %}
+                            📍
+                          {% elif n.related_type == "GPS_ASSIGNED" %}
+                            ✅
+                          {% elif n.related_type == "EMPTY_LIST" %}
+                            🚚
+                          {% else %}
+                            🔔
+                          {% endif %}
+                        </div>
+
+                        <div class="notification-item-body">
+                          <strong>{{ n.title }}</strong>
+                          <span>{{ n.message }}</span>
+
+                          {% if n.created_at %}
+                            <small>{{ n.created_at|dt_cr("%d/%m/%Y %I:%M %p") }}</small>
+                          {% endif %}
+                        </div>
+                      </a>
+                    {% endfor %}
+                  {% else %}
+                    <div class="notification-empty">
+                      No hay notificaciones pendientes.
+                    </div>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+
             {% if current_user.has_multiple_sites %}
               <a
                 class="navlink"
@@ -331,6 +395,36 @@
           {% if current_user.role is defined %}
             <span>{{ (current_user.role or '').replace('_', ' ')|title }}</span>
           {% endif %}
+
+          <div class="mobile-notification-box">
+            <button
+              type="button"
+              class="mobile-notification-btn"
+              id="mobileNotificationBtn"
+            >
+              🔔 Notificaciones
+              {% if notification_count and notification_count > 0 %}
+                <strong id="mobileNotificationCount">{{ notification_count }}</strong>
+              {% else %}
+                <strong id="mobileNotificationCount" class="is-empty">0</strong>
+              {% endif %}
+            </button>
+
+            <div class="mobile-notification-list" id="mobileNotificationPanel">
+              {% if notification_items %}
+                {% for n in notification_items %}
+                  <a href="{{ n.href }}">
+                    <strong>{{ n.title }}</strong>
+                    <span>{{ n.message }}</span>
+                  </a>
+                {% endfor %}
+              {% else %}
+                <div class="mobile-notification-empty">
+                  No hay notificaciones pendientes.
+                </div>
+              {% endif %}
+            </div>
+          </div>
         </div>
 
         <div class="mobile-menu-section-title">Operación</div>
@@ -509,6 +603,324 @@
       });
     })();
   </script>
+
+  <script>
+    (function () {
+      const btn = document.getElementById("notificationBtn");
+      const panel = document.getElementById("notificationPanel");
+      const count = document.getElementById("notificationCount");
+
+      const mobileBtn = document.getElementById("mobileNotificationBtn");
+      const mobilePanel = document.getElementById("mobileNotificationPanel");
+      const mobileCount = document.getElementById("mobileNotificationCount");
+
+      const markReadUrl = "{{ url_for('dispatch.mark_notifications_read') if has_endpoint('dispatch.mark_notifications_read') else '' }}";
+
+      let alreadyMarked = false;
+
+      function clearCounters() {
+        if (count) {
+          count.textContent = "0";
+          count.classList.add("is-empty");
+        }
+
+        if (mobileCount) {
+          mobileCount.textContent = "0";
+          mobileCount.classList.add("is-empty");
+        }
+      }
+
+      function markReadOnce() {
+        if (alreadyMarked || !markReadUrl) return;
+
+        alreadyMarked = true;
+
+        fetch(markReadUrl, {
+          method: "POST",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        })
+        .then(() => clearCounters())
+        .catch(() => {});
+      }
+
+      if (btn && panel) {
+        btn.addEventListener("click", function (event) {
+          event.stopPropagation();
+          panel.classList.toggle("is-open");
+
+          if (panel.classList.contains("is-open")) {
+            markReadOnce();
+          }
+        });
+
+        panel.addEventListener("click", function (event) {
+          event.stopPropagation();
+        });
+      }
+
+      if (mobileBtn && mobilePanel) {
+        mobileBtn.addEventListener("click", function () {
+          mobilePanel.classList.toggle("is-open");
+
+          if (mobilePanel.classList.contains("is-open")) {
+            markReadOnce();
+          }
+        });
+      }
+
+      document.addEventListener("click", function () {
+        if (panel) {
+          panel.classList.remove("is-open");
+        }
+      });
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && panel) {
+          panel.classList.remove("is-open");
+        }
+      });
+    })();
+  </script>
+
+  <style>
+    .notification-wrap{
+      position:relative;
+      display:inline-flex;
+      align-items:center;
+    }
+
+    .notification-btn{
+      position:relative;
+      width:38px;
+      height:38px;
+      border-radius:999px;
+      border:1px solid #dbe3ef;
+      background:#ffffff;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      box-shadow:0 2px 8px rgba(15,23,42,.06);
+    }
+
+    .notification-icon{
+      font-size:17px;
+      line-height:1;
+    }
+
+    .notification-count{
+      position:absolute;
+      top:-6px;
+      right:-6px;
+      min-width:18px;
+      height:18px;
+      padding:0 5px;
+      border-radius:999px;
+      background:#dc2626;
+      color:#ffffff;
+      font-size:10px;
+      font-weight:950;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid #ffffff;
+    }
+
+    .notification-count.is-empty{
+      display:none;
+    }
+
+    .notification-panel{
+      display:none;
+      position:absolute;
+      top:46px;
+      right:0;
+      width:360px;
+      max-width:calc(100vw - 24px);
+      background:#ffffff;
+      border:1px solid #dbe3ef;
+      border-radius:18px;
+      box-shadow:0 24px 70px rgba(15,23,42,.22);
+      z-index:5000;
+      overflow:hidden;
+    }
+
+    .notification-panel.is-open{
+      display:block;
+    }
+
+    .notification-head{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:13px 14px;
+      background:#f8fafc;
+      border-bottom:1px solid #e2e8f0;
+    }
+
+    .notification-head strong{
+      color:#0f172a;
+      font-size:14px;
+    }
+
+    .notification-head span{
+      color:#64748b;
+      font-size:11px;
+      font-weight:800;
+    }
+
+    .notification-list{
+      max-height:390px;
+      overflow:auto;
+    }
+
+    .notification-item{
+      display:flex;
+      gap:10px;
+      padding:12px 14px;
+      text-decoration:none;
+      border-bottom:1px solid #edf2f7;
+      color:#0f172a;
+      background:#ffffff;
+    }
+
+    .notification-item:hover{
+      background:#f8fafc;
+    }
+
+    .notification-item:last-child{
+      border-bottom:none;
+    }
+
+    .notification-item-icon{
+      width:30px;
+      height:30px;
+      border-radius:999px;
+      background:#eff6ff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
+      font-size:15px;
+    }
+
+    .notification-item-body{
+      min-width:0;
+      display:flex;
+      flex-direction:column;
+      gap:3px;
+    }
+
+    .notification-item-body strong{
+      color:#0f172a;
+      font-size:13px;
+      font-weight:950;
+      line-height:1.25;
+    }
+
+    .notification-item-body span{
+      color:#475569;
+      font-size:12px;
+      line-height:1.3;
+    }
+
+    .notification-item-body small{
+      color:#94a3b8;
+      font-size:10px;
+      font-weight:800;
+    }
+
+    .notification-empty{
+      padding:18px 14px;
+      color:#64748b;
+      font-size:13px;
+      font-weight:800;
+      text-align:center;
+    }
+
+    .mobile-notification-box{
+      margin-top:12px;
+      width:100%;
+    }
+
+    .mobile-notification-btn{
+      width:100%;
+      border:1px solid #dbe3ef;
+      border-radius:14px;
+      background:#ffffff;
+      padding:10px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      font-weight:950;
+      color:#0f172a;
+    }
+
+    .mobile-notification-btn strong{
+      min-width:22px;
+      height:22px;
+      border-radius:999px;
+      background:#dc2626;
+      color:#ffffff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:11px;
+    }
+
+    .mobile-notification-btn strong.is-empty{
+      display:none;
+    }
+
+    .mobile-notification-list{
+      display:none;
+      margin-top:8px;
+      border:1px solid #e2e8f0;
+      border-radius:14px;
+      overflow:hidden;
+      background:#ffffff;
+    }
+
+    .mobile-notification-list.is-open{
+      display:block;
+    }
+
+    .mobile-notification-list a{
+      display:flex;
+      flex-direction:column;
+      gap:3px;
+      padding:10px 12px;
+      text-decoration:none;
+      border-bottom:1px solid #edf2f7;
+    }
+
+    .mobile-notification-list a:last-child{
+      border-bottom:none;
+    }
+
+    .mobile-notification-list a strong{
+      color:#0f172a;
+      font-size:13px;
+    }
+
+    .mobile-notification-list a span{
+      color:#475569;
+      font-size:12px;
+      line-height:1.25;
+    }
+
+    .mobile-notification-empty{
+      padding:12px;
+      color:#64748b;
+      font-size:12px;
+      font-weight:800;
+    }
+  </style>
+
 </body>
 </html>
 
