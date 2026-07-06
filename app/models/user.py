@@ -38,6 +38,7 @@ class User(db.Model, UserMixin):
         ROLE_DESPACHADOR,
         ROLE_OPERADOR,
         ROLE_TALLER,
+        ROLE_TRACKING,
         ROLE_PREDIO,
     }
 
