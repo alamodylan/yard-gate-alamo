@@ -18,10 +18,7 @@
         </a>
 
         {% if can('inventory.actions') %}
-        <a
-          class="btn success"
-          href="{{ url_for('inventory.inventory_bulk_upload_view') }}"
-        >
+        <a class="btn success" href="{{ url_for('inventory.inventory_bulk_upload_view') }}">
           Carga Masiva
         </a>
         {% endif %}
@@ -42,102 +39,65 @@
     </div>
 
     <form method="get" class="inventory-filters">
-
       <div class="inventory-search">
         <label>Buscar por código</label>
-
-        <input
-          class="input"
-          type="text"
-          name="q"
-          value="{{ q or '' }}"
-          placeholder="Ej: MSCU-123456-7">
+        <input class="input" type="text" name="q" value="{{ q or '' }}" placeholder="Ej: MSCU-123456-7">
       </div>
 
       <div class="inventory-filter-select">
         <label>Origen</label>
-
         <select class="select" name="origin">
           <option value="">Todos</option>
-
           {% for o in origin_options %}
-            <option value="{{ o }}" {% if origin==o %}selected{% endif %}>
-              {{ o }}
-            </option>
+            <option value="{{ o }}" {% if origin==o %}selected{% endif %}>{{ o }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="inventory-filter-select">
         <label>Tamaño</label>
-
         <select class="select" name="size">
           <option value="">Todos</option>
-
           {% for s in size_options %}
-            <option value="{{ s }}" {% if size==s %}selected{% endif %}>
-              {{ s }}
-            </option>
+            <option value="{{ s }}" {% if size==s %}selected{% endif %}>{{ s }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="inventory-filter-select">
         <label>Naviera</label>
-
         <select class="select" name="shipping_line">
           <option value="">Todas</option>
-
           {% for line in shipping_lines %}
-            <option value="{{ line }}" {% if shipping_line==line %}selected{% endif %}>
-              {{ line }}
-            </option>
+            <option value="{{ line }}" {% if shipping_line==line %}selected{% endif %}>{{ line }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="inventory-filter-select">
         <label>Clasificación</label>
-
         <select class="select" name="classification">
           <option value="">Todas</option>
-
           {% for c in classification_options %}
-            <option value="{{ c }}" {% if classification==c %}selected{% endif %}>
-              {{ c }}
-            </option>
+            <option value="{{ c }}" {% if classification==c %}selected{% endif %}>{{ c }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="inventory-filter-select">
         <label>Estado</label>
-
         <select class="select" name="dispatch_status">
           <option value="">Todos</option>
-
           {% for s in status_options %}
-            <option value="{{ s }}" {% if dispatch_status==s %}selected{% endif %}>
-              {{ s }}
-            </option>
+            <option value="{{ s }}" {% if dispatch_status==s %}selected{% endif %}>{{ s }}</option>
           {% endfor %}
         </select>
       </div>
 
       <div class="inventory-filter-actions">
-
-        <button class="btn primary" type="submit">
-          Filtrar
-        </button>
-
-        <a
-          class="btn"
-          href="{{ url_for('inventory.inventory_index') }}">
-          Limpiar
-        </a>
-
+        <button class="btn primary" type="submit">Filtrar</button>
+        <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Limpiar</a>
       </div>
-
     </form>
   </div>
 
@@ -170,16 +130,10 @@
           <tr>
             <td class="container-code-cell">
               <a
-                  href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}"
-                  class="
-                  {% if it.gate_in_origin_port == 'LIMON' %}
-                      container-origin-limon
-                  {% elif it.gate_in_origin_port == 'CALDERA' %}
-                      container-origin-caldera
-                  {% endif %}
-                  "
+                href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}"
+                class="{% if it.gate_in_origin_port == 'LIMON' %}container-origin-limon{% elif it.gate_in_origin_port == 'CALDERA' %}container-origin-caldera{% endif %}"
               >
-                  {{ it.code }}
+                {{ it.code }}
               </a>
             </td>
 
@@ -193,9 +147,7 @@
               {% endif %}
             </td>
 
-            <td>
-              <span class="plain-chip">{{ it.size or "—" }}</span>
-            </td>
+            <td><span class="plain-chip">{{ it.size or "—" }}</span></td>
 
             <td>
               {% if it.shipping_line %}
@@ -242,6 +194,8 @@
             <td>
               {% if ds == "NORMAL" %}
                 <span class="op-badge op-normal">Disponible</span>
+              {% elif ds == "NO_USAR" %}
+                <span class="op-badge op-no-use">No usar</span>
               {% elif ds == "PARA_DESPACHO" %}
                 <span class="op-badge op-dispatch">Asignado</span>
               {% elif ds == "PARA_EVACUAR" %}
@@ -291,9 +245,25 @@
                   >
                     Evacuar
                   </button>
+
+                  <form method="POST" action="{{ url_for('inventory.mark_container_no_use', container_id=it.id) }}">
+                    <button class="btn danger small" type="submit">
+                      No usar
+                    </button>
+                  </form>
+
+                {% elif it.is_in_yard and ds == "NO_USAR" %}
+                  <form method="POST" action="{{ url_for('inventory.unmark_container_no_use', container_id=it.id) }}">
+                    <button class="btn success small" type="submit">
+                      Habilitar uso
+                    </button>
+                  </form>
+
                 {% elif it.is_in_yard and ds == "PARA_EVACUAR" %}
                   <form method="POST" action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}">
-                    <button class="btn danger small" type="submit">Quitar evacuar</button>
+                    <button class="btn danger small" type="submit">
+                      Quitar evacuar
+                    </button>
                   </form>
                 {% endif %}
 
@@ -382,9 +352,7 @@
           resetEvacModal();
 
           label.textContent = code ? `Contenedor: ${code}` : "Contenedor";
-
           form.action = `/inventory/${id}/mark-evacuation`;
-
           modal.style.display = "flex";
         });
       });
@@ -426,24 +394,15 @@
     });
   </script>
 
-
   <div id="evacModal" class="evac-modal-backdrop">
     <div class="evac-modal">
-
       <h3>Marcar para evacuación</h3>
-
       <p id="evacContainerLabel"></p>
 
       <form id="evacForm" method="POST">
-
         <div class="field">
           <label>Destino</label>
-
-          <select
-            id="evacDestination"
-            name="evacuation_destination"
-            required
-          >
+          <select id="evacDestination" name="evacuation_destination" required>
             <option value="">Seleccione</option>
             <option value="LIMON">Limón</option>
             <option value="CALDERA">Caldera</option>
@@ -451,26 +410,14 @@
           </select>
         </div>
 
-        <div
-          id="otherDestinationWrap"
-          style="display:none; margin-top:10px;"
-        >
+        <div id="otherDestinationWrap" style="display:none; margin-top:10px;">
           <label>Destino personalizado</label>
-
-          <input
-            type="text"
-            name="evacuation_destination_other"
-            placeholder="Ej: San José"
-          >
+          <input type="text" name="evacuation_destination_other" placeholder="Ej: San José">
         </div>
 
         <div class="field" style="margin-top:12px;">
           <label>Tipo</label>
-
-          <select
-            name="evacuation_type"
-            required
-          >
+          <select name="evacuation_type" required>
             <option value="">Seleccione</option>
             <option value="RT">RT</option>
             <option value="BARCO">Barco</option>
@@ -480,38 +427,19 @@
 
         <div class="field" style="margin-top:12px;">
           <label>Observaciones</label>
-
-          <textarea
-            name="evacuation_notes"
-            rows="3"
-          ></textarea>
+          <textarea name="evacuation_notes" rows="3"></textarea>
         </div>
 
         <div class="evac-modal-actions">
-          <button
-            type="button"
-            class="btn"
-            id="closeEvacModal"
-          >
-            Cancelar
-          </button>
-
-          <button
-            type="submit"
-            class="btn primary"
-          >
-            Guardar
-          </button>
+          <button type="button" class="btn" id="closeEvacModal">Cancelar</button>
+          <button type="submit" class="btn primary">Guardar</button>
         </div>
-
       </form>
     </div>
   </div>
 
   <style>
-    .inventory-header-card{
-      margin-bottom:16px;
-    }
+    .inventory-header-card{ margin-bottom:16px; }
 
     .inventory-header{
       display:flex;
@@ -542,14 +470,11 @@
     }
 
     .inventory-filters{
-        margin-top:16px;
-        display:grid;
-        grid-template-columns:
-            minmax(260px,2fr)
-            repeat(5,170px)
-            auto;
-        gap:10px;
-        align-items:end;
+      margin-top:16px;
+      display:grid;
+      grid-template-columns:minmax(260px,2fr) repeat(5,170px) auto;
+      gap:10px;
+      align-items:end;
     }
 
     .inventory-search label,
@@ -612,17 +537,11 @@
       vertical-align:middle;
     }
 
-    .inventory-table tbody tr{
-      transition:background .15s ease;
-    }
+    .inventory-table tbody tr{ transition:background .15s ease; }
 
-    .inventory-table tbody tr:hover{
-      background:#f8fafc;
-    }
+    .inventory-table tbody tr:hover{ background:#f8fafc; }
 
-    .inventory-table tbody tr:last-child td{
-      border-bottom:none;
-    }
+    .inventory-table tbody tr:last-child td{ border-bottom:none; }
 
     .container-code-cell a{
       color:#0f172a;
@@ -632,9 +551,7 @@
       white-space:nowrap;
     }
 
-    .container-code-cell a:hover{
-      color:#1d4ed8;
-    }
+    .container-code-cell a:hover{ color:#1d4ed8; }
 
     .plain-chip,
     .line-chip,
@@ -675,9 +592,7 @@
       border-color:#bfdbfe;
     }
 
-    .yard-chip{
-      padding:6px 10px;
-    }
+    .yard-chip{ padding:6px 10px; }
 
     .yard-yes{
       background:#dcfce7;
@@ -707,6 +622,12 @@
       background:#dcfce7;
       color:#166534;
       border-color:#86efac;
+    }
+
+    .op-no-use{
+      background:#e5e7eb;
+      color:#374151;
+      border-color:#9ca3af;
     }
 
     .op-dispatch{
@@ -794,12 +715,10 @@
       gap:8px;
       align-items:center;
       flex-wrap:wrap;
-      min-width:150px;
+      min-width:170px;
     }
 
-    .inventory-actions form{
-      margin:0;
-    }
+    .inventory-actions form{ margin:0; }
 
     .empty-cell{
       color:#64748b !important;
@@ -809,21 +728,13 @@
     }
 
     @media(max-width:900px){
-      .inventory-filters{
-        grid-template-columns:1fr;
-      }
+      .inventory-filters{ grid-template-columns:1fr; }
 
-      .inventory-filter-actions{
-        justify-content:flex-start;
-      }
+      .inventory-filter-actions{ justify-content:flex-start; }
 
-      .inventory-table{
-        min-width:1250px;
-      }
+      .inventory-table{ min-width:1250px; }
 
-      .inventory-title{
-        font-size:24px;
-      }
+      .inventory-title{ font-size:24px; }
     }
 
     .evac-modal-backdrop{
@@ -877,13 +788,13 @@
     }
 
     .container-origin-limon{
-        color:#15803d !important;
-        font-weight:900;
+      color:#15803d !important;
+      font-weight:900;
     }
 
     .container-origin-caldera{
-        color:#ea580c !important;
-        font-weight:900;
+      color:#ea580c !important;
+      font-weight:900;
     }
 
     .origin-chip{
@@ -929,6 +840,5 @@
       color:#0f172a;
       border-color:#cbd5e1;
     }
-
   </style>
 {% endblock %}

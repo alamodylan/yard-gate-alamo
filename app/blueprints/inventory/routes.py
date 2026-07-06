@@ -334,6 +334,7 @@ def inventory_index():
 
     status_options = [
         "NORMAL",
+        "NO_USAR",
         "PARA_DESPACHO",
         "PARA_EVACUAR",
         "EVACUAR_SOLICITADO",
@@ -774,6 +775,10 @@ BULK_STATUS_MAP = {
     "DISPONIBLE": "NORMAL",
     "NORMAL": "NORMAL",
 
+    "NO_USAR": "NO_USAR",
+    "NO USAR": "NO_USAR",
+    "BLOQUEADO": "NO_USAR",
+
     "ASIGNADO": "PARA_DESPACHO",
     "PARA_DESPACHO": "PARA_DESPACHO",
 
@@ -1083,7 +1088,7 @@ def inventory_bulk_upload_template():
 
     dv_status = DataValidation(
         type="list",
-        formula1='"DISPONIBLE,ASIGNADO,EVACUAR,ASIGNADO_EVACUAR,DESPACHO_MONTADO,EVACUACION_MONTADA"',
+        formula1='"DISPONIBLE,NO_USAR,ASIGNADO,EVACUAR,ASIGNADO_EVACUAR,DESPACHO_MONTADO,EVACUACION_MONTADA"',
         allow_blank=False,
     )
 
@@ -1138,6 +1143,7 @@ def inventory_bulk_upload_template():
         ["", ""],
         ["ESTADO EXCEL", "ESTADO SISTEMA"],
         ["DISPONIBLE", "NORMAL"],
+        ["NO_USAR", "NO_USAR"],
         ["ASIGNADO", "PARA_DESPACHO"],
         ["EVACUAR", "PARA_EVACUAR"],
         ["ASIGNADO_EVACUAR", "EVACUAR_SOLICITADO"],
@@ -1736,3 +1742,59 @@ def evacuation_list_pdf():
         download_name="lista_vacios_evacuacion.pdf",
         mimetype="application/pdf",
     )
+
+
+@inventory_bp.post("/inventory/<int:container_id>/mark-no-use")
+@login_required
+def mark_container_no_use(container_id: int):
+    site_id = _ensure_active_site()
+
+    c = Container.query.get_or_404(container_id)
+
+    if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    if not c.is_in_yard:
+        flash("Solo se pueden marcar como NO USAR contenedores que están en patio.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    current_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+    if current_status != "NORMAL":
+        flash("Solo se pueden marcar como NO USAR contenedores disponibles.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    c.dispatch_status = "NO_USAR"
+    c.dispatch_marked_at = datetime.utcnow()
+    c.dispatch_marked_by_user_id = current_user.id
+
+    db.session.commit()
+
+    flash(f"Contenedor {c.code} marcado como NO USAR.", "success")
+    return redirect(url_for("inventory.inventory_index"))
+
+
+@inventory_bp.post("/inventory/<int:container_id>/unmark-no-use")
+@login_required
+def unmark_container_no_use(container_id: int):
+    site_id = _ensure_active_site()
+
+    c = Container.query.get_or_404(container_id)
+
+    if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    current_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+    if current_status != "NO_USAR":
+        flash("Solo se puede habilitar un contenedor que está en estado NO USAR.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    c.dispatch_status = "NORMAL"
+    c.dispatch_marked_at = None
+    c.dispatch_marked_by_user_id = None
+
+    db.session.commit()
+
+    flash(f"Contenedor {c.code} volvió a Disponible.", "success")
+    return redirect(url_for("inventory.inventory_index"))
