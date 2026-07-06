@@ -110,6 +110,12 @@
             </a>
           {% endif %}
 
+          {% if can('dispatch.prelist.view') and has_endpoint('dispatch.gps_inventory') %}
+            <a class="navlink" href="{{ url_for('dispatch.gps_inventory') }}">
+              Tracking
+            </a>
+          {% endif %}
+
           {% if can('dispatch.mounted.view') and has_endpoint('dispatch.mounted') %}
             <a class="navlink" href="{{ url_for('dispatch.mounted') }}">
               Montado
@@ -368,6 +374,10 @@
 
           {% if can('dispatch.prelist.view') and has_endpoint('dispatch.prelist') %}
             <a href="{{ url_for('dispatch.prelist') }}">Prelista</a>
+          {% endif %}
+
+          {% if can('dispatch.prelist.view') and has_endpoint('dispatch.gps_inventory') %}
+            <a href="{{ url_for('dispatch.gps_inventory') }}">Tracking</a>
           {% endif %}
 
           {% if can('dispatch.mounted.view') and has_endpoint('dispatch.mounted') %}

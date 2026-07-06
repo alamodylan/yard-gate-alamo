@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Solicitudes GPS{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <h2 style="margin:0;">Tracking · Solicitudes GPS</h2>
+  <p class="card-sub" style="margin-top:6px;">
+    Solicitudes operativas que requieren GPS y aún no tienen equipo asignado.
+  </p>
+
+  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('dispatch.gps_inventory') }}">Inventario GPS</a>
+    <a class="btn" href="{{ url_for('dispatch.gps_assigned') }}">GPS Asignados</a>
+  </div>
+</div>
+
+<div class="card card-pad" style="margin-top:14px;">
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Hora</th>
+        <th>Booking</th>
+        <th>Cliente / Lugar carga</th>
+        <th>Producto</th>
+        <th>Destino</th>
+        <th>Contenedor</th>
+        <th>Chasis</th>
+        <th>Asignar GPS</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for line in lines %}
+        {% set req = line.request %}
+        {% set assignments = line.assignments or [] %}
+
+        {% if assignments %}
+          {% for a in assignments %}
+            <tr>
+              <td>{{ line.load_date.strftime('%d/%m/%Y') if line.load_date else '—' }}</td>
+              <td>{{ line.load_time.strftime('%I:%M %p') if line.load_time else '—' }}</td>
+              <td>{{ req.booking or '—' }}</td>
+              <td>{{ req.client_name or '—' }}</td>
+              <td>{{ req.product_name or '—' }}</td>
+              <td>{{ req.port_out or '—' }}</td>
+              <td>{{ a.container.code if a.container else '—' }}</td>
+              <td>{{ a.chassis_id or 'Pendiente' }}</td>
+              <td>
+                <form method="post" action="{{ url_for('dispatch.gps_assign', line_id=line.id) }}">
+                  <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                    <select name="gps_device_id" required>
+                      <option value="">Seleccione GPS</option>
+                      {% for gps in available_gps %}
+                        <option value="{{ gps.id }}">
+                          {{ gps.gps_number }} · Carga {{ gps.battery_range or 'N/D' }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                    <button class="btn success small" type="submit">Asignar</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td>{{ line.load_date.strftime('%d/%m/%Y') if line.load_date else '—' }}</td>
+            <td>{{ line.load_time.strftime('%I:%M %p') if line.load_time else '—' }}</td>
+            <td>{{ req.booking or '—' }}</td>
+            <td>{{ req.client_name or '—' }}</td>
+            <td>{{ req.product_name or '—' }}</td>
+            <td>{{ req.port_out or '—' }}</td>
+            <td>Pendiente</td>
+            <td>Pendiente</td>
+            <td>
+              <form method="post" action="{{ url_for('dispatch.gps_assign', line_id=line.id) }}">
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <select name="gps_device_id" required>
+                    <option value="">Seleccione GPS</option>
+                    {% for gps in available_gps %}
+                      <option value="{{ gps.id }}">
+                        {{ gps.gps_number }} · Carga {{ gps.battery_range or 'N/D' }}
+                      </option>
+                    {% endfor %}
+                  </select>
+
+                  <button class="btn success small" type="submit">Asignar</button>
+                </div>
+              </form>
+            </td>
+          </tr>
+        {% endif %}
+      {% else %}
+        <tr>
+          <td colspan="9">No hay solicitudes GPS pendientes.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+@media (max-width: 900px) {
+  table {
+    display:block;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+}
+</style>
+{% endblock %}

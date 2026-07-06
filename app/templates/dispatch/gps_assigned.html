@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}GPS Asignados{% endblock %}
+
+{% block content %}
+<div class="card card-pad">
+  <h2 style="margin:0;">Tracking · GPS Asignados</h2>
+  <p class="card-sub" style="margin-top:6px;">
+    GPS actualmente asignados a solicitudes operativas.
+  </p>
+
+  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
+    <a class="btn" href="{{ url_for('dispatch.gps_inventory') }}">Inventario GPS</a>
+    <a class="btn success" href="{{ url_for('dispatch.gps_requests') }}">Solicitudes GPS</a>
+  </div>
+</div>
+
+<div class="card card-pad" style="margin-top:14px;">
+  <table>
+    <thead>
+      <tr>
+        <th>GPS</th>
+        <th>Carga</th>
+        <th>Fecha</th>
+        <th>Hora</th>
+        <th>Booking</th>
+        <th>Cliente</th>
+        <th>Producto</th>
+        <th>Destino</th>
+        <th>Contenedor</th>
+        <th>Chasis</th>
+        <th>Estado</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {% for row in rows %}
+        {% set gps = row.gps_device %}
+        {% set req = row.request %}
+        {% set line = row.line %}
+        {% set assignment = row.assignment %}
+        {% set chassis = chassis_by_id.get(row.chassis_id) if row.chassis_id else None %}
+
+        <tr>
+          <td><strong>{{ gps.gps_number if gps else '—' }}</strong></td>
+          <td>{{ gps.battery_range if gps and gps.battery_range else '—' }}</td>
+          <td>{{ line.load_date.strftime('%d/%m/%Y') if line and line.load_date else '—' }}</td>
+          <td>{{ line.load_time.strftime('%I:%M %p') if line and line.load_time else '—' }}</td>
+          <td>{{ req.booking if req and req.booking else '—' }}</td>
+          <td>{{ req.client_name if req and req.client_name else '—' }}</td>
+          <td>{{ req.product_name if req and req.product_name else '—' }}</td>
+          <td>{{ req.port_out if req and req.port_out else '—' }}</td>
+          <td>
+            {% if row.container %}
+              {{ row.container.code }}
+            {% elif assignment and assignment.container %}
+              {{ assignment.container.code }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if chassis %}
+              {{ chassis.chassis_number }}
+            {% elif row.chassis_id %}
+              ID {{ row.chassis_id }}
+            {% else %}
+              Pendiente
+            {% endif %}
+          </td>
+          <td><span class="badge badge-warning">{{ row.status }}</span></td>
+          <td>
+            <form method="post"
+                  action="{{ url_for('dispatch.gps_release_assignment', gps_assignment_id=row.id) }}"
+                  onsubmit="return confirm('¿Deseas liberar este GPS?');">
+              <button class="btn danger small" type="submit">Liberar</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="12">No hay GPS asignados actualmente.</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<style>
+@media (max-width: 900px) {
+  table {
+    display:block;
+    overflow-x:auto;
+    white-space:nowrap;
+  }
+}
+</style>
+{% endblock %}

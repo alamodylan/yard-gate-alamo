@@ -41,6 +41,7 @@ class DispatchRequest(db.Model):
     request_type = db.Column(db.String(20), nullable=False, default="DESPACHO")
     booking = db.Column(db.String(50), nullable=True)
     shipping_line = db.Column(db.String(80), nullable=False)
+    requires_gps = db.Column(db.Boolean, nullable=False, default=False)
 
     client_name = db.Column(db.String(200), nullable=True)
     product_name = db.Column(db.String(200), nullable=True)
@@ -210,3 +211,115 @@ class UserNotification(db.Model):
     )
 
     read_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+class GpsDevice(db.Model):
+    __tablename__ = "gps_devices"
+    __table_args__ = {"schema": SCHEMA}
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    site_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.sites.id"),
+        nullable=False,
+    )
+
+    gps_number = db.Column(db.String(50), nullable=False, unique=True)
+    status = db.Column(db.String(30), nullable=False, default="DISPONIBLE")
+    battery_range = db.Column(db.String(20), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+
+class GpsAssignment(db.Model):
+    __tablename__ = "gps_assignments"
+    __table_args__ = {"schema": SCHEMA}
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    site_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.sites.id"),
+        nullable=False,
+    )
+
+    dispatch_request_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.dispatch_requests.id"),
+        nullable=False,
+    )
+
+    dispatch_request_line_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.dispatch_request_lines.id"),
+        nullable=True,
+    )
+
+    dispatch_assignment_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.dispatch_assignments.id"),
+        nullable=True,
+    )
+
+    gps_device_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.gps_devices.id"),
+        nullable=False,
+    )
+
+    container_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.containers.id"),
+        nullable=True,
+    )
+
+    chassis_id = db.Column(db.Integer, nullable=True)
+
+    status = db.Column(db.String(30), nullable=False, default="ASIGNADO")
+
+    assigned_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey(f"{SCHEMA}.users.id"),
+        nullable=False,
+    )
+
+    assigned_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    released_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    updated_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+    )
+
+    gps_device = db.relationship("GpsDevice", lazy=True)
+    request = db.relationship("DispatchRequest", lazy=True)
+    line = db.relationship("DispatchRequestLine", lazy=True)
+    assignment = db.relationship("DispatchAssignment", lazy=True)
+    container = db.relationship("Container", lazy=True)

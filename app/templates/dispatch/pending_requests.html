@@ -97,9 +97,33 @@
                 </details>
               </td>
               <td>
-                <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
-                  Atender
-                </a>
+                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                  <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
+                    Atender
+                  </a>
+
+                  {% set role = (current_user.role or '')|lower %}
+                  {% set has_assignments = false %}
+
+                  {% for line in r.lines %}
+                    {% if line.assignments %}
+                      {% set has_assignments = true %}
+                    {% endif %}
+                  {% endfor %}
+
+                  {% if role in ['admin', 'supervision', 'despachador'] and not has_assignments and r.status == 'PENDIENTE' %}
+                    <form
+                      method="post"
+                      action="{{ url_for('dispatch.delete_pending_request', request_id=r.id) }}"
+                      style="margin:0;"
+                      onsubmit="return confirm('¿Seguro que deseas eliminar la solicitud #{{ r.id }}? Esta acción no se puede deshacer.');"
+                    >
+                      <button type="submit" class="btn small danger">
+                        Eliminar
+                      </button>
+                    </form>
+                  {% endif %}
+                </div>
               </td>
             </tr>
           {% endfor %}
