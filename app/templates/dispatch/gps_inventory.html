@@ -18,10 +18,21 @@
   <h3 style="margin-top:0;">Agregar GPS</h3>
 
   <form method="post" action="{{ url_for('dispatch.gps_create_device') }}">
-    <div class="grid-4">
+    <div class="grid-5">
       <div>
         <label>Número GPS</label>
         <input type="text" name="gps_number" placeholder="Ej: GPS-001" required>
+      </div>
+
+      <div>
+        <label>Ubicación</label>
+        <select name="current_location">
+          <option value="COYOL" selected>Coyol</option>
+          <option value="CALDERA">Caldera</option>
+          <option value="LIMON">Limón</option>
+          <option value="EN_DESPACHO">En despacho</option>
+          <option value="DESAPARECIDO">Desaparecido</option>
+        </select>
       </div>
 
       <div>
@@ -60,6 +71,7 @@
     <thead>
       <tr>
         <th>GPS</th>
+        <th>Ubicación</th>
         <th>Estado</th>
         <th>Carga</th>
         <th>Notas</th>
@@ -74,13 +86,29 @@
         <td><strong>{{ gps.gps_number }}</strong></td>
 
         <td>
+          {% if gps.current_location == 'COYOL' %}
+            Coyol
+          {% elif gps.current_location == 'CALDERA' %}
+            Caldera
+          {% elif gps.current_location == 'LIMON' %}
+            Limón
+          {% elif gps.current_location == 'EN_DESPACHO' %}
+            En despacho
+          {% elif gps.current_location == 'DESAPARECIDO' %}
+            <span class="badge badge-danger">DESAPARECIDO</span>
+          {% else %}
+            {{ gps.current_location or '—' }}
+          {% endif %}
+        </td>
+
+        <td>
           {% if gps.status == 'DISPONIBLE' %}
             <span class="badge badge-success">DISPONIBLE</span>
           {% elif gps.status == 'ASIGNADO' %}
             <span class="badge badge-warning">ASIGNADO</span>
           {% elif gps.status == 'MANTENIMIENTO' %}
             <span class="badge badge-soft">MANTENIMIENTO</span>
-          {% elif gps.status == 'FUERA_SERVICIO' %}
+          {% elif gps.status == 'FUERA_DE_SERVICIO' or gps.status == 'FUERA_SERVICIO' %}
             <span class="badge badge-danger">FUERA SERVICIO</span>
           {% else %}
             <span class="badge">{{ gps.status }}</span>
@@ -93,6 +121,20 @@
         <td>
           <form method="post" action="{{ url_for('dispatch.gps_update_device', gps_id=gps.id) }}">
             <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <select name="current_location">
+                {% for loc_value, loc_label in [
+                  ('COYOL', 'Coyol'),
+                  ('CALDERA', 'Caldera'),
+                  ('LIMON', 'Limón'),
+                  ('EN_DESPACHO', 'En despacho'),
+                  ('DESAPARECIDO', 'Desaparecido')
+                ] %}
+                  <option value="{{ loc_value }}" {{ 'selected' if gps.current_location == loc_value else '' }}>
+                    {{ loc_label }}
+                  </option>
+                {% endfor %}
+              </select>
+
               <select name="battery_range">
                 <option value="">No indicada</option>
                 {% for r in ['0-10','10-20','20-30','30-40','40-50','50-60','60-70','70-80','80-90','90-100'] %}
@@ -120,7 +162,7 @@
             </form>
 
             <form method="post" action="{{ url_for('dispatch.gps_change_status', gps_id=gps.id) }}">
-              <input type="hidden" name="status" value="FUERA_SERVICIO">
+              <input type="hidden" name="status" value="FUERA_DE_SERVICIO">
               <button class="btn small danger" type="submit">Fuera servicio</button>
             </form>
           </div>
@@ -128,7 +170,7 @@
       </tr>
       {% else %}
       <tr>
-        <td colspan="6">No hay GPS registrados.</td>
+        <td colspan="7">No hay GPS registrados.</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -136,14 +178,14 @@
 </div>
 
 <style>
-.grid-4 {
+.grid-5 {
   display:grid;
-  grid-template-columns:1fr 1fr 1.5fr auto;
+  grid-template-columns:1fr 1fr 1fr 1.5fr auto;
   gap:10px;
 }
 
 @media (max-width: 900px) {
-  .grid-4 {
+  .grid-5 {
     grid-template-columns:1fr;
   }
 
