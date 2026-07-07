@@ -115,6 +115,7 @@
           <th>Fecha ingreso</th>
           <th>Días en predio</th>
           <th>Estado</th>
+          <th>FILS</th>
           <th>Posición</th>
           <th>Notas</th>
           {% if can('inventory.actions') %}
@@ -214,6 +215,18 @@
             </td>
 
             <td>
+              {% if it.is_fils %}
+                <span class="fils-chip fils-yes">
+                  SI
+                </span>
+              {% else %}
+                <span class="fils-chip fils-no">
+                  NO
+                </span>
+              {% endif %}
+            </td>
+
+            <td>
               {% if it.position %}
                 <div class="position-stack">
                   <span class="position-chip">{{ it.position.bay_code }}</span>
@@ -235,6 +248,28 @@
                 <a class="btn small" href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">
                   Ver
                 </a>
+
+                {% if it.is_in_yard %}
+
+                  <form
+                      method="POST"
+                      action="{{ url_for('inventory.toggle_container_fils', container_id=it.id) }}"
+                      onsubmit="return confirm('{% if it.is_fils %}¿Quitar estado FILS?{% else %}¿Marcar como FILS?{% endif %}')"
+                  >
+
+                      {% if it.is_fils %}
+                          <button class="btn secondary small" type="submit">
+                              NO FILS
+                          </button>
+                      {% else %}
+                          <button class="btn success small" type="submit">
+                              FILS
+                          </button>
+                      {% endif %}
+
+                  </form>
+
+                  {% endif %}
 
                 {% if it.is_in_yard and ds == "NORMAL" %}
                   <button
@@ -281,7 +316,7 @@
 
         {% if not items %}
           <tr>
-            <td colspan="{% if can('inventory.actions') %}13{% else %}12{% endif %}" class="empty-cell">
+            <td colspan="{% if can('inventory.actions') %}14{% else %}13{% endif %}" class="empty-cell">
               No hay registros con ese filtro.
             </td>
           </tr>
@@ -840,5 +875,30 @@
       color:#0f172a;
       border-color:#cbd5e1;
     }
+
+    .fils-chip{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-width:48px;
+        padding:6px 12px;
+        border-radius:999px;
+        font-size:11px;
+        font-weight:900;
+        border:1px solid;
+    }
+
+    .fils-yes{
+        background:#dcfce7;
+        color:#166534;
+        border-color:#86efac;
+    }
+
+    .fils-no{
+        background:#f1f5f9;
+        color:#64748b;
+        border-color:#cbd5e1;
+    }
+
   </style>
 {% endblock %}

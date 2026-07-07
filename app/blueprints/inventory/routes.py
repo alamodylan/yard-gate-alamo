@@ -277,6 +277,7 @@ def inventory_index():
             "gate_in_at": gate_in_at,
             "days_in_yard": days_in_yard,
             "is_in_yard": bool(c.is_in_yard),
+            "is_fils": bool(getattr(c, "is_fils", False)),
             "evacuation_destination": c.evacuation_destination,
             "evacuation_type": c.evacuation_type,
             "evacuation_notes": c.evacuation_notes,
@@ -1912,4 +1913,51 @@ def unmark_container_no_use(container_id: int):
     db.session.commit()
 
     flash(f"Contenedor {c.code} volvió a Disponible.", "success")
+    return redirect(url_for("inventory.inventory_index"))
+
+
+@inventory_bp.post("/inventory/<int:container_id>/toggle-fils")
+@login_required
+def toggle_container_fils(container_id: int):
+    site_id = _ensure_active_site()
+
+    c = Container.query.get_or_404(container_id)
+
+    user_role = (getattr(current_user, "role", "") or "").strip().lower()
+
+    if c.site_id != site_id and user_role != "admin":
+        abort(403)
+
+    if not c.is_in_yard:
+        flash("Solo se puede cambiar FILS en contenedores que están en patio.", "warning")
+        return redirect(url_for("inventory.inventory_index"))
+
+    old_value = bool(getattr(c, "is_fils", False))
+    new_value = not old_value
+
+    c.is_fils = new_value
+    c.updated_at = datetime.utcnow()
+
+    db.session.add(c)
+
+    audit_log(
+        current_user.id,
+        "CONTAINER_MARKED_FILS" if new_value else "CONTAINER_UNMARKED_FILS",
+        "container",
+        c.id,
+        {
+            "site_id": site_id,
+            "container_code": c.code,
+            "old_is_fils": old_value,
+            "new_is_fils": new_value,
+        },
+    )
+
+    db.session.commit()
+
+    flash(
+        f"Contenedor {c.code} actualizado: FILS {'SI' if new_value else 'NO'}.",
+        "success",
+    )
+
     return redirect(url_for("inventory.inventory_index"))

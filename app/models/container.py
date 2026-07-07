@@ -91,6 +91,12 @@ class Container(db.Model):
         lazy=True,
     )
 
+    is_fils = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+    )
+
 
 class ContainerPosition(db.Model):
     __tablename__ = "container_positions"
