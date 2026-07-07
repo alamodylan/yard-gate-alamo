@@ -2,30 +2,37 @@
 {% block title %}Lista de Vacíos | Yard Gate Álamo{% endblock %}
 
 {% block content %}
+{% set user_role = (current_user.role or '')|lower %}
+{% set can_edit_notes = user_role in ['admin', 'control_equipo'] %}
+
 <div class="card card-pad evac-head-card">
   <div class="evac-head">
     <div>
       <h2 class="evac-title">Lista de Vacíos / Evacuación</h2>
       <p class="card-sub">
-        Contenedores marcados para evacuar, con destino y tipo operativo.
+        Contenedores marcados o asignados para evacuación. Permanecen visibles hasta confirmar EIR.
       </p>
     </div>
 
-    <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
+    <div class="evac-head-actions">
+      <a class="btn" href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
 
-    <a class="btn secondary"
-      href="{{ url_for(
-        'inventory.evacuation_list_pdf',
-        size=size_filter,
-        shipping_line=shipping_line_filter,
-        destination=destination_filter,
-        evacuation_type=type_filter
-      ) }}">
-      Imprimir PDF
-    </a>
+      <a
+        class="btn secondary"
+        target="_blank"
+        href="{{ url_for(
+          'inventory.evacuation_list_pdf',
+          size=size_filter,
+          shipping_line=shipping_line_filter,
+          destination=destination_filter,
+          evacuation_type=type_filter
+        ) }}"
+      >
+        Imprimir PDF
+      </a>
+    </div>
   </div>
 </div>
-
 
 <form method="GET" class="evac-filters">
   <div>
@@ -79,6 +86,7 @@
     <thead>
       <tr>
         <th>Contenedor</th>
+        <th>Origen</th>
         <th>Tamaño</th>
         <th>Naviera</th>
         <th>Destino</th>
@@ -88,7 +96,7 @@
         <th>Marcado</th>
         <th>Notas</th>
         {% if can('empty_list.actions') %}
-          <th style="width:240px;">Acción</th>
+          <th style="width:260px;">Acción</th>
         {% endif %}
       </tr>
     </thead>
@@ -96,11 +104,27 @@
     <tbody>
       {% for it in items %}
         {% set dest = (it.evacuation_destination or '')|upper %}
+        {% set origin = (it.gate_in_origin_port or '')|upper %}
+        {% set ds = (it.dispatch_status or 'NORMAL')|upper %}
+
         <tr>
           <td class="container-code-cell">
-            <a href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}">
+            <a
+              href="{{ url_for('inventory.inventory_detail', container_id=it.id) }}"
+              class="{% if origin == 'LIMON' %}container-origin-limon{% elif origin == 'CALDERA' %}container-origin-caldera{% endif %}"
+            >
               {{ it.code }}
             </a>
+          </td>
+
+          <td>
+            {% if origin == "LIMON" %}
+              <span class="origin-chip origin-limon">Limón</span>
+            {% elif origin == "CALDERA" %}
+              <span class="origin-chip origin-caldera">Caldera</span>
+            {% else %}
+              <span class="origin-chip origin-empty">Sin definir</span>
+            {% endif %}
           </td>
 
           <td><span class="plain-chip">{{ it.size or "—" }}</span></td>
@@ -134,7 +158,15 @@
           </td>
 
           <td>
-            <span class="op-badge op-evac">Evacuar</span>
+            {% if ds == "PARA_EVACUAR" %}
+              <span class="op-badge op-evac">Evacuar</span>
+            {% elif ds == "EVACUAR_SOLICITADO" %}
+              <span class="op-badge op-assigned">Asignado</span>
+            {% elif ds == "EVACUACION_MONTADA" %}
+              <span class="op-badge op-mounted">Montado</span>
+            {% else %}
+              <span class="op-badge op-muted">{{ ds }}</span>
+            {% endif %}
           </td>
 
           <td>
@@ -157,8 +189,28 @@
             {% endif %}
           </td>
 
-          <td class="notes-cell" title="{{ it.evacuation_notes or '' }}">
-            {{ it.evacuation_notes or "—" }}
+          <td class="notes-cell">
+            {% if can_edit_notes %}
+              <form
+                method="POST"
+                action="{{ url_for('inventory.update_evacuation_notes', container_id=it.id) }}"
+                class="notes-form"
+              >
+                <textarea
+                  name="evacuation_notes"
+                  rows="2"
+                  placeholder="Agregar comentario..."
+                >{{ it.evacuation_notes or '' }}</textarea>
+
+                <button class="btn small primary" type="submit">
+                  Guardar
+                </button>
+              </form>
+            {% else %}
+              <span title="{{ it.evacuation_notes or '' }}">
+                {{ it.evacuation_notes or "—" }}
+              </span>
+            {% endif %}
           </td>
 
           {% if can('empty_list.actions') %}
@@ -168,15 +220,17 @@
                   Ver
                 </a>
 
-                <form
-                  method="POST"
-                  action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}"
-                  onsubmit="return confirm('¿Deseas regresar {{ it.code }} a Disponible?');"
-                >
-                  <button class="btn danger small" type="submit">
-                    Regresar
-                  </button>
-                </form>
+                {% if ds == "PARA_EVACUAR" %}
+                  <form
+                    method="POST"
+                    action="{{ url_for('inventory.unmark_container_evacuation', container_id=it.id) }}"
+                    onsubmit="return confirm('¿Deseas regresar {{ it.code }} a Disponible?');"
+                  >
+                    <button class="btn danger small" type="submit">
+                      Regresar
+                    </button>
+                  </form>
+                {% endif %}
               </div>
             </td>
           {% endif %}
@@ -185,7 +239,7 @@
 
       {% if not items %}
         <tr>
-          <td colspan="{{ 10 if can('empty_list.actions') else 9 }}" class="empty-cell">
+          <td colspan="{{ 11 if can('empty_list.actions') else 10 }}" class="empty-cell">
             No hay contenedores en lista de evacuación.
           </td>
         </tr>
@@ -205,6 +259,13 @@
   flex-wrap:wrap;
 }
 
+.evac-head-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
 .evac-title{
   margin:0;
   color:#0f172a;
@@ -222,7 +283,7 @@
 
 .evac-table{
   width:100%;
-  min-width:1320px;
+  min-width:1480px;
   border-collapse:separate;
   border-spacing:0;
 }
@@ -260,6 +321,14 @@
 
 .container-code-cell a:hover{color:#1d4ed8;}
 
+.container-origin-limon{
+  color:#15803d !important;
+}
+
+.container-origin-caldera{
+  color:#ea580c !important;
+}
+
 .plain-chip,
 .line-chip,
 .dest-chip,
@@ -267,7 +336,8 @@
 .op-badge,
 .position-chip,
 .level-chip,
-.date-chip{
+.date-chip,
+.origin-chip{
   display:inline-flex;
   align-items:center;
   justify-content:center;
@@ -276,6 +346,29 @@
   font-weight:900;
   white-space:nowrap;
   border:1px solid #dbe3ef;
+}
+
+.origin-chip{
+  padding:6px 10px;
+  font-size:11px;
+}
+
+.origin-limon{
+  background:#dcfce7;
+  color:#166534;
+  border-color:#86efac;
+}
+
+.origin-caldera{
+  background:#ffedd5;
+  color:#c2410c;
+  border-color:#fdba74;
+}
+
+.origin-empty{
+  background:#f1f5f9;
+  color:#64748b;
+  border-color:#cbd5e1;
 }
 
 .plain-chip{
@@ -332,6 +425,24 @@
   border-color:#fca5a5;
 }
 
+.op-assigned{
+  background:#dbeafe;
+  color:#1d4ed8;
+  border-color:#93c5fd;
+}
+
+.op-mounted{
+  background:#dcfce7;
+  color:#166534;
+  border-color:#86efac;
+}
+
+.op-muted{
+  background:#f1f5f9;
+  color:#475569;
+  border-color:#cbd5e1;
+}
+
 .position-stack{
   display:flex;
   flex-wrap:wrap;
@@ -361,12 +472,33 @@
 }
 
 .notes-cell{
-  max-width:300px;
-  color:#64748b !important;
-  font-size:12px !important;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
+  min-width:260px;
+  max-width:340px;
+}
+
+.notes-form{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+  margin:0;
+}
+
+.notes-form textarea{
+  width:190px;
+  min-height:42px;
+  resize:vertical;
+  border:1px solid #cbd5e1;
+  border-radius:12px;
+  padding:8px 10px;
+  font-size:12px;
+  color:#0f172a;
+  box-sizing:border-box;
+}
+
+.notes-form textarea:focus{
+  outline:none;
+  border-color:#60a5fa;
+  box-shadow:0 0 0 3px rgba(96,165,250,.18);
 }
 
 .muted-text{
@@ -429,6 +561,10 @@
 @media(max-width:900px){
   .evac-filters{
     grid-template-columns:1fr;
+  }
+
+  .evac-table{
+    min-width:1380px;
   }
 }
 </style>

@@ -657,6 +657,12 @@ def evacuation_list():
     destination_filter = (request.args.get("destination") or "").strip().upper()
     type_filter = (request.args.get("evacuation_type") or "").strip().upper()
 
+    evacuation_statuses = [
+        "PARA_EVACUAR",
+        "EVACUAR_SOLICITADO",
+        "EVACUACION_MONTADA",
+    ]
+
     rows = (
         db.session.query(Container, ContainerPosition, YardBay)
         .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -664,7 +670,7 @@ def evacuation_list():
         .filter(
             Container.site_id == site_id,
             Container.is_in_yard == True,  # noqa: E712
-            db.func.coalesce(Container.dispatch_status, "NORMAL") == "PARA_EVACUAR",
+            db.func.coalesce(Container.dispatch_status, "NORMAL").in_(evacuation_statuses),
         )
         .order_by(Container.updated_at.desc())
         .all()
@@ -677,9 +683,12 @@ def evacuation_list():
 
     for c, pos, bay in rows:
         cls = cls_by_container.get(c.id)
+
         shipping_line = ((cls.get("shipping_line") if cls else "") or "").strip().upper()
         destination = (c.evacuation_destination or "").strip().upper()
         evacuation_type = (c.evacuation_type or "").strip().upper()
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+        origin = (c.gate_in_origin_port or "").strip().upper()
 
         if size_filter and (c.size or "").strip().upper() != size_filter:
             continue
@@ -698,7 +707,8 @@ def evacuation_list():
             "code": c.code,
             "size": c.size,
             "shipping_line": shipping_line,
-            "dispatch_status": c.dispatch_status or "NORMAL",
+            "gate_in_origin_port": origin,
+            "dispatch_status": dispatch_status,
             "dispatch_marked_at": c.dispatch_marked_at,
             "evacuation_destination": c.evacuation_destination,
             "evacuation_type": c.evacuation_type,
@@ -711,16 +721,19 @@ def evacuation_list():
         })
 
     size_options = sorted({(c.size or "").strip().upper() for c, _, _ in rows if c.size})
+
     shipping_line_options = sorted({
         ((cls_by_container.get(c.id) or {}).get("shipping_line") or "").strip().upper()
         for c, _, _ in rows
         if ((cls_by_container.get(c.id) or {}).get("shipping_line") or "").strip()
     })
+
     destination_options = sorted({
         (c.evacuation_destination or "").strip().upper()
         for c, _, _ in rows
         if (c.evacuation_destination or "").strip()
     })
+
     type_options = sorted({
         (c.evacuation_type or "").strip().upper()
         for c, _, _ in rows
@@ -739,6 +752,56 @@ def evacuation_list():
         destination_filter=destination_filter,
         type_filter=type_filter,
     )
+
+@inventory_bp.post("/inventory/<int:container_id>/evacuation-notes")
+@login_required
+def update_evacuation_notes(container_id: int):
+    site_id = _ensure_active_site()
+
+    allowed_roles = {"admin", "control_equipo"}
+    user_role = (getattr(current_user, "role", "") or "").strip().lower()
+
+    if user_role not in allowed_roles:
+        abort(403)
+
+    c = Container.query.get_or_404(container_id)
+
+    if c.site_id != site_id and user_role != "admin":
+        abort(403)
+
+    if not c.is_in_yard:
+        flash("No se pueden editar comentarios de un contenedor que ya salió del patio.", "warning")
+        return redirect(url_for("inventory.evacuation_list"))
+
+    current_status = (c.dispatch_status or "NORMAL").strip().upper()
+
+    if current_status not in {"PARA_EVACUAR", "EVACUAR_SOLICITADO", "EVACUACION_MONTADA"}:
+        flash("Solo se pueden editar comentarios de contenedores en lista de vacíos.", "warning")
+        return redirect(url_for("inventory.evacuation_list"))
+
+    notes = (request.form.get("evacuation_notes") or "").strip()
+
+    c.evacuation_notes = notes or None
+    c.updated_at = datetime.utcnow()
+
+    db.session.add(c)
+
+    audit_log(
+        current_user.id,
+        "EVACUATION_NOTES_UPDATED",
+        "container",
+        c.id,
+        {
+            "container_code": c.code,
+            "site_id": site_id,
+            "dispatch_status": current_status,
+        },
+    )
+
+    db.session.commit()
+
+    flash(f"Comentario actualizado para {c.code}.", "success")
+    return redirect(url_for("inventory.evacuation_list"))
 
 # =========================================================
 # Carga masiva de contenedores
@@ -1611,6 +1674,12 @@ def evacuation_list_pdf():
     destination_filter = (request.args.get("destination") or "").strip().upper()
     type_filter = (request.args.get("evacuation_type") or "").strip().upper()
 
+    evacuation_statuses = [
+        "PARA_EVACUAR",
+        "EVACUAR_SOLICITADO",
+        "EVACUACION_MONTADA",
+    ]
+
     rows = (
         db.session.query(Container, ContainerPosition, YardBay)
         .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
@@ -1618,7 +1687,7 @@ def evacuation_list_pdf():
         .filter(
             Container.site_id == site_id,
             Container.is_in_yard == True,  # noqa: E712
-            db.func.coalesce(Container.dispatch_status, "NORMAL") == "PARA_EVACUAR",
+            db.func.coalesce(Container.dispatch_status, "NORMAL").in_(evacuation_statuses),
         )
         .order_by(Container.updated_at.desc())
         .all()
@@ -1631,9 +1700,12 @@ def evacuation_list_pdf():
 
     for c, pos, bay in rows:
         cls = cls_by_container.get(c.id)
+
         shipping_line = ((cls.get("shipping_line") if cls else "") or "").strip().upper()
         destination = (c.evacuation_destination or "").strip().upper()
         evacuation_type = (c.evacuation_type or "").strip().upper()
+        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+        origin = (c.gate_in_origin_port or "").strip().upper()
 
         if size_filter and (c.size or "").strip().upper() != size_filter:
             continue
@@ -1655,12 +1727,20 @@ def evacuation_list_pdf():
         if c.dispatch_marked_at:
             marked_txt = c.dispatch_marked_at.strftime("%d/%m/%Y %I:%M %p")
 
+        status_txt = {
+            "PARA_EVACUAR": "EVACUAR",
+            "EVACUAR_SOLICITADO": "ASIGNADO",
+            "EVACUACION_MONTADA": "MONTADO",
+        }.get(dispatch_status, dispatch_status)
+
         items.append([
             c.code or "",
+            origin or "—",
             c.size or "",
             shipping_line or "—",
             destination or "—",
             evacuation_type or "—",
+            status_txt,
             position_txt,
             marked_txt,
             c.evacuation_notes or "",
@@ -1671,10 +1751,10 @@ def evacuation_list_pdf():
     doc = SimpleDocTemplate(
         bio,
         pagesize=landscape(letter),
-        rightMargin=24,
-        leftMargin=24,
-        topMargin=24,
-        bottomMargin=24,
+        rightMargin=12,
+        leftMargin=12,
+        topMargin=14,
+        bottomMargin=14,
     )
 
     styles = getSampleStyleSheet()
@@ -1691,57 +1771,62 @@ def evacuation_list_pdf():
     )
 
     elements.append(Paragraph(filters_txt, styles["Normal"]))
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 8))
 
-    table_data = [
-        [
-            "Contenedor",
-            "Tamaño",
-            "Naviera",
-            "Destino",
-            "Tipo",
-            "Posición",
-            "Marcado",
-            "Notas",
-        ]
-    ]
+    table_data = [[
+        "Contenedor",
+        "Origen",
+        "Tamaño",
+        "Naviera",
+        "Destino",
+        "Tipo",
+        "Estado",
+        "Posición",
+        "Marcado",
+        "Notas",
+    ]]
 
     table_data.extend(items)
 
     if len(table_data) == 1:
-        table_data.append(["—", "—", "—", "—", "—", "—", "—", "Sin registros"])
+        table_data.append(["—", "—", "—", "—", "—", "—", "—", "—", "—", "Sin registros"])
 
     table = Table(
         table_data,
         repeatRows=1,
-        colWidths=[90, 55, 70, 90, 55, 80, 105, 210],
+        colWidths=[78, 52, 48, 55, 82, 44, 60, 62, 92, 180],
     )
 
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F3B63")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 8),
-        ("FONTSIZE", (0, 1), (-1, -1), 7),
+        ("FONTSIZE", (0, 0), (-1, 0), 7),
+        ("FONTSIZE", (0, 1), (-1, -1), 6.4),
         ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#CBD5E1")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
 
     elements.append(table)
-
     doc.build(elements)
 
     bio.seek(0)
 
-    return send_file(
+    response = send_file(
         bio,
-        as_attachment=True,
+        as_attachment=False,
         download_name="lista_vacios_evacuacion.pdf",
         mimetype="application/pdf",
     )
+
+    response.headers["Content-Disposition"] = "inline; filename=lista_vacios_evacuacion.pdf"
+
+    return response
 
 
 @inventory_bp.post("/inventory/<int:container_id>/mark-no-use")
