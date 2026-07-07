@@ -226,6 +226,7 @@ def eir_confirm_view(eir_id: int):
     site_id = _ensure_active_site()
 
     eir = EIR.query.get_or_404(eir_id)
+
     if eir.site_id != site_id and getattr(current_user, "role", None) != "admin":
         abort(403)
 
@@ -238,11 +239,13 @@ def eir_confirm_view(eir_id: int):
 
     if eir.has_container and eir.container_id:
         c = Container.query.get(eir.container_id)
+
         if not c or c.site_id != site_id or not c.is_in_yard:
             flash("El contenedor ya no está disponible en inventario para confirmar este EIR.", "danger")
             return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
         pos = ContainerPosition.query.filter_by(container_id=c.id).first()
+
         if pos:
             bay = YardBay.query.get(pos.bay_id)
             bay_code = bay.code if bay else None
@@ -250,13 +253,22 @@ def eir_confirm_view(eir_id: int):
             tier = pos.tier
 
     ch = None
+
     if eir.has_chassis and eir.chassis_id:
         ch = Chassis.query.get(eir.chassis_id)
-        if not ch or ch.site_id != site_id or not ch.is_in_yard:
-            flash("El chasis ya no está disponible en inventario para confirmar este EIR.", "danger")
-            return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
-    if not c and not ch:
+        # IMPORTANTE:
+        # Temporalmente el chasis NO frena la confirmación del EIR.
+        # Puede estar en otro predio, fuera de patio o con is_in_yard=False.
+        # Si existe, se actualiza a fuera de patio; si no existe, se continúa.
+        if not ch:
+            flash(
+                "El chasis asociado al EIR no existe actualmente en inventario, "
+                "pero se continuará con la confirmación del EIR.",
+                "warning",
+            )
+
+    if not c and not ch and not eir.has_chassis:
         flash("Este EIR no tiene equipo válido para confirmar.", "danger")
         return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))
 
@@ -275,6 +287,7 @@ def eir_confirm_view(eir_id: int):
         created_by_user_id=current_user.id,
         created_at=datetime.utcnow(),
     )
+
     db.session.add(mv)
     db.session.flush()
 
@@ -288,12 +301,14 @@ def eir_confirm_view(eir_id: int):
         db.session.add(ch)
 
         inv_rows = ChassisInventory.query.filter_by(chassis_id=ch.id).all()
+
         for inv in inv_rows:
             inv.is_in_yard = False
             inv.updated_at = datetime.utcnow()
             db.session.add(inv)
 
     now_utc = datetime.utcnow()
+
     eir.gate_out_movement_id = mv.id
     eir.status = "CONFIRMED"
     eir.finalized_at = now_utc
@@ -315,9 +330,11 @@ def eir_confirm_view(eir_id: int):
             "container_id": eir.container_id,
             "chassis_id": eir.chassis_id,
             "chassis_only": bool(ch and not c),
+            "chassis_validation_skipped": True,
         },
     )
 
     db.session.commit()
+
     flash(f"EIR #{eir.id} confirmado correctamente. Se aplicó el Gate Out.", "success")
     return redirect(url_for("yard.eir_detail_view", eir_id=eir.id))

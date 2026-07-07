@@ -611,7 +611,7 @@
           <input
             name="terminal_name"
             id="terminal_name"
-            value="{{ edit_eir.terminal_name if is_editing_draft else site_key }}"
+            value="{{ (edit_eir.terminal_name or '') if is_editing_draft else site_key }}"
             placeholder="Terminal"
           >
         </div>
@@ -647,7 +647,7 @@
           <input
             name="origin"
             id="origin"
-            value="{{ edit_eir.origin if is_editing_draft else site_key }}"
+            value="{{ (edit_eir.origin or '') if is_editing_draft else site_key }}"
             placeholder="Origen"
           >
         </div>
@@ -657,7 +657,7 @@
           <input
             name="destination"
             id="destination"
-            value="{{ edit_eir.destination if is_editing_draft else '' }}"
+            value="{{ (edit_eir.destination or '') if is_editing_draft else '' }}"
             placeholder="Destino"
           >
         </div>
@@ -680,7 +680,7 @@
           <input
             name="driver_name"
             id="driver_name"
-            value="{{ edit_eir.driver_name if is_editing_draft else '' }}"
+            value="{{ (edit_eir.driver_name or '') if is_editing_draft else '' }}"
             placeholder="Nombre del chofer"
           >
           <div class="field-help">Si queda vacío, se podrá completar manualmente al imprimir.</div>
@@ -691,7 +691,7 @@
           <input
             name="driver_id_doc"
             id="driver_id_doc"
-            value="{{ edit_eir.driver_id_doc if is_editing_draft else '' }}"
+            value="{{ (edit_eir.driver_id_doc or '') if is_editing_draft else '' }}"
             placeholder="Documento del chofer"
           >
         </div>
@@ -701,7 +701,7 @@
           <input
             name="truck_plate"
             id="truck_plate"
-            value="{{ edit_eir.truck_plate if is_editing_draft else '' }}"
+            value="{{ (edit_eir.truck_plate or '') if is_editing_draft else '' }}"
             placeholder="Placa del cabezal"
           >
         </div>
@@ -1102,7 +1102,7 @@
       <h3>7) Observaciones generales</h3>
       <div class="field">
         <label>Notas generales del EIR</label>
-        <textarea name="notes" id="notes" placeholder="Observaciones generales de salida">{{ edit_eir.general_notes if is_editing_draft else '' }}</textarea>
+        <textarea name="notes" id="notes" placeholder="Observaciones generales de salida">{{ (edit_eir.general_notes or '') if is_editing_draft else '' }}</textarea>
       </div>
     </div>
 

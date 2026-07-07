@@ -436,17 +436,23 @@
 
       <div class="kv col-4">
         <div class="kv-label">Chofer</div>
-        <div class="kv-value">{{ eir.driver_name or '—' }}</div>
+        <div class="kv-value">
+          {{ '' if (eir.driver_name|string|trim|lower) == 'none' else (eir.driver_name or '') }}
+        </div>
       </div>
 
       <div class="kv col-4">
         <div class="kv-label">Documento chofer</div>
-        <div class="kv-value">{{ eir.driver_id_doc or '—' }}</div>
+        <div class="kv-value">
+          {{ '' if (eir.driver_id_doc|string|trim|lower) == 'none' else (eir.driver_id_doc or '') }}
+        </div>
       </div>
 
       <div class="kv col-4">
         <div class="kv-label">Placa cabezal</div>
-        <div class="kv-value">{{ eir.truck_plate or '—' }}</div>
+        <div class="kv-value">
+          {{ '' if (eir.truck_plate|string|trim|lower) == 'none' else (eir.truck_plate or '') }}
+        </div>
       </div>
     </div>
   </div>
