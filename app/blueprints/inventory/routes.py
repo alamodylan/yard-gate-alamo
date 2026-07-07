@@ -652,6 +652,7 @@ def unmark_container_evacuation(container_id: int):
 def evacuation_list():
     site_id = _ensure_active_site()
 
+    qtext = (request.args.get("q") or "").strip().upper()
     size_filter = (request.args.get("size") or "").strip().upper()
     shipping_line_filter = (request.args.get("shipping_line") or "").strip().upper()
     destination_filter = (request.args.get("destination") or "").strip().upper()
@@ -672,7 +673,6 @@ def evacuation_list():
             Container.is_in_yard == True,  # noqa: E712
             db.func.coalesce(Container.dispatch_status, "NORMAL").in_(evacuation_statuses),
         )
-        .order_by(Container.updated_at.desc())
         .all()
     )
 
@@ -684,13 +684,18 @@ def evacuation_list():
     for c, pos, bay in rows:
         cls = cls_by_container.get(c.id)
 
+        code = (c.code or "").strip().upper()
         shipping_line = ((cls.get("shipping_line") if cls else "") or "").strip().upper()
         destination = (c.evacuation_destination or "").strip().upper()
         evacuation_type = (c.evacuation_type or "").strip().upper()
         dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
         origin = (c.gate_in_origin_port or "").strip().upper()
+        size = (c.size or "").strip().upper()
 
-        if size_filter and (c.size or "").strip().upper() != size_filter:
+        if qtext and qtext not in code:
+            continue
+
+        if size_filter and size != size_filter:
             continue
 
         if shipping_line_filter and shipping_line != shipping_line_filter:
@@ -720,6 +725,15 @@ def evacuation_list():
             },
         })
 
+    items = sorted(
+        items,
+        key=lambda x: (
+            x.get("shipping_line") or "ZZZ",
+            x.get("size") or "ZZZ",
+            (x.get("code") or "").strip().upper(),
+        )
+    )
+
     size_options = sorted({(c.size or "").strip().upper() for c, _, _ in rows if c.size})
 
     shipping_line_options = sorted({
@@ -743,6 +757,7 @@ def evacuation_list():
     return render_template(
         "inventory/evacuation_list.html",
         items=items,
+        q=qtext,
         size_options=size_options,
         shipping_line_options=shipping_line_options,
         destination_options=destination_options,
@@ -1669,6 +1684,7 @@ def update_gate_in_origin(container_id: int):
 def evacuation_list_pdf():
     site_id = _ensure_active_site()
 
+    qtext = (request.args.get("q") or "").strip().upper()
     size_filter = (request.args.get("size") or "").strip().upper()
     shipping_line_filter = (request.args.get("shipping_line") or "").strip().upper()
     destination_filter = (request.args.get("destination") or "").strip().upper()
@@ -1689,7 +1705,6 @@ def evacuation_list_pdf():
             Container.is_in_yard == True,  # noqa: E712
             db.func.coalesce(Container.dispatch_status, "NORMAL").in_(evacuation_statuses),
         )
-        .order_by(Container.updated_at.desc())
         .all()
     )
 
@@ -1701,13 +1716,18 @@ def evacuation_list_pdf():
     for c, pos, bay in rows:
         cls = cls_by_container.get(c.id)
 
+        code = (c.code or "").strip().upper()
         shipping_line = ((cls.get("shipping_line") if cls else "") or "").strip().upper()
         destination = (c.evacuation_destination or "").strip().upper()
         evacuation_type = (c.evacuation_type or "").strip().upper()
         dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
         origin = (c.gate_in_origin_port or "").strip().upper()
+        size = (c.size or "").strip().upper()
 
-        if size_filter and (c.size or "").strip().upper() != size_filter:
+        if qtext and qtext not in code:
+            continue
+
+        if size_filter and size != size_filter:
             continue
 
         if shipping_line_filter and shipping_line != shipping_line_filter:
@@ -1736,7 +1756,7 @@ def evacuation_list_pdf():
         items.append([
             c.code or "",
             origin or "—",
-            c.size or "",
+            size or "",
             shipping_line or "—",
             destination or "—",
             evacuation_type or "—",
@@ -1745,6 +1765,15 @@ def evacuation_list_pdf():
             marked_txt,
             c.evacuation_notes or "",
         ])
+
+    items = sorted(
+        items,
+        key=lambda x: (
+            x[3] or "ZZZ",  # Naviera
+            x[2] or "ZZZ",  # Tamaño
+            x[0] or "ZZZ",  # Contenedor
+        )
+    )
 
     bio = BytesIO()
 
@@ -1764,6 +1793,7 @@ def evacuation_list_pdf():
     elements.append(title)
 
     filters_txt = (
+        f"Buscar: {qtext or 'Todos'} | "
         f"Tamaño: {size_filter or 'Todos'} | "
         f"Naviera: {shipping_line_filter or 'Todas'} | "
         f"Destino: {destination_filter or 'Todos'} | "

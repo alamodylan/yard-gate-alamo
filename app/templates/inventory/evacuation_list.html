@@ -22,6 +22,7 @@
         target="_blank"
         href="{{ url_for(
           'inventory.evacuation_list_pdf',
+          q=q,
           size=size_filter,
           shipping_line=shipping_line_filter,
           destination=destination_filter,
@@ -35,6 +36,15 @@
 </div>
 
 <form method="GET" class="evac-filters">
+  <div>
+    <label>Contenedor</label>
+    <input
+      type="text"
+      name="q"
+      value="{{ q or '' }}"
+      placeholder="Ej: ONEU"
+    >
+  </div>
   <div>
     <label>Tamaño</label>
     <select name="size">
@@ -542,7 +552,8 @@
   font-weight:900;
 }
 
-.evac-filters select{
+.evac-filters select,
+.evac-filters input{
   width:100%;
   padding:9px 10px;
   border:1px solid #cbd5e1;
@@ -550,6 +561,7 @@
   background:#fff;
   color:#0f172a;
   font-weight:800;
+  box-sizing:border-box;
 }
 
 .evac-filter-actions{
