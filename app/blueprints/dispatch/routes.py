@@ -32,6 +32,7 @@ from app.services.notifications import create_notifications_for_roles, notificat
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment
 from openpyxl.worksheet.datavalidation import DataValidation
+import traceback
 
 
 def _allowed_sites_for_user(user):
@@ -1421,7 +1422,7 @@ def gps_inventory_template():
 
     headers = [
         "gps_number",
-        "location",
+        "current_location",
         "battery_range",
         "status",
         "is_active",
@@ -1468,8 +1469,8 @@ def gps_inventory_template():
     ws.add_data_validation(status_validation)
     ws.add_data_validation(active_validation)
 
-    status_validation.add("C2:C500")
-    active_validation.add("D2:D500")
+    status_validation.add("D2:D500")
+    active_validation.add("E2:E500")
 
     bio = BytesIO()
     wb.save(bio)
@@ -1507,7 +1508,7 @@ def gps_inventory_bulk_upload():
 
     expected_headers = {
         "gps_number",
-        "location",
+        "current_location",
         "battery_range",
         "status",
         "is_active",
@@ -1578,7 +1579,7 @@ def gps_inventory_bulk_upload():
 
         seen_gps_numbers.add(gps_number)
 
-        location = get_value(row_values, "location")
+        current_location = get_value(row_values, "current_location")
         battery_range = get_value(row_values, "battery_range")
         status = (get_value(row_values, "status") or "").strip().upper()
         is_active_raw = (get_value(row_values, "is_active") or "").strip().upper()
@@ -1607,7 +1608,7 @@ def gps_inventory_bulk_upload():
         rows_to_process.append({
             "row_idx": row_idx,
             "gps_number": gps_number,
-            "location": location,
+            "current_location": current_location,
             "battery_range": battery_range,
             "status": status,
             "is_active": is_active_value,
@@ -1689,8 +1690,8 @@ def gps_inventory_bulk_upload():
 
                     gps.status = row["status"]
 
-                if row["location"] is not None:
-                    gps.location = row["location"].upper() or None
+                if row["current_location"] is not None:
+                    gps.current_location = row["current_location"].upper() or None
 
                 if row["battery_range"] is not None:
                     gps.battery_range = row["battery_range"] or None
@@ -1708,7 +1709,7 @@ def gps_inventory_bulk_upload():
                 gps = GpsDevice(
                     site_id=site_id,
                     gps_number=gps_number,
-                    location=(row["location"].upper() if row["location"] else None),
+                    current_location=(row["current_location"].upper() if row["current_location"] else None),
                     status=row["status"] or "DISPONIBLE",
                     battery_range=row["battery_range"] or None,
                     notes=(row["notes"].upper() if row["notes"] else None),
@@ -1738,11 +1739,19 @@ def gps_inventory_bulk_upload():
 
         db.session.commit()
 
-    except Exception:
+    except Exception as e:
         db.session.rollback()
-        flash("Ocurrió un error al procesar la carga masiva de GPS.", "danger")
-        return redirect(url_for("dispatch.gps_inventory"))
 
+        traceback.print_exc()
+
+        print("=" * 80)
+        print(type(e).__name__)
+        print(e)
+        print("=" * 80)
+
+        flash(str(e), "danger")
+
+        return redirect(url_for("dispatch.gps_inventory"))
     flash(
         f"Carga masiva completada. Creados: {created_count}. "
         f"Actualizados: {updated_count}. Filas omitidas: {skipped_count}.",

@@ -227,6 +227,7 @@ class GpsDevice(db.Model):
     gps_number = db.Column(db.String(50), nullable=False, unique=True)
     status = db.Column(db.String(30), nullable=False, default="DISPONIBLE")
     battery_range = db.Column(db.String(20), nullable=True)
+    current_location = db.Column(db.String(50), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
 
