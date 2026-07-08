@@ -29,6 +29,9 @@ from reportlab.lib.pagesizes import letter, legal, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from app.services.notifications import create_notifications_for_roles, notification_url
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment
+from openpyxl.worksheet.datavalidation import DataValidation
 
 
 def _allowed_sites_for_user(user):
@@ -1407,6 +1410,268 @@ def gps_create_device():
     flash(f"GPS {gps_number} agregado correctamente.", "success")
     return redirect(url_for("dispatch.gps_inventory"))
 
+@dispatch_bp.get("/gps/inventory/template")
+@login_required
+def gps_inventory_template():
+    _ensure_active_site()
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "GPS"
+
+    headers = [
+        "gps_number",
+        "battery_range",
+        "status",
+        "is_active",
+        "notes",
+    ]
+
+    ws.append(headers)
+
+    examples = [
+        ["GPS001", "80-100", "DISPONIBLE", "SI", "GPS NUEVO"],
+        ["GPS002", "40-60", "MANTENIMIENTO", "SI", "REVISAR BATERÍA"],
+    ]
+
+    for row in examples:
+        ws.append(row)
+
+    header_fill = PatternFill("solid", fgColor="1F2937")
+    header_font = Font(color="FFFFFF", bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = center
+
+    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["B"].width = 18
+    ws.column_dimensions["C"].width = 22
+    ws.column_dimensions["D"].width = 14
+    ws.column_dimensions["E"].width = 45
+
+    status_validation = DataValidation(
+        type="list",
+        formula1='"DISPONIBLE,MANTENIMIENTO,FUERA_SERVICIO"',
+        allow_blank=True,
+    )
+    active_validation = DataValidation(
+        type="list",
+        formula1='"SI,NO"',
+        allow_blank=True,
+    )
+
+    ws.add_data_validation(status_validation)
+    ws.add_data_validation(active_validation)
+
+    status_validation.add("C2:C500")
+    active_validation.add("D2:D500")
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name="plantilla_carga_gps.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+@dispatch_bp.post("/gps/inventory/bulk-upload")
+@login_required
+def gps_inventory_bulk_upload():
+    site_id = _ensure_active_site()
+
+    file = request.files.get("gps_file")
+
+    if not file or not file.filename:
+        flash("Debe seleccionar un archivo Excel.", "danger")
+        return redirect(url_for("dispatch.gps_inventory"))
+
+    if not file.filename.lower().endswith(".xlsx"):
+        flash("El archivo debe ser formato .xlsx.", "danger")
+        return redirect(url_for("dispatch.gps_inventory"))
+
+    try:
+        wb = load_workbook(file, data_only=True)
+        ws = wb.active
+    except Exception:
+        flash("No se pudo leer el archivo Excel. Verifique que sea una plantilla válida.", "danger")
+        return redirect(url_for("dispatch.gps_inventory"))
+
+    expected_headers = {
+        "gps_number",
+        "battery_range",
+        "status",
+        "is_active",
+        "notes",
+    }
+
+    header_map = {}
+
+    for col_idx, cell in enumerate(ws[1], start=1):
+        header = (str(cell.value or "").strip().lower())
+        if header:
+            header_map[header] = col_idx
+
+    if "gps_number" not in header_map:
+        flash("La plantilla debe contener la columna obligatoria gps_number.", "danger")
+        return redirect(url_for("dispatch.gps_inventory"))
+
+    unknown_headers = set(header_map.keys()) - expected_headers
+
+    if unknown_headers:
+        flash(
+            "La plantilla contiene columnas no permitidas: "
+            + ", ".join(sorted(unknown_headers)),
+            "danger",
+        )
+        return redirect(url_for("dispatch.gps_inventory"))
+
+    valid_statuses = {"DISPONIBLE", "MANTENIMIENTO", "FUERA_SERVICIO"}
+
+    created_count = 0
+    updated_count = 0
+    skipped_count = 0
+    errors = []
+    seen_gps_numbers = set()
+
+    def get_value(row, header):
+        col_idx = header_map.get(header)
+        if not col_idx:
+            return None
+
+        value = ws.cell(row=row, column=col_idx).value
+
+        if value is None:
+            return None
+
+        return str(value).strip()
+
+    for row_idx in range(2, ws.max_row + 1):
+        gps_number = (get_value(row_idx, "gps_number") or "").upper()
+
+        if not gps_number:
+            skipped_count += 1
+            continue
+
+        if gps_number in seen_gps_numbers:
+            errors.append(f"Fila {row_idx}: GPS duplicado dentro del archivo ({gps_number}).")
+            skipped_count += 1
+            continue
+
+        seen_gps_numbers.add(gps_number)
+
+        battery_range = get_value(row_idx, "battery_range")
+        status = (get_value(row_idx, "status") or "").upper()
+        is_active_raw = (get_value(row_idx, "is_active") or "").upper()
+        notes = get_value(row_idx, "notes")
+
+        if status and status not in valid_statuses:
+            errors.append(
+                f"Fila {row_idx}: estado inválido para {gps_number}. "
+                "Use DISPONIBLE, MANTENIMIENTO o FUERA_SERVICIO."
+            )
+            skipped_count += 1
+            continue
+
+        is_active_value = None
+
+        if is_active_raw:
+            if is_active_raw in {"SI", "SÍ", "TRUE", "1", "ACTIVO"}:
+                is_active_value = True
+            elif is_active_raw in {"NO", "FALSE", "0", "INACTIVO"}:
+                is_active_value = False
+            else:
+                errors.append(f"Fila {row_idx}: is_active inválido para {gps_number}. Use SI o NO.")
+                skipped_count += 1
+                continue
+
+        gps = (
+            GpsDevice.query
+            .filter(
+                GpsDevice.site_id == site_id,
+                GpsDevice.gps_number == gps_number,
+            )
+            .first()
+        )
+
+        if gps:
+            active_assignment = (
+                GpsAssignment.query
+                .filter(
+                    GpsAssignment.gps_device_id == gps.id,
+                    GpsAssignment.status == "ASIGNADO",
+                )
+                .first()
+            )
+
+            if status:
+                if active_assignment and status != "DISPONIBLE":
+                    errors.append(
+                        f"Fila {row_idx}: GPS {gps_number} está asignado. "
+                        "No se puede cambiar a mantenimiento o fuera de servicio."
+                    )
+                    skipped_count += 1
+                    continue
+
+                gps.status = status
+
+            if battery_range is not None:
+                gps.battery_range = battery_range or None
+
+            if notes is not None:
+                gps.notes = notes.upper() or None
+
+            if is_active_value is not None:
+                gps.is_active = is_active_value
+
+            gps.updated_at = datetime.utcnow()
+            updated_count += 1
+
+        else:
+            gps = GpsDevice(
+                site_id=site_id,
+                gps_number=gps_number,
+                status=status or "DISPONIBLE",
+                battery_range=battery_range or None,
+                notes=(notes.upper() if notes else None),
+                is_active=True if is_active_value is None else is_active_value,
+            )
+
+            db.session.add(gps)
+            created_count += 1
+
+    if errors:
+        db.session.rollback()
+
+        flash(
+            "No se realizó la carga porque hay errores en la plantilla. "
+            "Corrija el archivo e intente nuevamente.",
+            "danger",
+        )
+
+        for error in errors[:10]:
+            flash(error, "warning")
+
+        if len(errors) > 10:
+            flash(f"Hay {len(errors) - 10} errores adicionales.", "warning")
+
+        return redirect(url_for("dispatch.gps_inventory"))
+
+    db.session.commit()
+
+    flash(
+        f"Carga masiva completada. Creados: {created_count}. "
+        f"Actualizados: {updated_count}. Filas omitidas: {skipped_count}.",
+        "success",
+    )
+
+    return redirect(url_for("dispatch.gps_inventory"))
 
 @dispatch_bp.post("/gps/device/<int:gps_id>/update")
 @login_required

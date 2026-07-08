@@ -8,6 +8,38 @@
     Control de GPS disponibles, asignados, en mantenimiento o fuera de servicio.
   </p>
 
+  <div class="card card-pad mb-3">
+    <h5 class="mb-3">Carga masiva de GPS</h5>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <a class="btn btn-outline-primary"
+        href="{{ url_for('dispatch.gps_inventory_template') }}">
+        Descargar plantilla
+      </a>
+
+      <form method="POST"
+            action="{{ url_for('dispatch.gps_inventory_bulk_upload') }}"
+            enctype="multipart/form-data"
+            class="d-flex flex-wrap gap-2 align-items-center">
+
+        <input type="file"
+              name="gps_file"
+              accept=".xlsx"
+              class="form-control"
+              required>
+
+        <button type="submit" class="btn btn-primary">
+          Cargar GPS
+        </button>
+      </form>
+    </div>
+
+    <small class="text-muted d-block mt-2">
+      Si el GPS ya existe en este predio, se actualiza. Si no existe, se crea.
+      No se duplican GPS.
+    </small>
+  </div>
+
   <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
     <a class="btn success" href="{{ url_for('dispatch.gps_requests') }}">Solicitudes GPS</a>
     <a class="btn" href="{{ url_for('dispatch.gps_assigned') }}">GPS Asignados</a>

@@ -2,97 +2,336 @@
 {% block title %}GPS Asignados{% endblock %}
 
 {% block content %}
-<div class="card card-pad">
-  <h2 style="margin:0;">Tracking · GPS Asignados</h2>
-  <p class="card-sub" style="margin-top:6px;">
-    GPS actualmente asignados a solicitudes operativas.
-  </p>
 
-  <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
-    <a class="btn" href="{{ url_for('dispatch.gps_inventory') }}">Inventario GPS</a>
-    <a class="btn success" href="{{ url_for('dispatch.gps_requests') }}">Solicitudes GPS</a>
+<div class="tracking-page">
+
+  <div class="tracking-header card card-pad">
+    <div>
+      <h2>Tracking · GPS Asignados</h2>
+      <p class="card-sub">
+        GPS actualmente asignados a solicitudes operativas.
+      </p>
+    </div>
+
+    <div class="tracking-actions">
+      <a class="btn ghost" href="{{ url_for('dispatch.gps_inventory') }}">
+        Inventario GPS
+      </a>
+      <a class="btn success" href="{{ url_for('dispatch.gps_requests') }}">
+        Solicitudes GPS
+      </a>
+    </div>
   </div>
-</div>
 
-<div class="card card-pad" style="margin-top:14px;">
-  <table>
-    <thead>
-      <tr>
-        <th>GPS</th>
-        <th>Carga</th>
-        <th>Fecha</th>
-        <th>Hora</th>
-        <th>Booking</th>
-        <th>Cliente</th>
-        <th>Producto</th>
-        <th>Destino</th>
-        <th>Contenedor</th>
-        <th>Chasis</th>
-        <th>Estado</th>
-        <th>Acciones</th>
-      </tr>
-    </thead>
+  <div class="tracking-table-card card card-pad">
+    <div class="table-title-row">
+      <div>
+        <h3>Asignaciones activas</h3>
+        <p>{{ rows|length }} GPS asignado{{ '' if rows|length == 1 else 's' }}</p>
+      </div>
+    </div>
 
-    <tbody>
-      {% for row in rows %}
-        {% set gps = row.gps_device %}
-        {% set req = row.request %}
-        {% set line = row.line %}
-        {% set assignment = row.assignment %}
-        {% set chassis = chassis_by_id.get(row.chassis_id) if row.chassis_id else None %}
+    <div class="table-wrap">
+      <table class="tracking-table">
+        <thead>
+          <tr>
+            <th>GPS</th>
+            <th>Carga</th>
+            <th>Fecha</th>
+            <th>Hora</th>
+            <th>Booking</th>
+            <th>Cliente</th>
+            <th>Producto</th>
+            <th>Destino</th>
+            <th>Contenedor</th>
+            <th>Chasis</th>
+            <th>Estado</th>
+            <th class="text-center">Acciones</th>
+          </tr>
+        </thead>
 
-        <tr>
-          <td><strong>{{ gps.gps_number if gps else '—' }}</strong></td>
-          <td>{{ gps.battery_range if gps and gps.battery_range else '—' }}</td>
-          <td>{{ line.load_date.strftime('%d/%m/%Y') if line and line.load_date else '—' }}</td>
-          <td>{{ line.load_time.strftime('%I:%M %p') if line and line.load_time else '—' }}</td>
-          <td>{{ req.booking if req and req.booking else '—' }}</td>
-          <td>{{ req.client_name if req and req.client_name else '—' }}</td>
-          <td>{{ req.product_name if req and req.product_name else '—' }}</td>
-          <td>{{ req.port_out if req and req.port_out else '—' }}</td>
-          <td>
-            {% if row.container %}
-              {{ row.container.code }}
-            {% elif assignment and assignment.container %}
-              {{ assignment.container.code }}
-            {% else %}
-              —
-            {% endif %}
-          </td>
-          <td>
-            {% if chassis %}
-              {{ chassis.chassis_number }}
-            {% elif row.chassis_id %}
-              ID {{ row.chassis_id }}
-            {% else %}
-              Pendiente
-            {% endif %}
-          </td>
-          <td><span class="badge badge-warning">{{ row.status }}</span></td>
-          <td>
-            <form method="post"
-                  action="{{ url_for('dispatch.gps_release_assignment', gps_assignment_id=row.id) }}"
-                  onsubmit="return confirm('¿Deseas liberar este GPS?');">
-              <button class="btn danger small" type="submit">Liberar</button>
-            </form>
-          </td>
-        </tr>
-      {% else %}
-        <tr>
-          <td colspan="12">No hay GPS asignados actualmente.</td>
-        </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+        <tbody>
+          {% for row in rows %}
+            {% set gps = row.gps_device %}
+            {% set req = row.request %}
+            {% set line = row.line %}
+            {% set assignment = row.assignment %}
+            {% set chassis = chassis_by_id.get(row.chassis_id) if row.chassis_id else None %}
+
+            <tr>
+              <td>
+                <div class="gps-cell">
+                  <span class="gps-icon">GPS</span>
+                  <strong>{{ gps.gps_number if gps else '—' }}</strong>
+                </div>
+              </td>
+
+              <td>
+                <span class="muted-value">
+                  {{ gps.battery_range if gps and gps.battery_range else '—' }}
+                </span>
+              </td>
+
+              <td>
+                {{ line.load_date.strftime('%d/%m/%Y') if line and line.load_date else '—' }}
+              </td>
+
+              <td>
+                {{ line.load_time.strftime('%I:%M %p') if line and line.load_time else '—' }}
+              </td>
+
+              <td>
+                <strong>{{ req.booking if req and req.booking else '—' }}</strong>
+              </td>
+
+              <td>
+                {{ req.client_name if req and req.client_name else '—' }}
+              </td>
+
+              <td>
+                {{ req.product_name if req and req.product_name else '—' }}
+              </td>
+
+              <td>
+                {{ req.port_out if req and req.port_out else '—' }}
+              </td>
+
+              <td>
+                {% if row.container %}
+                  <strong>{{ row.container.code }}</strong>
+                {% elif assignment and assignment.container %}
+                  <strong>{{ assignment.container.code }}</strong>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+
+              <td>
+                {% if chassis %}
+                  <strong>{{ chassis.chassis_number }}</strong>
+                {% elif row.chassis_id %}
+                  ID {{ row.chassis_id }}
+                {% else %}
+                  <span class="pending-text">Pendiente</span>
+                {% endif %}
+              </td>
+
+              <td>
+                <span class="status-pill">
+                  {{ row.status }}
+                </span>
+              </td>
+
+              <td class="text-center">
+                <form method="post"
+                      action="{{ url_for('dispatch.gps_release_assignment', gps_assignment_id=row.id) }}"
+                      onsubmit="return confirm('¿Deseas liberar este GPS?');">
+                  <button class="btn danger small" type="submit">
+                    Liberar
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="12">
+                <div class="empty-state">
+                  <strong>No hay GPS asignados actualmente.</strong>
+                  <span>Cuando se asignen GPS a solicitudes, aparecerán en esta tabla.</span>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <style>
+.tracking-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.tracking-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.tracking-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.tracking-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn.ghost {
+  background: #f9fafb;
+  border: 1px solid #d1d5db;
+  color: #111827;
+}
+
+.tracking-table-card {
+  overflow: hidden;
+}
+
+.table-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.table-title-row h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.table-title-row p {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+}
+
+.tracking-table {
+  width: 100%;
+  min-width: 1250px;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: #ffffff;
+}
+
+.tracking-table thead th {
+  background: #111827;
+  color: #ffffff;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 12px 10px;
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid #111827;
+}
+
+.tracking-table tbody td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #111827;
+  font-size: 13px;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.tracking-table tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.tracking-table tbody tr:hover {
+  background: #eef2ff;
+}
+
+.gps-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gps-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 24px;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .05em;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.pending-text {
+  color: #b45309;
+  font-weight: 700;
+}
+
+.muted-value {
+  color: #4b5563;
+}
+
+.text-center {
+  text-align: center !important;
+}
+
+.empty-state {
+  padding: 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #6b7280;
+}
+
+.empty-state strong {
+  color: #111827;
+  font-size: 15px;
+}
+
 @media (max-width: 900px) {
-  table {
-    display:block;
-    overflow-x:auto;
-    white-space:nowrap;
+  .tracking-header {
+    flex-direction: column;
+  }
+
+  .tracking-actions {
+    width: 100%;
+  }
+
+  .tracking-actions .btn {
+    flex: 1;
+    text-align: center;
+  }
+
+  .tracking-header h2 {
+    font-size: 21px;
+  }
+
+  .table-wrap {
+    border-radius: 12px;
   }
 }
 </style>
+
 {% endblock %}
