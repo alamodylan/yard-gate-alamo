@@ -1542,7 +1542,7 @@ def gps_inventory_bulk_upload():
         )
         return redirect(url_for("dispatch.gps_inventory"))
 
-    valid_statuses = {"DISPONIBLE", "MANTENIMIENTO", "FUERA_SERVICIO"}
+    valid_statuses = {"DISPONIBLE", "MANTENIMIENTO", "FUERA_DE_SERVICIO"}
 
     rows_to_process = []
     seen_gps_numbers = set()
@@ -1588,7 +1588,7 @@ def gps_inventory_bulk_upload():
         if status and status not in valid_statuses:
             errors.append(
                 f"Fila {row_idx}: estado inválido para {gps_number}. "
-                "Use DISPONIBLE, MANTENIMIENTO o FUERA_SERVICIO."
+                "Use DISPONIBLE, MANTENIMIENTO o FUERA_DE_SERVICIO."
             )
             skipped_count += 1
             continue
