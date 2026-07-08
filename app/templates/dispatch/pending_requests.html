@@ -66,6 +66,7 @@
 
         <tbody>
           {% for r in requests %}
+            {% set role = (current_user.role or '')|lower %}
             <tr>
               <td><b>#{{ r.id }}</b></td>
               <td>{{ r.request_type }}</td>
@@ -109,8 +110,6 @@
                       Reagendar
                     </button>
                   {% endif %}
-
-                  {% set role = (current_user.role or '')|lower %}
                   {% set has_assignments = false %}
 
                   {% for line in r.lines %}
