@@ -80,27 +80,35 @@
               </td>
               <td>{{ r.requested_at|dt_cr("%d/%m/%Y %I:%M %p") }}</td>
               <td>
-                <details>
-                  <summary>Ver líneas</summary>
-                  <div style="margin-top:8px;">
-                    {% for line in r.lines %}
-                      <div class="line-mini">
-                        <b>{{ line.quantity }} x {{ line.container_size }}</b>
-                        · {{ line.condition_type }}
-                        · {{ line.load_date.strftime("%d/%m/%Y") }}
-                        {% if line.load_time %}
-                          · {{ line.load_time.strftime("%I:%M %p") }}
-                        {% endif %}
-                      </div>
-                    {% endfor %}
-                  </div>
-                </details>
+                <div class="lines-preview">
+                  {% for line in r.lines %}
+                    <div class="line-mini">
+                      <b>{{ line.quantity }} x {{ line.container_size }}</b>
+                      · {{ line.condition_type }}
+                      · {{ line.load_date.strftime("%d/%m/%Y") }}
+                      {% if line.load_time %}
+                        · {{ line.load_time.strftime("%I:%M %p") }}
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
               </td>
               <td>
                 <div style="display:flex; gap:6px; flex-wrap:wrap;">
                   <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
                     Atender
                   </a>
+
+                  {% if role in ['admin', 'supervision', 'despachador'] and r.status == 'PENDIENTE' %}
+                    <button
+                      type="button"
+                      class="btn small warning open-reschedule-modal"
+                      data-request-id="{{ r.id }}"
+                      data-request-label="Solicitud #{{ r.id }}"
+                    >
+                      Reagendar
+                    </button>
+                  {% endif %}
 
                   {% set role = (current_user.role or '')|lower %}
                   {% set has_assignments = false %}
@@ -132,6 +140,70 @@
     </div>
   {% endif %}
 </div>
+
+<div id="rescheduleModal" class="reschedule-modal-backdrop">
+  <div class="reschedule-modal">
+    <h3>Reagendar solicitud</h3>
+    <p id="rescheduleRequestLabel"></p>
+
+    <form id="rescheduleForm" method="POST">
+      <div class="field">
+        <label>Nueva fecha</label>
+        <input type="date" name="load_date" required>
+      </div>
+
+      <div class="field" style="margin-top:12px;">
+        <label>Nueva hora</label>
+        <input type="time" name="load_time">
+      </div>
+
+      <div class="reschedule-actions">
+        <button type="button" class="btn" id="closeRescheduleModal">Cancelar</button>
+        <button type="submit" class="btn primary">Guardar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const modal = document.getElementById("rescheduleModal");
+  const form = document.getElementById("rescheduleForm");
+  const label = document.getElementById("rescheduleRequestLabel");
+  const closeBtn = document.getElementById("closeRescheduleModal");
+
+  if (!modal || !form || !label || !closeBtn) return;
+
+  function closeModal() {
+    form.reset();
+    label.textContent = "";
+    modal.style.display = "none";
+  }
+
+  document.querySelectorAll(".open-reschedule-modal").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const requestId = btn.dataset.requestId;
+      const requestLabel = btn.dataset.requestLabel;
+
+      label.textContent = requestLabel || "";
+      form.action = `/dispatch/request/${requestId}/reschedule`;
+      modal.style.display = "flex";
+    });
+  });
+
+  closeBtn.addEventListener("click", closeModal);
+
+  modal.addEventListener("click", e => {
+    if (e.target === modal) closeModal();
+  });
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape" && modal.style.display === "flex") {
+      closeModal();
+    }
+  });
+});
+</script>
 
 <style>
 .table-wrap {
@@ -171,9 +243,18 @@
   border:1px solid rgba(234,179,8,.35);
 }
 
+.lines-preview{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
 .line-mini {
-  padding:6px 0;
-  border-bottom:1px solid rgba(148,163,184,.12);
+  padding:7px 9px;
+  border-radius:10px;
+  background:rgba(15,23,42,.25);
+  border:1px solid rgba(148,163,184,.16);
+  color:#e2e8f0;
 }
 
 .pending-search-form{
@@ -194,5 +275,60 @@
     grid-template-columns:1fr;
   }
 }
+
+.reschedule-modal-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.45);
+  z-index:3000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.reschedule-modal{
+  width:min(440px,100%);
+  background:#fff;
+  border-radius:20px;
+  padding:22px;
+  border:1px solid #dbe3ef;
+  box-shadow:0 25px 60px rgba(15,23,42,.25);
+}
+
+.reschedule-modal h3{
+  margin-top:0;
+  margin-bottom:8px;
+  color:#0f172a;
+}
+
+.reschedule-modal p{
+  margin:0 0 14px;
+  color:#475569;
+  font-weight:800;
+}
+
+.reschedule-modal label{
+  display:block;
+  margin-bottom:6px;
+  font-weight:900;
+  color:#334155;
+}
+
+.reschedule-modal input{
+  width:100%;
+  box-sizing:border-box;
+  padding:10px;
+  border:1px solid #cbd5e1;
+  border-radius:12px;
+}
+
+.reschedule-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:18px;
+}
+
 </style>
 {% endblock %}

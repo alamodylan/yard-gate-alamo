@@ -1701,3 +1701,55 @@ def gps_release_assignment(gps_assignment_id: int):
 
     flash(f"GPS {gps.gps_number} liberado correctamente.", "success")
     return redirect(url_for("dispatch.gps_assigned"))
+
+@dispatch_bp.post("/request/<int:request_id>/reschedule")
+@login_required
+def reschedule_pending_request(request_id: int):
+    site_id = _ensure_active_site()
+
+    role = (current_user.role or "").strip().lower()
+    if role not in {"admin", "supervision", "despachador"}:
+        abort(403)
+
+    req = DispatchRequest.query.get_or_404(request_id)
+
+    if req.site_id != site_id and role != "admin":
+        abort(403)
+
+    if req.status != "PENDIENTE":
+        flash("Solo se pueden reagendar solicitudes pendientes.", "warning")
+        return redirect(url_for("dispatch.pending_requests"))
+
+    new_date_raw = (request.form.get("load_date") or "").strip()
+    new_time_raw = (request.form.get("load_time") or "").strip()
+
+    new_date = _parse_date(new_date_raw)
+    new_time = _parse_time(new_time_raw)
+
+    if not new_date:
+        flash("Debe indicar una fecha válida para reagendar.", "danger")
+        return redirect(url_for("dispatch.pending_requests"))
+
+    for line in req.lines:
+        line.load_date = new_date
+        line.load_time = new_time
+        db.session.add(line)
+
+    req.updated_at = datetime.utcnow()
+    db.session.add(req)
+
+    create_notifications_for_roles(
+        site_id=site_id,
+        roles={"patio", "inspeccion"},
+        title=f"Solicitud #{req.id} reagendada",
+        message=f"La solicitud #{req.id} fue reagendada para {new_date.strftime('%d/%m/%Y')}"
+                + (f" {new_time.strftime('%I:%M %p')}" if new_time else "."),
+        related_type="DISPATCH_REQUEST",
+        related_id=req.id,
+        exclude_user_ids={current_user.id},
+    )
+
+    db.session.commit()
+
+    flash(f"Solicitud #{req.id} reagendada correctamente.", "success")
+    return redirect(url_for("dispatch.pending_requests"))
