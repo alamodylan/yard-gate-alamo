@@ -20,11 +20,6 @@ def login_post():
         return redirect(url_for("auth.login"))
 
     login_user(user)
-
-    # ✅ Si es admin: no fijamos predio automático (que elija)
-    # ✅ Si NO es admin:
-    #    - si tiene 1 solo predio -> set session y al mapa
-    #    - si tiene varios -> selector
     session.pop("active_site_id", None)
 
     if (user.role or "").lower() != "admin":
@@ -38,9 +33,9 @@ def login_post():
 
         if len(sites) == 1:
             session["active_site_id"] = sites[0].id
-            return redirect(url_for("yard.map_view"))
+            return redirect(url_for("yard.home_view"))
 
-    return redirect(url_for("yard.sites_dashboard"))  # ✅ nueva vista
+    return redirect(url_for("yard.sites_dashboard"))
 
 @auth_bp.get("/logout")
 @login_required
