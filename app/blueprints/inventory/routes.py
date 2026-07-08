@@ -729,9 +729,10 @@ def evacuation_list():
     items = sorted(
         items,
         key=lambda x: (
-            x.get("shipping_line") or "ZZZ",
-            x.get("size") or "ZZZ",
-            (x.get("code") or "").strip().upper(),
+            (x.get("shipping_line") or "ZZZ").upper(),
+            (x.get("evacuation_destination") or "ZZZ").upper(),
+            (x.get("size") or "ZZZ").upper(),
+            (x.get("code") or "").upper(),
         )
     )
 
@@ -1770,9 +1771,10 @@ def evacuation_list_pdf():
     items = sorted(
         items,
         key=lambda x: (
-            x[3] or "ZZZ",  # Naviera
-            x[2] or "ZZZ",  # Tamaño
-            x[0] or "ZZZ",  # Contenedor
+            (x[3] or "ZZZ").upper(),  # Naviera
+            (x[4] or "ZZZ").upper(),  # Destino
+            (x[2] or "ZZZ").upper(),  # Tamaño
+            (x[0] or "").upper(),     # Contenedor
         )
     )
 
