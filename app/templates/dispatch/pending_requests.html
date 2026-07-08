@@ -84,11 +84,25 @@
                 <div class="lines-preview">
                   {% for line in r.lines %}
                     <div class="line-mini">
-                      <b>{{ line.quantity }} x {{ line.container_size }}</b>
-                      · {{ line.condition_type }}
-                      · {{ line.load_date.strftime("%d/%m/%Y") }}
-                      {% if line.load_time %}
-                        · {{ line.load_time.strftime("%I:%M %p") }}
+                      <div>
+                        <b>{{ line.quantity }} x {{ line.container_size }}</b>
+                        · {{ line.condition_type }}
+                        · {{ line.load_date.strftime("%d/%m/%Y") }}
+                        {% if line.load_time %}
+                          · {{ line.load_time.strftime("%I:%M %p") }}
+                        {% endif %}
+                      </div>
+
+                      {% if role in ['admin', 'supervision', 'despachador'] and r.status == 'PENDIENTE' and not line.assignments %}
+                        <button
+                          type="button"
+                          class="btn small warning open-reschedule-line-modal"
+                          data-request-id="{{ r.id }}"
+                          data-line-id="{{ line.id }}"
+                          data-request-label="Solicitud #{{ r.id }} · {{ line.quantity }} x {{ line.container_size }}"
+                        >
+                          Reagendar
+                        </button>
                       {% endif %}
                     </div>
                   {% endfor %}
@@ -99,17 +113,6 @@
                   <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
                     Atender
                   </a>
-
-                  {% if role in ['admin', 'supervision', 'despachador'] and r.status == 'PENDIENTE' %}
-                    <button
-                      type="button"
-                      class="btn small warning open-reschedule-modal"
-                      data-request-id="{{ r.id }}"
-                      data-request-label="Solicitud #{{ r.id }}"
-                    >
-                      Reagendar
-                    </button>
-                  {% endif %}
                   {% set has_assignments = false %}
 
                   {% for line in r.lines %}
@@ -179,13 +182,14 @@ document.addEventListener("DOMContentLoaded", () => {
     modal.style.display = "none";
   }
 
-  document.querySelectorAll(".open-reschedule-modal").forEach(btn => {
+  document.querySelectorAll(".open-reschedule-line-modal").forEach(btn => {
     btn.addEventListener("click", () => {
       const requestId = btn.dataset.requestId;
+      const lineId = btn.dataset.lineId;
       const requestLabel = btn.dataset.requestLabel;
 
       label.textContent = requestLabel || "";
-      form.action = `/dispatch/request/${requestId}/reschedule`;
+      form.action = `/dispatch/request/${requestId}/line/${lineId}/reschedule`;
       modal.style.display = "flex";
     });
   });
@@ -254,6 +258,10 @@ document.addEventListener("DOMContentLoaded", () => {
   background:rgba(15,23,42,.25);
   border:1px solid rgba(148,163,184,.16);
   color:#e2e8f0;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
 }
 
 .pending-search-form{
