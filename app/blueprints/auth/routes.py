@@ -33,7 +33,7 @@ def login_post():
 
         if len(sites) == 1:
             session["active_site_id"] = sites[0].id
-            return redirect(url_for("yard.home_view"))
+            return redirect(url_for("yard.home"))
 
     return redirect(url_for("yard.sites_dashboard"))
 
