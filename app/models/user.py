@@ -25,6 +25,7 @@ class User(db.Model, UserMixin):
     ROLE_OPERADOR = "operador"
     ROLE_TALLER = "taller"
     ROLE_TRACKING = "tracking"
+    ROLE_SEGURIDAD = "seguridad"
 
     # Compatibilidad temporal con usuarios existentes
     ROLE_PREDIO = "predio"
@@ -40,6 +41,7 @@ class User(db.Model, UserMixin):
         ROLE_TALLER,
         ROLE_TRACKING,
         ROLE_PREDIO,
+        ROLE_SEGURIDAD,
     }
 
     id = db.Column(db.Integer, primary_key=True)

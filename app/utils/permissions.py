@@ -140,6 +140,12 @@ ROLE_PERMISSIONS = {
         "tracking.assigned.view",
     },
 
+    "seguridad": {
+        "eir.view",
+        "eir.confirm",
+        "eir.pdf",
+    },
+
     # Compatibilidad temporal con usuarios viejos.
     # Se comporta como patio para no romper operación existente.
     "predio": {
