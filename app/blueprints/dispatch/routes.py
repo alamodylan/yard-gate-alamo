@@ -705,6 +705,24 @@ def assigned_requests():
     site_id = _ensure_active_site()
 
     q = (request.args.get("q") or "").strip().upper()
+    container_q = (request.args.get("container_q") or "").strip().upper()
+
+    try:
+        page = int(request.args.get("page") or 1)
+    except Exception:
+        page = 1
+
+    try:
+        per_page = int(request.args.get("per_page") or 10)
+    except Exception:
+        per_page = 10
+
+    if page < 1:
+        page = 1
+
+    allowed_per_page = {5, 10, 20, 50, 100}
+    if per_page not in allowed_per_page:
+        per_page = 10
 
     query = (
         DispatchRequest.query
@@ -726,15 +744,41 @@ def assigned_requests():
             ).like(f"%{q}%")
         )
 
-    requests = (
+    if container_q:
+        query = (
+            query
+            .join(
+                DispatchRequestLine,
+                DispatchRequestLine.request_id == DispatchRequest.id
+            )
+            .join(
+                DispatchAssignment,
+                DispatchAssignment.request_line_id == DispatchRequestLine.id
+            )
+            .join(
+                Container,
+                Container.id == DispatchAssignment.container_id
+            )
+            .filter(
+                db.func.upper(Container.code).like(f"%{container_q}%")
+            )
+            .distinct()
+        )
+
+    pagination = (
         query
         .order_by(
             DispatchRequest.updated_at.desc(),
             DispatchRequest.requested_at.desc()
         )
-        .all()
+        .paginate(
+            page=page,
+            per_page=per_page,
+            error_out=False,
+        )
     )
 
+    requests = pagination.items
     request_ids = [r.id for r in requests]
 
     gps_rows = []
@@ -765,6 +809,9 @@ def assigned_requests():
         "dispatch/assigned_requests.html",
         requests=requests,
         q=q,
+        container_q=container_q,
+        per_page=per_page,
+        pagination=pagination,
         gps_by_assignment_id=gps_by_assignment_id,
         gps_by_line_id=gps_by_line_id,
     )
@@ -2179,3 +2226,29 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
 
     flash(f"Línea de solicitud #{req.id} reagendada correctamente.", "success")
     return redirect(url_for("dispatch.pending_requests"))
+
+@dispatch_bp.post("/assignment/<int:assignment_id>/carrier-reported")
+@login_required
+def toggle_assignment_carrier_reported(assignment_id: int):
+    site_id = _ensure_active_site()
+
+    role = (current_user.role or "").strip().lower()
+
+    if role not in {"admin", "supervision", "despachador"}:
+        abort(403)
+
+    assignment = DispatchAssignment.query.get_or_404(assignment_id)
+    line = DispatchRequestLine.query.get_or_404(assignment.request_line_id)
+    req = DispatchRequest.query.get_or_404(line.request_id)
+
+    if req.site_id != site_id and role != "admin":
+        abort(403)
+
+    carrier_reported = request.form.get("carrier_reported") == "1"
+
+    assignment.carrier_reported = carrier_reported
+
+    db.session.commit()
+
+    flash("Referencia de reporte a naviera actualizada.", "success")
+    return redirect(url_for("dispatch.assigned_requests"))

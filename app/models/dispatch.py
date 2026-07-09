@@ -154,6 +154,7 @@ class DispatchAssignment(db.Model):
 
     status = db.Column(db.String(30), nullable=False, default="ASIGNADO")
     assignment_notes = db.Column(db.Text, nullable=True)
+    carrier_reported = db.Column(db.Boolean, nullable=False, default=False)
 
     eir_id = db.Column(db.Integer, nullable=True)
     chassis_id = db.Column(db.Integer, nullable=True)

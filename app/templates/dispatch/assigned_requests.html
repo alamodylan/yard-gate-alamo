@@ -34,10 +34,31 @@
       >
     </div>
 
+    <div>
+      <label>Buscar por contenedor</label>
+      <input
+        type="text"
+        name="container_q"
+        value="{{ container_q or '' }}"
+        placeholder="Ej: FSCU-851394-5"
+      >
+    </div>
+
+    <div>
+      <label>Por página</label>
+      <select name="per_page">
+        {% for n in [5, 10, 20, 50, 100] %}
+          <option value="{{ n }}" {{ 'selected' if per_page == n else '' }}>
+            {{ n }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
     <div class="assigned-search-actions">
       <button class="btn primary" type="submit">Buscar</button>
 
-      {% if q %}
+      {% if q or container_q %}
         <a class="btn" href="{{ url_for('dispatch.assigned_requests') }}">
           Limpiar
         </a>
@@ -120,9 +141,35 @@
                   <tbody>
                     {% for a in line.assignments %}
                       <tr>
-                        <td>
+                        <td class="{{ 'carrier-reported-cell' if a.carrier_reported else '' }}">
 
-                          <strong>{{ a.container.code }}</strong>
+                          <div class="container-reported-row">
+                            <strong class="{{ 'carrier-reported-code' if a.carrier_reported else '' }}">
+                              {{ a.container.code }}
+                            </strong>
+
+                            {% if can('dispatch.assigned.actions') %}
+                              <form method="post"
+                                    action="{{ url_for('dispatch.toggle_assignment_carrier_reported', assignment_id=a.id) }}"
+                                    class="carrier-reported-form">
+                                <input type="hidden"
+                                      name="carrier_reported"
+                                      value="{{ '0' if a.carrier_reported else '1' }}">
+
+                                <button type="submit"
+                                        class="carrier-check {{ 'active' if a.carrier_reported else '' }}"
+                                        title="Reportado a naviera">
+                                  ✓
+                                </button>
+                              </form>
+                            {% endif %}
+                          </div>
+
+                          {% if a.carrier_reported %}
+                            <div class="carrier-reported-label">
+                              Reportado a naviera
+                            </div>
+                          {% endif %}
 
                           {% if a.assignment_notes %}
                             <div class="assignment-notes">
@@ -261,6 +308,42 @@
       </div>
     </div>
   {% endfor %}
+{% endif %}
+
+{% if pagination and pagination.pages > 1 %}
+  <div class="card card-pad pagination-card">
+    <div class="pagination-info">
+      Página {{ pagination.page }} de {{ pagination.pages }}
+      · Total: {{ pagination.total }} solicitudes
+    </div>
+
+    <div class="pagination-actions">
+      {% if pagination.has_prev %}
+        <a class="btn small"
+           href="{{ url_for('dispatch.assigned_requests', page=pagination.prev_num, per_page=per_page, q=q, container_q=container_q) }}">
+          Anterior
+        </a>
+      {% endif %}
+
+      {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if p %}
+          <a class="btn small {{ 'primary' if p == pagination.page else '' }}"
+             href="{{ url_for('dispatch.assigned_requests', page=p, per_page=per_page, q=q, container_q=container_q) }}">
+            {{ p }}
+          </a>
+        {% else %}
+          <span class="pagination-dots">…</span>
+        {% endif %}
+      {% endfor %}
+
+      {% if pagination.has_next %}
+        <a class="btn small"
+           href="{{ url_for('dispatch.assigned_requests', page=pagination.next_num, per_page=per_page, q=q, container_q=container_q) }}">
+          Siguiente
+        </a>
+      {% endif %}
+    </div>
+  </div>
 {% endif %}
 
 <style>
@@ -512,9 +595,28 @@
 
 .assigned-search-form{
   display:grid;
-  grid-template-columns:minmax(240px, 1fr) auto;
+  grid-template-columns:minmax(220px, 1fr) minmax(220px, 1fr) 140px auto;
   gap:10px;
   align-items:end;
+}
+
+.assigned-search-form label{
+  display:block;
+  margin-bottom:5px;
+  font-size:12px;
+  font-weight:900;
+  color:#334155;
+}
+
+.assigned-search-form input,
+.assigned-search-form select{
+  width:100%;
+  height:38px;
+  box-sizing:border-box;
+  border:1px solid #cbd5e1;
+  border-radius:12px;
+  padding:8px 10px;
+  font-size:13px;
 }
 
 .assigned-search-actions{
@@ -573,6 +675,83 @@
 .muted-gps{
   color:#94a3b8;
   font-weight:800;
+}
+
+.pagination-card{
+  margin-top:14px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.pagination-info{
+  color:#475569;
+  font-size:13px;
+  font-weight:800;
+}
+
+.pagination-actions{
+  display:flex;
+  gap:6px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.pagination-dots{
+  padding:6px 8px;
+  color:#64748b;
+  font-weight:900;
+}
+
+.carrier-reported-cell{
+  background:#eff6ff !important;
+}
+
+.container-reported-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.carrier-reported-code{
+  color:#1d4ed8;
+  font-weight:950;
+}
+
+.carrier-reported-form{
+  margin:0;
+}
+
+.carrier-check{
+  width:24px;
+  height:24px;
+  border-radius:8px;
+  border:1px solid #93c5fd;
+  background:#ffffff;
+  color:#1d4ed8;
+  font-weight:950;
+  cursor:pointer;
+  line-height:1;
+}
+
+.carrier-check.active{
+  background:#2563eb;
+  color:#ffffff;
+  border-color:#2563eb;
+}
+
+.carrier-reported-label{
+  margin-top:5px;
+  display:inline-flex;
+  padding:4px 8px;
+  border-radius:999px;
+  background:#dbeafe;
+  color:#1d4ed8;
+  border:1px solid #93c5fd;
+  font-size:11px;
+  font-weight:900;
 }
 
 </style>
