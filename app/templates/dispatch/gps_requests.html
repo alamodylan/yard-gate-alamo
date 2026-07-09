@@ -98,14 +98,23 @@
                   <td>
                     <form method="post" action="{{ url_for('dispatch.gps_assign_container', assignment_id=a.id) }}">
                       <div class="assign-control">
-                        <select name="gps_device_id" required>
-                          <option value="">Seleccione GPS</option>
-                          {% for gps in available_gps %}
-                            <option value="{{ gps.id }}">
-                              {{ gps.gps_number }} · Carga {{ gps.battery_range or 'N/D' }}
-                            </option>
-                          {% endfor %}
-                        </select>
+                        <div class="gps-select-search-box">
+                          <input
+                            type="text"
+                            class="gps-search-input"
+                            placeholder="Buscar GPS..."
+                            autocomplete="off"
+                          >
+
+                          <select name="gps_device_id" class="gps-device-select" required>
+                            <option value="">Seleccione GPS</option>
+                            {% for gps in available_gps %}
+                              <option value="{{ gps.id }}">
+                                {{ gps.gps_number }} · Carga {{ gps.battery_range or 'N/D' }}
+                              </option>
+                            {% endfor %}
+                          </select>
+                        </div>
 
                         <button class="btn success small" type="submit">
                           Asignar
@@ -373,6 +382,81 @@
     justify-content: flex-start;
   }
 }
+
+  .gps-select-search-box {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 230px;
+  }
+
+  .gps-search-input {
+    height: 32px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    padding: 6px 10px;
+    font-size: 13px;
+    background: #ffffff;
+    color: #111827;
+  }
+
+  .gps-search-input:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .15);
+  }
+
+  .gps-device-select {
+    min-width: 230px;
+  }
 </style>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll(".gps-select-search-box").forEach(function (box) {
+    const input = box.querySelector(".gps-search-input");
+    const select = box.querySelector(".gps-device-select");
+
+    if (!input || !select) return;
+
+    const originalOptions = Array.from(select.options).map(function (option) {
+      return {
+        value: option.value,
+        text: option.text,
+        selected: option.selected
+      };
+    });
+
+    input.addEventListener("input", function () {
+      const term = input.value.trim().toUpperCase();
+      const currentValue = select.value;
+
+      select.innerHTML = "";
+
+      originalOptions.forEach(function (item, index) {
+        if (index === 0 || !term || item.text.toUpperCase().includes(term)) {
+          const option = document.createElement("option");
+          option.value = item.value;
+          option.text = item.text;
+
+          if (item.value === currentValue) {
+            option.selected = true;
+          }
+
+          select.appendChild(option);
+        }
+      });
+
+      if (select.options.length === 1 && term) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.text = "Sin resultados";
+        option.disabled = true;
+        select.appendChild(option);
+      }
+    });
+  });
+});
+</script>
 
 {% endblock %}
