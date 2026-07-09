@@ -3,7 +3,6 @@
 import os
 from io import BytesIO
 from flask_login import login_required, current_user
-
 import openpyxl
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, Alignment
@@ -1794,6 +1793,15 @@ def evacuation_list_pdf():
 
     title = Paragraph("<b>Lista de Vacíos / Evacuación</b>", styles["Title"])
     elements.append(title)
+
+    printed_at = datetime.now().strftime("%d/%m/%Y %I:%M:%S %p")
+
+    elements.append(
+        Paragraph(
+            f'<para alignment="right"><font size="8"><b>Impreso:</b> {printed_at}</font></para>',
+            styles["Normal"],
+        )
+    )
 
     filters_txt = (
         f"Buscar: {qtext or 'Todos'} | "

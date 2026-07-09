@@ -2,91 +2,336 @@
 {% block title %}Agenda Operativa{% endblock %}
 
 {% block content %}
-<div class="card card-pad">
-  <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+<div class="agenda-page">
+
+  <div class="card card-pad agenda-header">
     <div>
-      <h2 style="margin:0;">Agenda Operativa</h2>
-      <p class="card-sub" style="margin-top:6px;">
+      <h2>Agenda Operativa</h2>
+      <p class="card-sub">
         Todas las solicitudes programadas por fecha de carga.
       </p>
     </div>
 
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+    <div class="agenda-actions">
       <a href="{{ url_for('dispatch.pending_requests') }}" class="btn">Pendientes</a>
       <a href="{{ url_for('dispatch.assigned_requests') }}" class="btn">Asignadas</a>
-      <a href="{{ url_for('dispatch.prelist') }}" class="btn">Prelista</a>
+      <a href="{{ url_for('dispatch.prelist') }}" class="btn success">Prelista</a>
     </div>
   </div>
-</div>
 
-<div class="card card-pad" style="margin-top:14px;">
-  {% if not lines %}
-    <div class="hint">No hay movimientos programados.</div>
-  {% else %}
-    <div class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Hora CR</th>
-            <th>Solicitud</th>
-            <th>Tipo</th>
-            <th>Booking</th>
-            <th>Naviera</th>
-            <th>Cliente</th>
-            <th>Detalle</th>
-            <th>Asignados</th>
-            <th>Estado</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for line in lines %}
-            {% set r = line.request %}
-            <tr>
-              <td><b>{{ line.load_date.strftime("%d/%m/%Y") }}</b></td>
-              <td>
-                {% if line.load_time %}
-                  {{ line.load_time.strftime("%I:%M %p") }}
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>
-                <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}">
-                  #{{ r.id }}
-                </a>
-              </td>
-              <td>{{ r.request_type }}</td>
-              <td>{{ r.booking or "—" }}</td>
-              <td>{{ r.shipping_line }}</td>
-              <td>{{ r.client_name or "—" }}</td>
-              <td>{{ line.quantity }} x {{ line.container_size }} · {{ line.condition_type }}</td>
-              <td>
-                {{ line.assignments|length }} / {{ line.quantity }}
-              </td>
-              <td><b>{{ line.status }}</b></td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <div class="card card-pad agenda-card">
+    <div class="agenda-title-row">
+      <div>
+        <h3>Movimientos programados</h3>
+        <p>{{ lines|length }} línea{{ '' if lines|length == 1 else 's' }} en agenda</p>
+      </div>
     </div>
-  {% endif %}
+
+    {% if not lines %}
+      <div class="empty-state">
+        <strong>No hay movimientos programados.</strong>
+        <span>Cuando existan solicitudes con fecha de carga, aparecerán aquí.</span>
+      </div>
+    {% else %}
+      <div class="agenda-table-wrap">
+        <table class="agenda-table">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Hora CR</th>
+              <th>Solicitud</th>
+              <th>Tipo</th>
+              <th>Booking</th>
+              <th>Naviera</th>
+              <th>Cliente</th>
+              <th>Detalle</th>
+              <th>Contenedor</th>
+              <th>Asignados</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for line in lines %}
+              {% set r = line.request %}
+              {% set assigned_count = line.assignments|length %}
+
+              <tr>
+                <td>
+                  <strong>{{ line.load_date.strftime("%d/%m/%Y") }}</strong>
+                </td>
+
+                <td>
+                  {% if line.load_time %}
+                    {{ line.load_time.strftime("%I:%M %p") }}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+
+                <td>
+                  <a class="request-link" href="{{ url_for('dispatch.request_detail', request_id=r.id) }}">
+                    #{{ r.id }}
+                  </a>
+                </td>
+
+                <td>
+                  <span class="type-pill {{ 'type-empty' if r.request_type == 'VACIO' else 'type-dispatch' }}">
+                    {{ r.request_type }}
+                  </span>
+                </td>
+
+                <td>
+                  <strong>{{ r.booking or "—" }}</strong>
+                </td>
+
+                <td>{{ r.shipping_line }}</td>
+
+                <td>{{ r.client_name or "—" }}</td>
+
+                <td>
+                  <div class="detail-box">
+                    <strong>{{ line.quantity }} x {{ line.container_size }}</strong>
+                    <span>{{ line.condition_type }}</span>
+                  </div>
+                </td>
+
+                <td>
+                  {% if line.assignments %}
+                    <div class="container-list">
+                      {% for a in line.assignments %}
+                        {% if a.container %}
+                          <span class="container-pill">
+                            {{ a.container.code }}
+                          </span>
+                        {% endif %}
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    <span class="pending-text">Pendiente</span>
+                  {% endif %}
+                </td>
+
+                <td>
+                  <span class="count-pill">
+                    {{ assigned_count }} / {{ line.quantity }}
+                  </span>
+                </td>
+
+                <td>
+                  <span class="status-pill">
+                    {{ line.status }}
+                  </span>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+
 </div>
 
 <style>
-.table-wrap { overflow:auto; }
-.table { width:100%; border-collapse:collapse; }
-.table th,
-.table td {
-  padding:10px;
-  border-bottom:1px solid rgba(148,163,184,.18);
-  text-align:left;
-  vertical-align:top;
-  font-size:13px;
+.agenda-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-.table th {
-  color:rgba(226,232,240,.9);
-  font-weight:900;
+
+.agenda-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.agenda-header h2 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.agenda-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.agenda-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.agenda-title-row h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 900;
+  color: #111827;
+}
+
+.agenda-title-row p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.agenda-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px;
+  background: #ffffff;
+}
+
+.agenda-table {
+  width: 100%;
+  min-width: 1250px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.agenda-table thead th {
+  background: #111827;
+  color: #ffffff;
+  padding: 12px 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.agenda-table tbody td {
+  padding: 12px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  color: #111827;
+  font-size: 13px;
+  vertical-align: top;
+}
+
+.agenda-table tbody tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+.agenda-table tbody tr:hover {
+  background: #eef2ff;
+}
+
+.request-link {
+  font-weight: 900;
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.type-pill,
+.status-pill,
+.count-pill,
+.container-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.type-dispatch {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+}
+
+.type-empty {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.status-pill {
+  background: #ede9fe;
+  color: #6d28d9;
+  border: 1px solid #c4b5fd;
+}
+
+.count-pill {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.container-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 260px;
+}
+
+.container-pill {
+  background: #f1f5f9;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+}
+
+.detail-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.detail-box span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pending-text {
+  color: #b45309;
+  font-weight: 800;
+}
+
+.empty-state {
+  padding: 34px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #64748b;
+}
+
+.empty-state strong {
+  color: #111827;
+  font-size: 15px;
+}
+
+@media (max-width: 900px) {
+  .agenda-header {
+    flex-direction: column;
+  }
+
+  .agenda-actions {
+    width: 100%;
+  }
+
+  .agenda-actions .btn {
+    flex: 1;
+    text-align: center;
+  }
+
+  .agenda-header h2 {
+    font-size: 21px;
+  }
+
+  .agenda-table {
+    min-width: 1150px;
+  }
 }
 </style>
 {% endblock %}

@@ -1102,16 +1102,50 @@ def prelist_pdf():
             if line.load_time is None or line.load_time > current_time:
                 prelist_lines.append(line)
 
+    request_ids = []
+    line_ids = []
+    assignment_ids = []
     container_ids = []
     chassis_ids = set()
 
     for line in prelist_lines:
+        if line.request_id:
+            request_ids.append(line.request_id)
+
+        line_ids.append(line.id)
+
         for a in line.assignments:
+            assignment_ids.append(a.id)
+
             if a.container_id:
                 container_ids.append(a.container_id)
 
             if a.chassis_id:
                 chassis_ids.add(a.chassis_id)
+
+    gps_rows = []
+
+    if request_ids:
+        gps_rows = (
+            GpsAssignment.query
+            .options(joinedload(GpsAssignment.gps_device))
+            .filter(
+                GpsAssignment.site_id == site_id,
+                GpsAssignment.dispatch_request_id.in_(request_ids),
+                GpsAssignment.status == "ASIGNADO",
+            )
+            .all()
+        )
+
+    gps_by_assignment_id = {}
+    gps_by_line_id = {}
+
+    for gps in gps_rows:
+        if gps.dispatch_assignment_id:
+            gps_by_assignment_id[gps.dispatch_assignment_id] = gps
+
+        if gps.dispatch_request_line_id:
+            gps_by_line_id[gps.dispatch_request_line_id] = gps
 
     eirs = []
 
@@ -1191,6 +1225,34 @@ def prelist_pdf():
 
         return value[:10]
 
+    def _gps_text(req, line, assignment=None):
+        gps = None
+
+        if assignment:
+            gps = gps_by_assignment_id.get(assignment.id)
+
+        if not gps:
+            gps = gps_by_line_id.get(line.id)
+
+        if gps and gps.gps_device:
+            return gps.gps_device.gps_number or "SI"
+
+        if getattr(req, "requires_gps", False):
+            return "SI"
+
+        return "NO"
+
+    def _detail_text(req):
+        request_type = (req.request_type or "").strip().upper()
+
+        if request_type == "DESPACHO":
+            return "CARGA"
+
+        if request_type == "VACIO":
+            return "VACIO"
+
+        return request_type or "—"
+
     data = [[
         "PREDIO",
         "NAVIERA",
@@ -1200,11 +1262,12 @@ def prelist_pdf():
         "FORMATO",
         "FECHA",
         "HORA",
+        "GPS",
         "CLIENTE / PLANTA",
         "PRODUCTO",
         "DESTINO",
         "COMENTARIO",
-        "SIEMPRE CARGA",
+        "DETALLES",
     ]]
 
     tomorrow_after_11_rows = []
@@ -1236,11 +1299,12 @@ def prelist_pdf():
                 formato,
                 _format_date_no_year(line.load_date),
                 _format_time(line.load_time),
+                _gps_text(req, line, a),
                 req.client_name or "",
                 req.product_name or "",
                 req.port_out or "",
                 a.assignment_notes or "",
-                "☐",
+                _detail_text(req),
             ]
 
             data.append(row)
@@ -1267,11 +1331,12 @@ def prelist_pdf():
                 "",
                 _format_date_no_year(line.load_date),
                 _format_time(line.load_time),
+                _gps_text(req, line, None),
                 req.client_name or "",
                 req.product_name or "",
                 req.port_out or "",
                 "PENDIENTE DE ASIGNAR",
-                "☐",
+                _detail_text(req),
             ]
 
             data.append(row)
@@ -1295,11 +1360,12 @@ def prelist_pdf():
             "—",
             "—",
             "—",
+            "NO",
             "Sin registros",
             "—",
             "—",
             "—",
-            "☐",
+            "—",
         ])
 
     bio = BytesIO()
@@ -1307,20 +1373,21 @@ def prelist_pdf():
     doc = SimpleDocTemplate(
         bio,
         pagesize=landscape(legal),
-        rightMargin=10,
-        leftMargin=10,
-        topMargin=10,
-        bottomMargin=10,
+        rightMargin=6,
+        leftMargin=6,
+        topMargin=8,
+        bottomMargin=8,
     )
 
     styles = getSampleStyleSheet()
+
     title_style = styles["Normal"]
     title_style.fontName = "Helvetica-Bold"
-    title_style.fontSize = 8
-    title_style.leading = 9
+    title_style.fontSize = 9
+    title_style.leading = 10
 
     small_style = styles["Normal"]
-    small_style.fontSize = 6
+    small_style.fontSize = 6.5
     small_style.leading = 7
 
     elements = []
@@ -1329,25 +1396,26 @@ def prelist_pdf():
 
     elements.append(Paragraph("<b>PRELISTA OPERATIVA</b>", title_style))
     elements.append(Paragraph(f"Impreso: {printed_at}", small_style))
-    elements.append(Spacer(1, 5))
+    elements.append(Spacer(1, 4))
 
     table = Table(
         data,
         repeatRows=1,
         colWidths=[
-            45,   # Predio
-            42,   # Naviera
-            70,   # Contenedor
-            62,   # Chasis
-            38,   # Tipo
-            42,   # Formato
-            36,   # Fecha
-            50,   # Hora
-            108,  # Cliente / Planta
-            105,  # Producto
-            108,  # Destino
-            105,  # Comentario
-            55,   # Siempre carga
+            44,   # Predio
+            45,   # Naviera
+            72,   # Contenedor
+            64,   # Chasis
+            40,   # Tipo
+            44,   # Formato
+            38,   # Fecha
+            52,   # Hora
+            55,   # GPS
+            116,  # Cliente / Planta
+            112,  # Producto
+            112,  # Destino
+            130,  # Comentario
+            58,   # Detalles
         ],
     )
 
@@ -1355,18 +1423,18 @@ def prelist_pdf():
         ("BACKGROUND", (0, 0), (-1, 0), colors.black),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 5.5),
+        ("FONTSIZE", (0, 0), (-1, 0), 6.2),
 
-        ("FONTSIZE", (0, 1), (-1, -1), 5.2),
+        ("FONTSIZE", (0, 1), (-1, -1), 5.8),
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
 
         ("GRID", (0, 0), (-1, -1), 0.25, colors.black),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-        ("ALIGN", (8, 1), (11, -1), "LEFT"),
+        ("ALIGN", (9, 1), (12, -1), "LEFT"),
 
-        ("LEFTPADDING", (0, 0), (-1, -1), 2),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
 
