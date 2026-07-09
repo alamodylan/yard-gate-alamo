@@ -1200,6 +1200,24 @@ def prelist_pdf():
 
         return size_value or ""
 
+    def _format_from_request_or_chassis(tipo, req, chassis=None):
+        axles = None
+
+        if chassis and getattr(chassis, "axles", None):
+            axles = chassis.axles
+        else:
+            chassis_type = (getattr(req, "chassis_type", "") or "").strip().upper()
+
+            if "2" in chassis_type:
+                axles = 2
+            elif "3" in chassis_type:
+                axles = 3
+
+        if tipo and axles:
+            return f"{tipo}x{axles}"
+
+        return ""
+
     def _format_date_no_year(value):
         if not value:
             return ""
@@ -1287,9 +1305,7 @@ def prelist_pdf():
             container_size = container.size if container else line.container_size
             tipo = _container_type(container_size)
 
-            formato = ""
-            if chassis and getattr(chassis, "axles", None):
-                formato = f"{tipo}x{chassis.axles}"
+            formato = _format_from_request_or_chassis(tipo, req, chassis)
 
             row = [
                 _short_site(site_name),
@@ -1323,13 +1339,16 @@ def prelist_pdf():
         pending_count = max(int(line.quantity or 0) - assigned_count, 0)
 
         for _ in range(pending_count):
+            pending_tipo = _container_type(line.container_size)
+            pending_formato = _format_from_request_or_chassis(pending_tipo, req, None)
+
             row = [
                 _short_site(site_name),
                 req.shipping_line or "",
                 "",
                 "",
                 line.container_size or "",
-                "",
+                pending_formato,
                 _format_date_no_year(line.load_date),
                 _format_time(line.load_time),
                 _gps_text(req, line, None),
