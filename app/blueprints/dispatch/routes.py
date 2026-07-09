@@ -1993,10 +1993,10 @@ def gps_requests():
         .all()
     )
 
-    assigned_line_ids = {
-        row.dispatch_request_line_id
+    assigned_assignment_ids = {
+        row.dispatch_assignment_id
         for row in active_gps_rows
-        if row.dispatch_request_line_id
+        if row.dispatch_assignment_id
     }
 
     available_gps = (
@@ -2010,10 +2010,17 @@ def gps_requests():
         .all()
     )
 
-    pending_lines = [
-        line for line in lines
-        if line.id not in assigned_line_ids
-    ]
+    pending_lines = []
+
+    for line in lines:
+        pending_assignments = [
+            a for a in (line.assignments or [])
+            if a.id not in assigned_assignment_ids
+        ]
+
+        if pending_assignments:
+            line.pending_gps_assignments = pending_assignments
+            pending_lines.append(line)
 
     return render_template(
         "dispatch/gps_requests.html",
@@ -2162,6 +2169,72 @@ def gps_assigned():
         chassis_by_id=chassis_by_id,
     )
 
+@dispatch_bp.post("/gps/assign-container/<int:assignment_id>")
+@login_required
+def gps_assign_container(assignment_id: int):
+    site_id = _ensure_active_site()
+
+    assignment = DispatchAssignment.query.get_or_404(assignment_id)
+    line = DispatchRequestLine.query.get_or_404(assignment.request_line_id)
+    req = DispatchRequest.query.get_or_404(line.request_id)
+
+    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+        abort(403)
+
+    if not getattr(req, "requires_gps", False):
+        flash("Esta solicitud no requiere GPS.", "danger")
+        return redirect(url_for("dispatch.gps_requests"))
+
+    gps_id = request.form.get("gps_device_id", type=int)
+
+    if not gps_id:
+        flash("Debe seleccionar un GPS.", "danger")
+        return redirect(url_for("dispatch.gps_requests"))
+
+    gps = GpsDevice.query.get_or_404(gps_id)
+
+    if gps.site_id != site_id:
+        flash("El GPS seleccionado no pertenece al predio activo.", "danger")
+        return redirect(url_for("dispatch.gps_requests"))
+
+    if gps.status != "DISPONIBLE" or not gps.is_active:
+        flash("Solo se puede asignar un GPS disponible.", "danger")
+        return redirect(url_for("dispatch.gps_requests"))
+
+    existing = (
+        GpsAssignment.query
+        .filter(
+            GpsAssignment.dispatch_assignment_id == assignment.id,
+            GpsAssignment.status == "ASIGNADO",
+        )
+        .first()
+    )
+
+    if existing:
+        flash("Este contenedor ya tiene un GPS asignado.", "warning")
+        return redirect(url_for("dispatch.gps_requests"))
+
+    gps_assignment = GpsAssignment(
+        site_id=site_id,
+        dispatch_request_id=req.id,
+        dispatch_request_line_id=line.id,
+        dispatch_assignment_id=assignment.id,
+        gps_device_id=gps.id,
+        container_id=assignment.container_id,
+        chassis_id=assignment.chassis_id,
+        status="ASIGNADO",
+        assigned_by_user_id=current_user.id,
+    )
+
+    gps.status = "ASIGNADO"
+    gps.updated_at = datetime.utcnow()
+
+    db.session.add(gps_assignment)
+
+    db.session.commit()
+
+    flash(f"GPS {gps.gps_number} asignado al contenedor correctamente.", "success")
+    return redirect(url_for("dispatch.gps_requests"))
 
 @dispatch_bp.post("/gps/assignment/<int:gps_assignment_id>/release")
 @login_required

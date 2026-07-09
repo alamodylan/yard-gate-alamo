@@ -53,7 +53,7 @@
             {% set assignments = line.assignments or [] %}
 
             {% if assignments %}
-              {% for a in assignments %}
+              {% for a in line.pending_gps_assignments %}
                 <tr>
                   <td>
                     <strong>{{ line.load_date.strftime('%d/%m/%Y') if line.load_date else '—' }}</strong>
@@ -96,7 +96,7 @@
                   </td>
 
                   <td>
-                    <form method="post" action="{{ url_for('dispatch.gps_assign', line_id=line.id) }}">
+                    <form method="post" action="{{ url_for('dispatch.gps_assign_container', assignment_id=a.id) }}">
                       <div class="assign-control">
                         <select name="gps_device_id" required>
                           <option value="">Seleccione GPS</option>
@@ -150,7 +150,7 @@
                 </td>
 
                 <td>
-                  <form method="post" action="{{ url_for('dispatch.gps_assign', line_id=line.id) }}">
+                  <form method="post" action="{{ url_for('dispatch.gps_assign_container', assignment_id=a.id) }}">
                     <div class="assign-control">
                       <select name="gps_device_id" required>
                         <option value="">Seleccione GPS</option>

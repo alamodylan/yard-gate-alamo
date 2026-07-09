@@ -205,7 +205,7 @@
                         </td>
 
                         <td>
-                          {% set gps = gps_by_assignment_id.get(a.id) or gps_by_line_id.get(line.id) %}
+                          {% set gps = gps_by_assignment_id.get(a.id) %}
 
                           {% if gps and gps.gps_device %}
                             <div class="gps-assigned-box">
