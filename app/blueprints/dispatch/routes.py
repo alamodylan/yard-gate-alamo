@@ -1244,6 +1244,8 @@ def prelist_pdf():
 
         return value[:10]
 
+    
+
     def _gps_text(req, line, assignment=None):
         gps = None
 
@@ -1317,10 +1319,10 @@ def prelist_pdf():
                 _format_date_no_year(line.load_date),
                 _format_time(line.load_time),
                 _gps_text(req, line, a),
-                req.client_name or "",
-                req.product_name or "",
-                req.port_out or "",
-                a.assignment_notes or "",
+                _cell_text(req.client_name),
+                _cell_text(req.product_name),
+                _cell_text(req.port_out),
+                _cell_text(a.assignment_notes),
                 _detail_text(req),
             ]
 
@@ -1352,10 +1354,10 @@ def prelist_pdf():
                 _format_date_no_year(line.load_date),
                 _format_time(line.load_time),
                 _gps_text(req, line, None),
-                req.client_name or "",
-                req.product_name or "",
-                req.port_out or "",
-                "PENDIENTE DE ASIGNAR",
+                _cell_text(req.client_name),
+                _cell_text(req.product_name),
+                _cell_text(req.port_out),
+                _cell_text("PENDIENTE DE ASIGNAR"),
                 _detail_text(req),
             ]
 
@@ -1409,6 +1411,14 @@ def prelist_pdf():
     small_style = styles["Normal"]
     small_style.fontSize = 8
     small_style.leading = 9
+
+    def _cell_text(value):
+        value = (value or "").strip()
+
+        if not value:
+            value = "—"
+
+        return Paragraph(value, small_style)
 
     elements = []
 
