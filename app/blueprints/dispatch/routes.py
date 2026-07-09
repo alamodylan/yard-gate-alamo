@@ -1080,6 +1080,7 @@ def prelist_pdf():
         .filter(
             DispatchRequest.site_id == site_id,
             DispatchRequest.status != "CANCELADA",
+            DispatchRequest.request_type == "DESPACHO",
             DispatchRequestLine.load_date.in_([today, tomorrow])
         )
         .order_by(
