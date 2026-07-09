@@ -1393,22 +1393,22 @@ def prelist_pdf():
     doc = SimpleDocTemplate(
         bio,
         pagesize=landscape(legal),
-        rightMargin=6,
-        leftMargin=6,
-        topMargin=8,
-        bottomMargin=8,
+        rightMargin=4,
+        leftMargin=4,
+        topMargin=6,
+        bottomMargin=6,
     )
 
     styles = getSampleStyleSheet()
 
     title_style = styles["Normal"]
     title_style.fontName = "Helvetica-Bold"
-    title_style.fontSize = 9
-    title_style.leading = 10
+    title_style.fontSize = 12
+    title_style.leading = 13
 
     small_style = styles["Normal"]
-    small_style.fontSize = 6.5
-    small_style.leading = 7
+    small_style.fontSize = 8
+    small_style.leading = 9
 
     elements = []
 
@@ -1443,9 +1443,9 @@ def prelist_pdf():
         ("BACKGROUND", (0, 0), (-1, 0), colors.black),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, 0), 6.2),
+        ("FONTSIZE", (0, 0), (-1, 0), 7.3),
 
-        ("FONTSIZE", (0, 1), (-1, -1), 5.8),
+        ("FONTSIZE", (0, 1), (-1, -1), 6.8),
         ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
 
         ("GRID", (0, 0), (-1, -1), 0.25, colors.black),
@@ -1455,8 +1455,8 @@ def prelist_pdf():
 
         ("LEFTPADDING", (0, 0), (-1, -1), 1.5),
         ("RIGHTPADDING", (0, 0), (-1, -1), 1.5),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
 
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [
             colors.white,
