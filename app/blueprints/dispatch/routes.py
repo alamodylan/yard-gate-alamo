@@ -2322,6 +2322,7 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
     site_id = _ensure_active_site()
 
     role = (current_user.role or "").strip().lower()
+
     if role not in {"admin", "supervision", "despachador"}:
         abort(403)
 
@@ -2331,7 +2332,10 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
         abort(403)
 
     if req.status != "PENDIENTE":
-        flash("Solo se pueden reagendar líneas de solicitudes pendientes.", "warning")
+        flash(
+            "Solo se pueden reagendar líneas de solicitudes pendientes.",
+            "warning",
+        )
         return redirect(url_for("dispatch.pending_requests"))
 
     line = DispatchRequestLine.query.get_or_404(line_id)
@@ -2340,7 +2344,10 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
         abort(404)
 
     if line.assignments:
-        flash("No se puede reagendar una línea que ya tiene contenedores asignados.", "warning")
+        flash(
+            "No se puede reagendar una línea que ya tiene contenedores asignados.",
+            "warning",
+        )
         return redirect(url_for("dispatch.pending_requests"))
 
     new_date_raw = (request.form.get("load_date") or "").strip()
@@ -2350,25 +2357,58 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
     new_time = _parse_time(new_time_raw)
 
     if not new_date:
-        flash("Debe indicar una fecha válida para reagendar.", "danger")
+        flash(
+            "Debe indicar una fecha válida para reagendar.",
+            "danger",
+        )
+        return redirect(url_for("dispatch.pending_requests"))
+
+    current_quantity = int(line.quantity or 0)
+
+    if current_quantity <= 0:
+        flash(
+            "La línea no tiene una cantidad válida para reagendar.",
+            "danger",
+        )
         return redirect(url_for("dispatch.pending_requests"))
 
     old_date = line.load_date
     old_time = line.load_time
 
-    line.load_date = new_date
-    line.load_time = new_time
+    if current_quantity == 1:
+        # Si solo hay una unidad, se modifica la misma línea.
+        line.load_date = new_date
+        line.load_time = new_time
+
+        db.session.add(line)
+
+    else:
+        # Si hay más de una unidad, se separa únicamente una.
+        line.quantity = current_quantity - 1
+
+        new_line = DispatchRequestLine(
+            request_id=req.id,
+            container_size=line.container_size,
+            quantity=1,
+            load_date=new_date,
+            load_time=new_time,
+            condition_type=line.condition_type,
+            status="PENDIENTE",
+        )
+
+        db.session.add(line)
+        db.session.add(new_line)
 
     req.updated_at = datetime.utcnow()
-
-    db.session.add(line)
     db.session.add(req)
 
     old_txt = old_date.strftime("%d/%m/%Y") if old_date else "sin fecha"
+
     if old_time:
         old_txt += f" {old_time.strftime('%I:%M %p')}"
 
     new_txt = new_date.strftime("%d/%m/%Y")
+
     if new_time:
         new_txt += f" {new_time.strftime('%I:%M %p')}"
 
@@ -2377,7 +2417,7 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
         roles={"patio", "inspeccion"},
         title=f"Línea reagendada solicitud #{req.id}",
         message=(
-            f"{line.quantity} x {line.container_size} fue reagendada "
+            f"1 x {line.container_size} fue reagendado "
             f"de {old_txt} a {new_txt}."
         ),
         related_type="DISPATCH_REQUEST",
@@ -2387,7 +2427,17 @@ def reschedule_pending_request_line(request_id: int, line_id: int):
 
     db.session.commit()
 
-    flash(f"Línea de solicitud #{req.id} reagendada correctamente.", "success")
+    if current_quantity > 1:
+        flash(
+            f"Se separó y reagendó 1 unidad de {line.container_size}.",
+            "success",
+        )
+    else:
+        flash(
+            f"La línea de {line.container_size} fue reagendada correctamente.",
+            "success",
+        )
+
     return redirect(url_for("dispatch.pending_requests"))
 
 @dispatch_bp.post("/assignment/<int:assignment_id>/carrier-reported")
