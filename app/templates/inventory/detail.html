@@ -43,6 +43,115 @@
       </div>
     </div>
 
+    {% if can_edit_container %}
+    <div class="card card-pad" style="margin-top:14px; margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div>
+                <h3 style="margin:0;">Edición rápida</h3>
+                <div class="hint" style="margin-top:6px;">
+                    Corrección de datos del contenedor.
+                </div>
+            </div>
+        </div>
+
+        <form
+            method="POST"
+            action="{{ url_for('inventory.update_container_basic_data', container_id=c.id) }}"
+            style="margin-top:16px;"
+        >
+
+            <div class="grid grid-4">
+
+                <div>
+                    <label>Código</label>
+                    <input
+                        type="text"
+                        name="code"
+                        value="{{ c.code }}"
+                        required
+                    >
+                </div>
+
+                <div>
+                    <label>Tamaño</label>
+
+                    <select name="size" required>
+
+                        {% for s in [
+                            "20ST",
+                            "40ST",
+                            "40HC",
+                            "20OT",
+                            "40OT",
+                            "45HC"
+                        ] %}
+
+                            <option
+                                value="{{ s }}"
+                                {{ "selected" if c.size == s else "" }}
+                            >
+                                {{ s }}
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+                </div>
+
+                <div>
+                    <label>Año</label>
+
+                    <input
+                        type="number"
+                        name="year"
+                        value="{{ c.year or '' }}"
+                        min="1980"
+                        max="2100"
+                    >
+                </div>
+
+                <div>
+                    <label>Naviera</label>
+
+                    <select
+                        name="shipping_line"
+                        required
+                    >
+
+                        {% for line in shipping_lines %}
+
+                            <option
+                                value="{{ line.code }}"
+                                {{ "selected"
+                                  if latest_classification
+                                  and latest_classification.shipping_line == line.code
+                                  else "" }}
+                            >
+                                {{ line.code }}
+                            </option>
+
+                        {% endfor %}
+
+                    </select>
+
+                </div>
+
+            </div>
+
+            <div style="margin-top:18px;">
+                <button
+                    class="btn success"
+                    type="submit"
+                >
+                    Guardar cambios
+                </button>
+            </div>
+
+        </form>
+
+    </div>
+    {% endif %}
+
     <div class="grid grid-3" style="margin-top:14px;">
       <div class="card card-pad">
         <div class="card-title">Información Operativa</div>
@@ -357,6 +466,39 @@
 
     @media (max-width: 520px){
       .photos-grid{grid-template-columns: 1fr;}
+    }
+
+    .grid-4{
+        display:grid;
+        grid-template-columns:repeat(4,minmax(180px,1fr));
+        gap:14px;
+    }
+
+    .grid-4 label{
+        display:block;
+        margin-bottom:6px;
+        font-weight:900;
+    }
+
+    .grid-4 input,
+    .grid-4 select{
+        width:100%;
+    }
+
+    @media(max-width:1100px){
+
+        .grid-4{
+            grid-template-columns:repeat(2,minmax(180px,1fr));
+        }
+
+    }
+
+    @media(max-width:700px){
+
+        .grid-4{
+            grid-template-columns:1fr;
+        }
+
     }
   </style>
 

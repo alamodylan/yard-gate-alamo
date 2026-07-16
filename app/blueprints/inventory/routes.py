@@ -25,6 +25,7 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from app.models.dispatch import ShippingLine
 
 
 # =========================================================
@@ -502,12 +503,13 @@ def inventory_export():
 @inventory_bp.get("/inventory/<int:container_id>")
 @login_required
 def inventory_detail(container_id: int):
-
     site_id = _ensure_active_site()
 
     c = Container.query.get_or_404(container_id)
 
-    if c.site_id != site_id and getattr(current_user, "role", None) != "admin":
+    user_role = (getattr(current_user, "role", "") or "").strip().lower()
+
+    if c.site_id != site_id and user_role != "admin":
         abort(403)
 
     pos = (
@@ -528,19 +530,47 @@ def inventory_detail(container_id: int):
             "tier": p.tier,
         }
 
+    latest_classification = (
+        ContainerClassification.query
+        .filter(
+            ContainerClassification.site_id == c.site_id,
+            ContainerClassification.container_id == c.id,
+        )
+        .order_by(
+            ContainerClassification.classified_at.desc(),
+            ContainerClassification.id.desc(),
+        )
+        .first()
+    )
+
+    shipping_lines = (
+        ShippingLine.query
+        .filter(ShippingLine.is_active == True)  # noqa: E712
+        .order_by(
+            ShippingLine.sort_order.asc(),
+            ShippingLine.name.asc(),
+        )
+        .all()
+    )
+
     movements = (
         Movement.query
-        .filter(Movement.container_id == c.id, Movement.site_id == site_id)
+        .filter(
+            Movement.container_id == c.id,
+            Movement.site_id == site_id,
+        )
         .order_by(Movement.occurred_at.desc())
         .all()
     )
 
     mv_ids = [m.id for m in movements]
 
-    photos_by_mv: dict[int, list[dict]] = {mid: [] for mid in mv_ids}
+    photos_by_mv: dict[int, list[dict]] = {
+        mid: []
+        for mid in mv_ids
+    }
 
     if mv_ids:
-
         photos = (
             MovementPhoto.query
             .filter(MovementPhoto.movement_id.in_(mv_ids))
@@ -549,7 +579,6 @@ def inventory_detail(container_id: int):
         )
 
         for ph in photos:
-
             if (ph.photo_type or "").upper() == "UPLOAD_ERROR":
                 continue
 
@@ -558,20 +587,314 @@ def inventory_detail(container_id: int):
             if not url_ok:
                 continue
 
-            photos_by_mv.setdefault(ph.movement_id, []).append(
-                {
-                    "photo_type": ph.photo_type,
-                    "url": url_ok,
-                    "uploaded_at": ph.uploaded_at,
-                }
-            )
+            photos_by_mv.setdefault(ph.movement_id, []).append({
+                "photo_type": ph.photo_type,
+                "url": url_ok,
+                "uploaded_at": ph.uploaded_at,
+            })
+
+    can_edit_container = user_role in {
+        "admin",
+        "supervision",
+        "control_equipo",
+    }
 
     return render_template(
         "inventory/detail.html",
         c=c,
         current_pos=current_pos,
+        latest_classification=latest_classification,
+        shipping_lines=shipping_lines,
+        can_edit_container=can_edit_container,
         movements=movements,
         photos_by_mv=photos_by_mv,
+        last_class=latest_classification,
+        shipping_lines=shipping_lines,
+        can_edit_container=can_edit_container,
+    )
+
+@inventory_bp.post("/inventory/<int:container_id>/update")
+@login_required
+def update_container_basic_data(container_id: int):
+    site_id = _ensure_active_site()
+
+    allowed_roles = {
+        "admin",
+        "supervision",
+        "control_equipo",
+    }
+
+    user_role = (
+        getattr(current_user, "role", "") or ""
+    ).strip().lower()
+
+    if user_role not in allowed_roles:
+        abort(403)
+
+    c = Container.query.get_or_404(container_id)
+
+    if c.site_id != site_id and user_role != "admin":
+        abort(403)
+
+    old_code = (c.code or "").strip().upper()
+    old_size = (c.size or "").strip().upper()
+    old_year = c.year
+
+    latest_classification = (
+        ContainerClassification.query
+        .filter(
+            ContainerClassification.site_id == c.site_id,
+            ContainerClassification.container_id == c.id,
+        )
+        .order_by(
+            ContainerClassification.classified_at.desc(),
+            ContainerClassification.id.desc(),
+        )
+        .first()
+    )
+
+    old_shipping_line = (
+        (latest_classification.shipping_line if latest_classification else "")
+        or ""
+    ).strip().upper()
+
+    new_code = _bulk_normalize_container_code(
+        request.form.get("code")
+    )
+
+    new_size = (
+        request.form.get("size") or ""
+    ).strip().upper()
+
+    new_shipping_line = (
+        request.form.get("shipping_line") or ""
+    ).strip().upper()
+
+    year_raw = (
+        request.form.get("year") or ""
+    ).strip()
+
+    new_year = None
+
+    if year_raw:
+        try:
+            new_year = int(year_raw)
+        except (TypeError, ValueError):
+            flash("El año debe ser un número válido.", "danger")
+            return redirect(
+                url_for(
+                    "inventory.inventory_detail",
+                    container_id=c.id,
+                )
+            )
+
+    if not new_code:
+        flash("Debe indicar el código del contenedor.", "danger")
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    if not new_size:
+        flash("Debe indicar el tamaño del contenedor.", "danger")
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    if new_size not in BULK_VALID_SIZES:
+        flash(
+            f"Tamaño inválido: {new_size}.",
+            "danger",
+        )
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    if new_year is not None and not 1980 <= new_year <= 2100:
+        flash(
+            "El año debe estar entre 1980 y 2100.",
+            "danger",
+        )
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    if not new_shipping_line:
+        flash("Debe seleccionar una naviera.", "danger")
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    valid_shipping_line = (
+        ShippingLine.query
+        .filter(
+            ShippingLine.is_active == True,  # noqa: E712
+            db.func.upper(ShippingLine.code) == new_shipping_line,
+        )
+        .first()
+    )
+
+    if not valid_shipping_line:
+        flash("La naviera seleccionada no es válida.", "danger")
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    duplicate = (
+        Container.query
+        .filter(
+            Container.site_id == c.site_id,
+            db.func.upper(Container.code) == new_code,
+            Container.id != c.id,
+        )
+        .first()
+    )
+
+    if duplicate:
+        flash(
+            f"Ya existe otro contenedor con el código {new_code} "
+            "en este predio.",
+            "danger",
+        )
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    code_changed = new_code != old_code
+    size_changed = new_size != old_size
+    year_changed = new_year != old_year
+    shipping_line_changed = new_shipping_line != old_shipping_line
+
+    if not any([
+        code_changed,
+        size_changed,
+        year_changed,
+        shipping_line_changed,
+    ]):
+        flash("No se detectaron cambios.", "info")
+        return redirect(
+            url_for(
+                "inventory.inventory_detail",
+                container_id=c.id,
+            )
+        )
+
+    try:
+        c.code = new_code
+        c.size = new_size
+        c.year = new_year
+        c.updated_at = datetime.utcnow()
+
+        db.session.add(c)
+
+        if shipping_line_changed:
+            if latest_classification:
+                new_classification = ContainerClassification(
+                    site_id=c.site_id,
+                    container_id=c.id,
+                    classified_at=datetime.utcnow(),
+                    classified_by_user_id=current_user.id,
+                    shipping_line=new_shipping_line,
+                    max_gross_kg=latest_classification.max_gross_kg,
+                    tare_kg=latest_classification.tare_kg,
+                    manufacture_year=(
+                        new_year
+                        if new_year is not None
+                        else latest_classification.manufacture_year
+                    ),
+                    needs_workshop=latest_classification.needs_workshop,
+                    summary_text=latest_classification.summary_text,
+                    notes=latest_classification.notes,
+                    final_classification=latest_classification.final_classification,
+                )
+            else:
+                new_classification = ContainerClassification(
+                    site_id=c.site_id,
+                    container_id=c.id,
+                    classified_at=datetime.utcnow(),
+                    classified_by_user_id=current_user.id,
+                    shipping_line=new_shipping_line,
+                    manufacture_year=new_year,
+                    needs_workshop=False,
+                )
+
+            db.session.add(new_classification)
+
+        elif latest_classification and year_changed:
+            # El año visible del inventario se toma primero de la clasificación.
+            # Por eso, si cambia el año, se conserva también mediante una nueva
+            # entrada histórica de clasificación.
+            new_classification = ContainerClassification(
+                site_id=c.site_id,
+                container_id=c.id,
+                classified_at=datetime.utcnow(),
+                classified_by_user_id=current_user.id,
+                shipping_line=latest_classification.shipping_line,
+                max_gross_kg=latest_classification.max_gross_kg,
+                tare_kg=latest_classification.tare_kg,
+                manufacture_year=new_year,
+                needs_workshop=latest_classification.needs_workshop,
+                summary_text=latest_classification.summary_text,
+                notes=latest_classification.notes,
+                final_classification=latest_classification.final_classification,
+            )
+
+            db.session.add(new_classification)
+
+        audit_log(
+            current_user.id,
+            "CONTAINER_BASIC_DATA_UPDATED",
+            "container",
+            c.id,
+            {
+                "site_id": c.site_id,
+                "old_code": old_code,
+                "new_code": new_code,
+                "old_size": old_size,
+                "new_size": new_size,
+                "old_year": old_year,
+                "new_year": new_year,
+                "old_shipping_line": old_shipping_line,
+                "new_shipping_line": new_shipping_line,
+            },
+        )
+
+        db.session.commit()
+
+    except Exception:
+        db.session.rollback()
+        raise
+
+    flash(
+        f"Datos del contenedor {new_code} actualizados correctamente.",
+        "success",
+    )
+
+    return redirect(
+        url_for(
+            "inventory.inventory_detail",
+            container_id=c.id,
+        )
     )
 
 @inventory_bp.post("/inventory/<int:container_id>/mark-evacuation")
