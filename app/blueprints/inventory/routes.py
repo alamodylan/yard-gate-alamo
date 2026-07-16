@@ -603,14 +603,11 @@ def inventory_detail(container_id: int):
         "inventory/detail.html",
         c=c,
         current_pos=current_pos,
-        latest_classification=latest_classification,
+        last_class=latest_classification,
         shipping_lines=shipping_lines,
         can_edit_container=can_edit_container,
         movements=movements,
         photos_by_mv=photos_by_mv,
-        last_class=latest_classification,
-        shipping_lines=shipping_lines,
-        can_edit_container=can_edit_container,
     )
 
 @inventory_bp.post("/inventory/<int:container_id>/update")
