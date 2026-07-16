@@ -430,7 +430,20 @@ def request_detail(request_id: int):
 
     line_data = []
 
-    for line in req.lines:
+    # Orden operativo:
+    # 1. Fecha más cercana primero.
+    # 2. En la misma fecha, hora más temprana primero.
+    # 3. Las líneas sin hora quedan al final de esa fecha.
+    sorted_lines = sorted(
+        req.lines,
+        key=lambda line: (
+            line.load_date,
+            line.load_time or time.max,
+            line.id,
+        ),
+    )
+
+    for line in sorted_lines:
         assigned_count = len(line.assignments)
         pending_count = max(int(line.quantity or 0) - assigned_count, 0)
 
