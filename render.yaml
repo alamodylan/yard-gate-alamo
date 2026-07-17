@@ -2,18 +2,43 @@ services:
   - type: web
     name: yard-gate
     env: python
+
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn wsgi:app
+
+    startCommand: >
+      gunicorn wsgi:app
+      --worker-class gthread
+      --workers 2
+      --threads 4
+      --timeout 120
+      --graceful-timeout 30
+      --keep-alive 5
+      --max-requests 1000
+      --max-requests-jitter 100
+      --access-logfile -
+      --error-logfile -
+
     envVars:
       - key: SECRET_KEY
         generateValue: true
+
       - key: FLASK_ENV
         value: production
+
       - key: APP_TZ
         value: America/Costa_Rica
+
       - key: STORAGE_PROVIDER
         value: r2
-      # DATABASE_URL lo inyecta Render si vinculas Postgres desde el dashboard
+
+      - key: PRINT_JOB_STALE_MINUTES
+        value: "5"
+
+      - key: PRINT_JOB_STALE_SWEEP_SECONDS
+        value: "60"
+
+      # DATABASE_URL lo inyecta Render si vinculas
+      # la base PostgreSQL desde el dashboard.
 
 databases:
   - name: yard-gate-db

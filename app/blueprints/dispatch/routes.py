@@ -405,107 +405,293 @@ def pending_requests():
 def request_detail(request_id: int):
     site_id = _ensure_active_site()
 
+    # =====================================================
+    # Solicitud, líneas y asignaciones
+    # =====================================================
     req = (
         DispatchRequest.query
         .options(
             selectinload(DispatchRequest.lines)
             .selectinload(DispatchRequestLine.assignments)
         )
-        .filter(DispatchRequest.id == request_id)
+        .filter(
+            DispatchRequest.id == request_id
+        )
         .first_or_404()
     )
 
-    if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
+    if (
+        req.site_id != site_id
+        and getattr(current_user, "role", None) != "admin"
+    ):
         abort(403)
 
-    latest_classification_subquery = (
-        db.session.query(
-            ContainerClassification.container_id,
-            db.func.max(ContainerClassification.classified_at).label("max_classified_at")
-        )
-        .filter(ContainerClassification.site_id == site_id)
-        .group_by(ContainerClassification.container_id)
-        .subquery()
-    )
-
-    line_data = []
-
-    # Orden operativo:
+    # =====================================================
+    # Orden operativo de las líneas
+    #
     # 1. Fecha más cercana primero.
     # 2. En la misma fecha, hora más temprana primero.
     # 3. Las líneas sin hora quedan al final de esa fecha.
+    # 4. ID como criterio estable de desempate.
+    # =====================================================
     sorted_lines = sorted(
         req.lines,
         key=lambda line: (
-            line.load_date,
+            line.load_date or date.max,
             line.load_time or time.max,
             line.id,
         ),
     )
 
-    for line in sorted_lines:
-        assigned_count = len(line.assignments)
-        pending_count = max(int(line.quantity or 0) - assigned_count, 0)
+    # =====================================================
+    # Estado requerido según el tipo de solicitud
+    # =====================================================
+    request_type = (
+        req.request_type or "DESPACHO"
+    ).strip().upper()
 
-        if req.request_type == "VACIO":
-            status_filter = "PARA_EVACUAR"
-        else:
-            status_filter = "NORMAL"
+    if request_type == "VACIO":
+        status_filter = "PARA_EVACUAR"
+    else:
+        status_filter = "NORMAL"
 
-        available_rows = (
-            db.session.query(Container, ContainerPosition, YardBay, ContainerClassification)
-            .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
-            .outerjoin(YardBay, YardBay.id == ContainerPosition.bay_id)
+    # =====================================================
+    # Tamaños utilizados por las líneas de esta solicitud
+    # =====================================================
+    required_sizes = {
+        (line.container_size or "").strip().upper()
+        for line in sorted_lines
+        if (line.container_size or "").strip()
+    }
+
+    # =====================================================
+    # Última clasificación por contenedor
+    #
+    # row_number() evita duplicados cuando dos registros
+    # tienen el mismo classified_at.
+    # =====================================================
+    ranked_classifications = (
+        db.session.query(
+            ContainerClassification.id.label(
+                "classification_id"
+            ),
+            ContainerClassification.container_id.label(
+                "container_id"
+            ),
+            db.func.row_number()
+            .over(
+                partition_by=ContainerClassification.container_id,
+                order_by=(
+                    ContainerClassification.classified_at.desc(),
+                    ContainerClassification.id.desc(),
+                ),
+            )
+            .label("row_number"),
+        )
+        .filter(
+            ContainerClassification.site_id == site_id
+        )
+        .subquery("dispatch_ranked_classifications")
+    )
+
+    latest_classifications = (
+        db.session.query(
+            ranked_classifications.c.classification_id,
+            ranked_classifications.c.container_id,
+        )
+        .filter(
+            ranked_classifications.c.row_number == 1
+        )
+        .subquery("dispatch_latest_classifications")
+    )
+
+    # =====================================================
+    # Consulta única de contenedores disponibles
+    # =====================================================
+    available_rows = []
+
+    if required_sizes:
+        available_query = (
+            db.session.query(
+                Container,
+                ContainerPosition,
+                YardBay,
+                ContainerClassification,
+            )
             .outerjoin(
-                latest_classification_subquery,
-                latest_classification_subquery.c.container_id == Container.id
+                ContainerPosition,
+                ContainerPosition.container_id == Container.id,
+            )
+            .outerjoin(
+                YardBay,
+                YardBay.id == ContainerPosition.bay_id,
+            )
+            .outerjoin(
+                latest_classifications,
+                latest_classifications.c.container_id == Container.id,
             )
             .outerjoin(
                 ContainerClassification,
-                db.and_(
-                    ContainerClassification.container_id == Container.id,
-                    ContainerClassification.classified_at == latest_classification_subquery.c.max_classified_at,
-                )
+                ContainerClassification.id
+                == latest_classifications.c.classification_id,
             )
             .filter(
                 Container.site_id == site_id,
                 Container.is_in_yard == True,  # noqa: E712
-                Container.size == line.container_size,
-                db.func.coalesce(Container.dispatch_status, "NORMAL") == status_filter,
+                db.func.upper(
+                    db.func.coalesce(Container.size, "")
+                ).in_(required_sizes),
+                db.func.upper(
+                    db.func.coalesce(
+                        Container.dispatch_status,
+                        "NORMAL",
+                    )
+                ) == status_filter,
             )
-            .order_by(Container.code.asc())
+        )
+
+        # Mantiene el comportamiento actual:
+        #
+        # - acepta contenedores cuya naviera coincide;
+        # - también acepta contenedores que todavía no tienen naviera;
+        # - excluye los que poseen otra naviera distinta.
+        requested_shipping_line = (
+            req.shipping_line or ""
+        ).strip().upper()
+
+        if requested_shipping_line:
+            available_query = available_query.filter(
+                db.or_(
+                    ContainerClassification.id.is_(None),
+                    db.func.upper(
+                        db.func.coalesce(
+                            ContainerClassification.shipping_line,
+                            "",
+                        )
+                    ) == "",
+                    db.func.upper(
+                        db.func.coalesce(
+                            ContainerClassification.shipping_line,
+                            "",
+                        )
+                    ) == requested_shipping_line,
+                )
+            )
+
+        available_rows = (
+            available_query
+            .order_by(
+                Container.code.asc()
+            )
             .all()
         )
 
-        available = []
+    # =====================================================
+    # Agrupar contenedores por tamaño
+    # =====================================================
+    available_by_size = {
+        size_code: []
+        for size_code in required_sizes
+    }
 
-        for c, pos, bay, cls in available_rows:
-            shipping_line = ((cls.shipping_line if cls else "") or "").strip().upper()
+    for container, position, bay, classification in available_rows:
+        container_size = (
+            container.size or ""
+        ).strip().upper()
 
-            if req.shipping_line and shipping_line and shipping_line != req.shipping_line:
-                continue
+        shipping_line = (
+            (
+                classification.shipping_line
+                if classification
+                else ""
+            )
+            or ""
+        ).strip().upper()
 
-            available.append({
-                "id": c.id,
-                "code": c.code,
-                "size": c.size,
-                "shipping_line": shipping_line or "SIN NAVIERA",
-                "gate_in_origin_port": c.gate_in_origin_port or "",
-                "classification": ((cls.final_classification if cls else "") or "").strip().upper(),
-                "notes": ((cls.summary_text if cls else "") or c.status_notes or "").strip(),
-                "dispatch_status": c.dispatch_status or "NORMAL",
-                "position": None if not pos else {
-                    "bay_code": bay.code if bay else None,
-                    "depth_row": pos.depth_row,
-                    "tier": pos.tier,
-                },
-            })
+        final_classification = (
+            (
+                classification.final_classification
+                if classification
+                else ""
+            )
+            or ""
+        ).strip().upper()
+
+        classification_notes = (
+            (
+                classification.summary_text
+                if classification
+                else ""
+            )
+            or container.status_notes
+            or ""
+        ).strip()
+
+        available_by_size.setdefault(
+            container_size,
+            []
+        ).append({
+            "id": container.id,
+            "code": container.code,
+            "size": container.size,
+            "shipping_line": (
+                shipping_line
+                or "SIN NAVIERA"
+            ),
+            "gate_in_origin_port": (
+                container.gate_in_origin_port
+                or ""
+            ),
+            "classification": final_classification,
+            "notes": classification_notes,
+            "dispatch_status": (
+                container.dispatch_status
+                or "NORMAL"
+            ),
+            "position": (
+                None
+                if not position
+                else {
+                    "bay_code": (
+                        bay.code
+                        if bay
+                        else None
+                    ),
+                    "depth_row": position.depth_row,
+                    "tier": position.tier,
+                }
+            ),
+        })
+
+    # =====================================================
+    # Construcción de datos por línea
+    # =====================================================
+    line_data = []
+
+    for line in sorted_lines:
+        assignments = list(
+            line.assignments or []
+        )
+
+        assigned_count = len(assignments)
+
+        pending_count = max(
+            int(line.quantity or 0) - assigned_count,
+            0,
+        )
+
+        line_size = (
+            line.container_size or ""
+        ).strip().upper()
 
         line_data.append({
             "line": line,
             "assigned_count": assigned_count,
             "pending_count": pending_count,
-            "available": available,
+            "available": available_by_size.get(
+                line_size,
+                [],
+            ),
             "status_filter": status_filter,
         })
 

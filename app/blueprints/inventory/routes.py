@@ -105,49 +105,180 @@ def _inventory_query(
     shipping_line: str = "",
     origin: str = "",
     size: str = "",
+    classification: str = "",
+    dispatch_status: str = "",
 ):
+    """
+    Construye la consulta principal del inventario.
+
+    Los filtros se aplican directamente en PostgreSQL antes de paginar.
+
+    La naviera y clasificación se toman únicamente del registro de
+    clasificación más reciente de cada contenedor, evitando que una
+    clasificación histórica provoque resultados incorrectos.
+    """
+
     in_yard = (in_yard or "1").strip()
     qtext = (qtext or "").strip().upper()
     shipping_line = (shipping_line or "").strip().upper()
     origin = (origin or "").strip().upper()
     size = (size or "").strip().upper()
+    classification = (classification or "").strip().upper()
+    dispatch_status = (dispatch_status or "").strip().upper()
 
-    q = (
-        db.session.query(Container, ContainerPosition, YardBay)
-        .outerjoin(ContainerPosition, ContainerPosition.container_id == Container.id)
-        .outerjoin(YardBay, YardBay.id == ContainerPosition.bay_id)
-        .filter(Container.site_id == site_id)
+    # -----------------------------------------------------
+    # Última clasificación registrada por contenedor
+    # -----------------------------------------------------
+    classification_ranked = (
+        db.session.query(
+            ContainerClassification.container_id.label("container_id"),
+            ContainerClassification.shipping_line.label("shipping_line"),
+            ContainerClassification.final_classification.label(
+                "final_classification"
+            ),
+            db.func.row_number()
+            .over(
+                partition_by=ContainerClassification.container_id,
+                order_by=(
+                    ContainerClassification.classified_at.desc(),
+                    ContainerClassification.id.desc(),
+                ),
+            )
+            .label("row_number"),
+        )
+        .filter(
+            ContainerClassification.site_id == site_id,
+        )
+        .subquery("inventory_classification_ranked")
     )
 
+    latest_classification = (
+        db.session.query(
+            classification_ranked.c.container_id,
+            classification_ranked.c.shipping_line,
+            classification_ranked.c.final_classification,
+        )
+        .filter(
+            classification_ranked.c.row_number == 1,
+        )
+        .subquery("inventory_latest_classification")
+    )
+
+    # -----------------------------------------------------
+    # Consulta base
+    # -----------------------------------------------------
+    query = (
+        db.session.query(
+            Container,
+            ContainerPosition,
+            YardBay,
+        )
+        .outerjoin(
+            ContainerPosition,
+            ContainerPosition.container_id == Container.id,
+        )
+        .outerjoin(
+            YardBay,
+            YardBay.id == ContainerPosition.bay_id,
+        )
+        .outerjoin(
+            latest_classification,
+            latest_classification.c.container_id == Container.id,
+        )
+        .filter(
+            Container.site_id == site_id,
+        )
+    )
+
+    # -----------------------------------------------------
+    # Estado dentro o fuera del patio
+    # -----------------------------------------------------
     if in_yard == "1":
-        q = q.filter(Container.is_in_yard == True)  # noqa: E712
+        query = query.filter(
+            Container.is_in_yard == True  # noqa: E712
+        )
+
     elif in_yard == "0":
-        q = q.filter(Container.is_in_yard == False)  # noqa: E712
+        query = query.filter(
+            Container.is_in_yard == False  # noqa: E712
+        )
 
+    # -----------------------------------------------------
+    # Código del contenedor
+    # -----------------------------------------------------
     if qtext:
-        q = q.filter(db.func.upper(Container.code).like(f"%{qtext}%"))
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(Container.code, "")
+            ).like(f"%{qtext}%")
+        )
 
+    # -----------------------------------------------------
+    # Origen
+    # -----------------------------------------------------
     if origin:
-        q = q.filter(
-            db.func.upper(db.func.coalesce(Container.gate_in_origin_port, "")) == origin
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(
+                    Container.gate_in_origin_port,
+                    "",
+                )
+            ) == origin
         )
 
+    # -----------------------------------------------------
+    # Tamaño
+    # -----------------------------------------------------
     if size:
-        q = q.filter(db.func.upper(Container.size) == size)
-
-    if shipping_line:
-        q = (
-            q.join(
-                ContainerClassification,
-                ContainerClassification.container_id == Container.id,
-            )
-            .filter(
-                ContainerClassification.site_id == site_id,
-                db.func.upper(ContainerClassification.shipping_line) == shipping_line,
-            )
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(Container.size, "")
+            ) == size
         )
 
-    return q.order_by(Container.updated_at.desc())
+    # -----------------------------------------------------
+    # Naviera actual
+    # -----------------------------------------------------
+    if shipping_line:
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(
+                    latest_classification.c.shipping_line,
+                    "",
+                )
+            ) == shipping_line
+        )
+
+    # -----------------------------------------------------
+    # Clasificación actual
+    # -----------------------------------------------------
+    if classification:
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(
+                    latest_classification.c.final_classification,
+                    "",
+                )
+            ) == classification
+        )
+
+    # -----------------------------------------------------
+    # Estado operativo actual
+    # -----------------------------------------------------
+    if dispatch_status:
+        query = query.filter(
+            db.func.upper(
+                db.func.coalesce(
+                    Container.dispatch_status,
+                    "NORMAL",
+                )
+            ) == dispatch_status
+        )
+
+    return query.order_by(
+        Container.updated_at.desc(),
+        Container.id.desc(),
+    )
 
 
 # =========================================================
@@ -222,27 +353,78 @@ def _last_gate_in_by_container_ids(container_ids: list[int]) -> dict[int, dict]:
 def inventory_index():
     site_id = _ensure_active_site()
 
-    in_yard = (request.args.get("in_yard") or "1").strip()
-    qtext = (request.args.get("q") or "").strip().upper()
-    shipping_line = (request.args.get("shipping_line") or "").strip().upper()
-    origin = (request.args.get("origin") or "").strip().upper()
-    size = (request.args.get("size") or "").strip().upper()
-    classification = (request.args.get("classification") or "").strip().upper()
-    dispatch_status = (request.args.get("dispatch_status") or "").strip().upper()
+    in_yard = (
+        request.args.get("in_yard") or "1"
+    ).strip()
 
-    rows = _inventory_query(
-        site_id,
-        in_yard,
-        qtext,
-        shipping_line,
-        origin,
-        size,
-    ).all()
+    qtext = (
+        request.args.get("q") or ""
+    ).strip().upper()
 
-    container_ids = [c.id for c, _, _ in rows]
+    shipping_line = (
+        request.args.get("shipping_line") or ""
+    ).strip().upper()
 
-    cls_by_container = _last_classification_by_container_ids(container_ids)
-    gate_in_by_container = _last_gate_in_by_container_ids(container_ids)
+    origin = (
+        request.args.get("origin") or ""
+    ).strip().upper()
+
+    size = (
+        request.args.get("size") or ""
+    ).strip().upper()
+
+    classification = (
+        request.args.get("classification") or ""
+    ).strip().upper()
+
+    dispatch_status = (
+        request.args.get("dispatch_status") or ""
+    ).strip().upper()
+
+    page = request.args.get(
+        "page",
+        1,
+        type=int,
+    )
+
+    if page < 1:
+        page = 1
+
+    # -----------------------------------------------------
+    # Consulta ya filtrada antes de paginar
+    # -----------------------------------------------------
+    query = _inventory_query(
+        site_id=site_id,
+        in_yard=in_yard,
+        qtext=qtext,
+        shipping_line=shipping_line,
+        origin=origin,
+        size=size,
+        classification=classification,
+        dispatch_status=dispatch_status,
+    )
+
+    pagination = query.paginate(
+        page=page,
+        per_page=50,
+        error_out=False,
+    )
+
+    rows = pagination.items
+
+    container_ids = [
+        c.id
+        for c, _, _ in rows
+    ]
+
+    # Estas funciones solo consultan los contenedores de la página actual.
+    cls_by_container = _last_classification_by_container_ids(
+        container_ids
+    )
+
+    gate_in_by_container = _last_gate_in_by_container_ids(
+        container_ids
+    )
 
     items = []
 
@@ -250,66 +432,114 @@ def inventory_index():
         cls = cls_by_container.get(c.id)
         gate_in = gate_in_by_container.get(c.id)
 
-        current_classification = ((cls.get("final_classification") if cls else "") or "").strip().upper()
-        current_status = (c.dispatch_status or "NORMAL").strip().upper()
+        current_classification = (
+            (
+                cls.get("final_classification")
+                if cls
+                else ""
+            )
+            or ""
+        ).strip().upper()
 
-        if classification and current_classification != classification:
-            continue
+        current_status = (
+            c.dispatch_status or "NORMAL"
+        ).strip().upper()
 
-        if dispatch_status and current_status != dispatch_status:
-            continue
+        gate_in_at = (
+            gate_in.get("gate_in_at")
+            if gate_in
+            else None
+        )
 
-        gate_in_at = gate_in.get("gate_in_at") if gate_in else None
         days_in_yard = None
 
         if gate_in_at:
-            days_in_yard = (datetime.utcnow().date() - gate_in_at.date()).days
+            days_in_yard = (
+                datetime.utcnow().date()
+                - gate_in_at.date()
+            ).days
 
         items.append({
             "id": c.id,
             "code": c.code,
             "gate_in_origin_port": c.gate_in_origin_port,
             "size": c.size,
-            "year": (cls.get("manufacture_year") if cls else c.year),
-            "shipping_line": (cls.get("shipping_line") if cls else ""),
-            "max_gross_kg": (cls.get("max_gross_kg") if cls else ""),
+            "year": (
+                cls.get("manufacture_year")
+                if cls
+                else c.year
+            ),
+            "shipping_line": (
+                cls.get("shipping_line")
+                if cls
+                else ""
+            ),
+            "max_gross_kg": (
+                cls.get("max_gross_kg")
+                if cls
+                else ""
+            ),
             "classification": current_classification,
             "gate_in_at": gate_in_at,
             "days_in_yard": days_in_yard,
             "is_in_yard": bool(c.is_in_yard),
-            "is_fils": bool(getattr(c, "is_fils", False)),
+            "is_fils": bool(
+                getattr(c, "is_fils", False)
+            ),
             "evacuation_destination": c.evacuation_destination,
             "evacuation_type": c.evacuation_type,
             "evacuation_notes": c.evacuation_notes,
             "dispatch_status": current_status,
-            "status_notes": (cls.get("summary_text") if cls else (c.status_notes or "")),
-            "position": None if not pos else {
-                "bay_code": bay.code if bay else None,
-                "depth_row": pos.depth_row,
-                "tier": pos.tier,
-            },
+            "status_notes": (
+                cls.get("summary_text")
+                if cls
+                else (c.status_notes or "")
+            ),
+            "position": (
+                None
+                if not pos
+                else {
+                    "bay_code": (
+                        bay.code
+                        if bay
+                        else None
+                    ),
+                    "depth_row": pos.depth_row,
+                    "tier": pos.tier,
+                }
+            ),
         })
 
+    # -----------------------------------------------------
+    # Opciones de filtros
+    # -----------------------------------------------------
     shipping_lines = [
-        r[0]
-        for r in (
-            db.session.query(ContainerClassification.shipping_line)
+        row[0]
+        for row in (
+            db.session.query(
+                ContainerClassification.shipping_line
+            )
             .filter(
                 ContainerClassification.site_id == site_id,
                 ContainerClassification.shipping_line.isnot(None),
                 ContainerClassification.shipping_line != "",
             )
             .distinct()
-            .order_by(ContainerClassification.shipping_line)
+            .order_by(
+                ContainerClassification.shipping_line.asc()
+            )
             .all()
         )
     ]
 
-    origin_options = ["CALDERA", "LIMON"]
+    origin_options = [
+        "CALDERA",
+        "LIMON",
+    ]
 
     size_options = [
-        r[0]
-        for r in (
+        row[0]
+        for row in (
             db.session.query(Container.size)
             .filter(
                 Container.site_id == site_id,
@@ -317,7 +547,9 @@ def inventory_index():
                 Container.size != "",
             )
             .distinct()
-            .order_by(Container.size)
+            .order_by(
+                Container.size.asc()
+            )
             .all()
         )
     ]
@@ -346,6 +578,7 @@ def inventory_index():
     return render_template(
         "inventory/index.html",
         items=items,
+        pagination=pagination,
         in_yard=in_yard,
         shipping_lines=shipping_lines,
         shipping_line=shipping_line,
