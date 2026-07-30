@@ -1,8 +1,19 @@
 # app/blueprints/dispatch/routes.py
 
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 
-from flask import render_template, request, redirect, url_for, flash, session, abort, jsonify
+from flask import (
+    render_template,
+    request,
+    redirect,
+    url_for,
+    flash,
+    session,
+    abort,
+    jsonify,
+    send_file,
+    g,
+)
 from flask_login import login_required, current_user
 from app.models.container import Container, ContainerPosition
 from app.models.container_classification import ContainerClassification
@@ -19,8 +30,6 @@ from app.models.dispatch import (
     DispatchRequestLine,
 )
 from io import BytesIO
-from datetime import datetime, date, time, timedelta
-from flask import send_file
 from app.models.eir import EIR
 from app.models.chassis import Chassis
 
@@ -36,16 +45,66 @@ import traceback
 
 
 def _allowed_sites_for_user(user):
-    if getattr(user, "role", None) == "admin":
-        return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
+    """
+    Retorna los predios permitidos al usuario.
 
-    return (
-        db.session.query(Site)
-        .join(UserSite, UserSite.site_id == Site.id)
-        .filter(UserSite.user_id == user.id, Site.is_active == True)  # noqa: E712
-        .order_by(Site.name.asc())
-        .all()
+    El resultado se almacena únicamente durante la petición actual,
+    evitando repetir la misma consulta desde varias rutas y helpers.
+    """
+    user_id = getattr(user, "id", None)
+    user_role = (
+        getattr(user, "role", None) or ""
+    ).strip().lower()
+
+    cache_key = (
+        int(user_id) if user_id is not None else None,
+        user_role,
     )
+
+    cached_key = getattr(
+        g,
+        "_dispatch_allowed_sites_cache_key",
+        None,
+    )
+
+    cached_sites = getattr(
+        g,
+        "_dispatch_allowed_sites_cache",
+        None,
+    )
+
+    if (
+        cached_key == cache_key
+        and cached_sites is not None
+    ):
+        return cached_sites
+
+    if user_role == "admin":
+        allowed_sites = (
+            Site.query
+            .filter_by(is_active=True)
+            .order_by(Site.name.asc())
+            .all()
+        )
+    else:
+        allowed_sites = (
+            db.session.query(Site)
+            .join(
+                UserSite,
+                UserSite.site_id == Site.id,
+            )
+            .filter(
+                UserSite.user_id == user_id,
+                Site.is_active == True,  # noqa: E712
+            )
+            .order_by(Site.name.asc())
+            .all()
+        )
+
+    g._dispatch_allowed_sites_cache_key = cache_key
+    g._dispatch_allowed_sites_cache = allowed_sites
+
+    return allowed_sites
 
 
 def _get_active_site_id():
@@ -57,17 +116,42 @@ def _set_active_site_id(site_id: int):
 
 
 def _ensure_active_site():
+    """
+    Valida y retorna el predio activo.
+
+    Reutiliza el predio cargado durante la petición y mantiene
+    sincronizados session y flask.g.
+    """
     allowed = _allowed_sites_for_user(current_user)
 
     if not allowed:
         abort(403)
 
     active_id = _get_active_site_id()
-    allowed_ids = {s.id for s in allowed}
 
-    if not active_id or active_id not in allowed_ids:
-        _set_active_site_id(allowed[0].id)
-        active_id = allowed[0].id
+    try:
+        active_id = (
+            int(active_id)
+            if active_id is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        active_id = None
+
+    allowed_by_id = {
+        int(site.id): site
+        for site in allowed
+    }
+
+    if active_id not in allowed_by_id:
+        active_site = allowed[0]
+        active_id = int(active_site.id)
+        _set_active_site_id(active_id)
+    else:
+        active_site = allowed_by_id[active_id]
+
+    g.active_site_id = active_id
+    g.active_site = active_site
 
     return active_id
 
@@ -86,32 +170,75 @@ def _parse_time(value: str):
     return datetime.strptime(value, "%H:%M").time()
 
 def _recompute_dispatch_status(req: DispatchRequest):
-    lines = DispatchRequestLine.query.filter_by(request_id=req.id).all()
+    """
+    Recalcula el estado de las líneas y de la solicitud.
+
+    Obtiene las cantidades asignadas mediante una consulta agrupada,
+    evitando cargar la relación assignments individualmente por línea.
+    """
+    assignment_counts_subq = (
+        db.session.query(
+            DispatchAssignment.request_line_id.label(
+                "request_line_id"
+            ),
+            db.func.count(
+                DispatchAssignment.id
+            ).label("assigned_count"),
+        )
+        .group_by(
+            DispatchAssignment.request_line_id
+        )
+        .subquery()
+    )
+
+    rows = (
+        db.session.query(
+            DispatchRequestLine,
+            db.func.coalesce(
+                assignment_counts_subq.c.assigned_count,
+                0,
+            ).label("assigned_count"),
+        )
+        .outerjoin(
+            assignment_counts_subq,
+            assignment_counts_subq.c.request_line_id
+            == DispatchRequestLine.id,
+        )
+        .filter(
+            DispatchRequestLine.request_id == req.id
+        )
+        .all()
+    )
 
     any_assigned = False
     all_assigned = True
 
-    for line in lines:
-        assigned_count = len(line.assignments)
-        qty = int(line.quantity or 0)
+    for line, assigned_count in rows:
+        assigned_count = int(assigned_count or 0)
+        quantity = int(line.quantity or 0)
 
         if assigned_count <= 0:
             line.status = "PENDIENTE"
             all_assigned = False
-        elif assigned_count >= qty:
+
+        elif assigned_count >= quantity:
             line.status = "ASIGNADA"
             any_assigned = True
+
         else:
             line.status = "PARCIAL"
             any_assigned = True
             all_assigned = False
 
-    if not lines:
+    if not rows:
         req.status = "PENDIENTE"
+
     elif all_assigned:
         req.status = "ASIGNADA"
+
     elif any_assigned:
         req.status = "PARCIAL"
+
     else:
         req.status = "PENDIENTE"
 
@@ -146,6 +273,9 @@ def read_notification(notification_id: int):
 @dispatch_bp.post("/notifications/mark-read")
 @login_required
 def mark_notifications_read():
+    """
+    Marca las notificaciones no leídas mediante un único UPDATE SQL.
+    """
     site_id = _ensure_active_site()
 
     query = UserNotification.query.filter(
@@ -154,21 +284,23 @@ def mark_notifications_read():
     )
 
     if site_id:
-        query = query.filter(UserNotification.site_id == site_id)
+        query = query.filter(
+            UserNotification.site_id == site_id
+        )
 
-    notifications = query.all()
-
-    now = datetime.utcnow()
-
-    for notification in notifications:
-        notification.is_read = True
-        notification.read_at = now
+    marked_count = query.update(
+        {
+            UserNotification.is_read: True,
+            UserNotification.read_at: datetime.utcnow(),
+        },
+        synchronize_session=False,
+    )
 
     db.session.commit()
 
     return jsonify({
         "ok": True,
-        "marked": len(notifications),
+        "marked": int(marked_count or 0),
     })
 
 
@@ -348,57 +480,172 @@ def new_request():
 @dispatch_bp.get("/pending")
 @login_required
 def pending_requests():
+    """
+    Lista solicitudes pendientes y parciales del predio activo.
+
+    Mantiene el orden operativo actual, pero limita la carga mediante
+    paginación para evitar traer todas las solicitudes y todas sus
+    relaciones en una sola petición.
+    """
     site_id = _ensure_active_site()
 
-    q = (request.args.get("q") or "").strip().upper()
+    q = (
+        request.args.get("q") or ""
+    ).strip().upper()
 
+    try:
+        page = int(
+            request.args.get("page") or 1
+        )
+    except (TypeError, ValueError):
+        page = 1
+
+    try:
+        per_page = int(
+            request.args.get("per_page") or 20
+        )
+    except (TypeError, ValueError):
+        per_page = 20
+
+    if page < 1:
+        page = 1
+
+    allowed_per_page = {
+        10,
+        20,
+        50,
+        100,
+    }
+
+    if per_page not in allowed_per_page:
+        per_page = 20
+
+    # =====================================================
+    # Próximo movimiento de cada solicitud
+    #
+    # Se conserva el mismo criterio de orden:
+    # fecha más cercana, hora más cercana y fecha de creación.
+    # =====================================================
     next_move_subq = (
         db.session.query(
-            DispatchRequestLine.request_id.label("request_id"),
-            db.func.min(DispatchRequestLine.load_date).label("next_load_date"),
-            db.func.min(DispatchRequestLine.load_time).label("next_load_time"),
+            DispatchRequestLine.request_id.label(
+                "request_id"
+            ),
+            db.func.min(
+                DispatchRequestLine.load_date
+            ).label("next_load_date"),
+            db.func.min(
+                DispatchRequestLine.load_time
+            ).label("next_load_time"),
         )
-        .group_by(DispatchRequestLine.request_id)
+        .group_by(
+            DispatchRequestLine.request_id
+        )
         .subquery()
     )
 
     query = (
         DispatchRequest.query
-        .options(
-            selectinload(DispatchRequest.lines)
-            .selectinload(DispatchRequestLine.assignments)
-        )
         .outerjoin(
             next_move_subq,
-            next_move_subq.c.request_id == DispatchRequest.id,
+            next_move_subq.c.request_id
+            == DispatchRequest.id,
         )
         .filter(
             DispatchRequest.site_id == site_id,
-            DispatchRequest.status.in_(["PENDIENTE", "PARCIAL"]),
+            DispatchRequest.status.in_(
+                [
+                    "PENDIENTE",
+                    "PARCIAL",
+                ]
+            ),
         )
     )
 
     if q:
         query = query.filter(
             db.func.upper(
-                db.func.coalesce(DispatchRequest.booking, "")
+                db.func.coalesce(
+                    DispatchRequest.booking,
+                    "",
+                )
             ).like(f"%{q}%")
         )
 
-    requests = (
+    # =====================================================
+    # Paginación de solicitudes
+    #
+    # No se precargan aquí las relaciones porque el JOIN del orden
+    # puede complicar el conteo de paginate(). Después de obtener los
+    # IDs de la página se cargan las solicitudes completas en una
+    # segunda consulta controlada.
+    # =====================================================
+    pagination = (
         query
         .order_by(
-            next_move_subq.c.next_load_date.asc().nulls_last(),
-            next_move_subq.c.next_load_time.asc().nulls_last(),
+            next_move_subq.c.next_load_date
+            .asc()
+            .nulls_last(),
+
+            next_move_subq.c.next_load_time
+            .asc()
+            .nulls_last(),
+
             DispatchRequest.requested_at.asc(),
+            DispatchRequest.id.asc(),
         )
-        .all()
+        .paginate(
+            page=page,
+            per_page=per_page,
+            error_out=False,
+        )
     )
+
+    page_request_ids = [
+        req.id
+        for req in pagination.items
+    ]
+
+    requests_list = []
+
+    if page_request_ids:
+        loaded_requests = (
+            DispatchRequest.query
+            .options(
+                selectinload(
+                    DispatchRequest.lines
+                )
+                .selectinload(
+                    DispatchRequestLine.assignments
+                )
+            )
+            .filter(
+                DispatchRequest.id.in_(
+                    page_request_ids
+                )
+            )
+            .all()
+        )
+
+        requests_by_id = {
+            req.id: req
+            for req in loaded_requests
+        }
+
+        # El IN no garantiza el orden original, por eso se reconstruye
+        # según el resultado paginado.
+        requests_list = [
+            requests_by_id[request_id]
+            for request_id in page_request_ids
+            if request_id in requests_by_id
+        ]
 
     return render_template(
         "dispatch/pending_requests.html",
-        requests=requests,
+        requests=requests_list,
         q=q,
+        per_page=per_page,
+        pagination=pagination,
     )
 @dispatch_bp.get("/request/<int:request_id>")
 @login_required
@@ -1176,7 +1423,16 @@ def release_pending_line(line_id: int):
     if req.site_id != site_id and getattr(current_user, "role", None) != "admin":
         abort(403)
 
-    assigned_count = len(line.assignments)
+    assigned_count = (
+        db.session.query(
+            db.func.count(DispatchAssignment.id)
+        )
+        .filter(
+            DispatchAssignment.request_line_id == line.id
+        )
+        .scalar()
+        or 0
+    )
     qty = int(line.quantity or 0)
     pending_count = max(qty - assigned_count, 0)
 
@@ -1216,7 +1472,16 @@ def reschedule_assignment(assignment_id: int):
         flash("Debe indicar la nueva fecha.", "danger")
         return redirect(url_for("dispatch.assigned_requests"))
 
-    assigned_count = len(line.assignments)
+    assigned_count = (
+        db.session.query(
+            db.func.count(DispatchAssignment.id)
+        )
+        .filter(
+            DispatchAssignment.request_line_id == line.id
+        )
+        .scalar()
+        or 0
+    )
 
     if assigned_count <= 1 and int(line.quantity or 0) <= 1:
         line.load_date = new_date
@@ -1262,8 +1527,26 @@ def prelist_pdf():
     tomorrow = today + timedelta(days=1)
     current_time = now_cr.time()
 
-    active_site = Site.query.get(site_id)
-    site_name = active_site.name if active_site else f"Predio {site_id}"
+    active_site = getattr(
+        g,
+        "active_site",
+        None,
+    )
+
+    if (
+        active_site is None
+        or int(active_site.id) != int(site_id)
+    ):
+        active_site = db.session.get(
+            Site,
+            site_id,
+        )
+
+    site_name = (
+        active_site.name
+        if active_site
+        else f"Predio {site_id}"
+    )
 
     lines = (
         DispatchRequestLine.query
@@ -1993,18 +2276,22 @@ def gps_inventory_bulk_upload():
     assigned_gps_ids = set()
 
     if existing_gps_ids:
-        assigned_rows = (
-            GpsAssignment.query
-            .filter(
-                GpsAssignment.gps_device_id.in_(existing_gps_ids),
-                GpsAssignment.status == "ASIGNADO",
-            )
-            .all()
-        )
-
         assigned_gps_ids = {
-            row.gps_device_id
-            for row in assigned_rows
+            int(gps_device_id)
+            for gps_device_id, in (
+                db.session.query(
+                    GpsAssignment.gps_device_id
+                )
+                .filter(
+                    GpsAssignment.gps_device_id.in_(
+                        existing_gps_ids
+                    ),
+                    GpsAssignment.status == "ASIGNADO",
+                )
+                .distinct()
+                .all()
+            )
+            if gps_device_id is not None
         }
 
     created_count = 0

@@ -29,11 +29,31 @@
       >
     </div>
 
-    <div class="pending-search-actions">
-      <button class="btn primary" type="submit">Buscar</button>
+    <div>
+      <label>Solicitudes por página</label>
 
-      {% if q %}
-        <a class="btn" href="{{ url_for('dispatch.pending_requests') }}">
+      <select name="per_page">
+        {% for option in [10, 20, 50, 100] %}
+          <option
+            value="{{ option }}"
+            {% if per_page == option %}selected{% endif %}
+          >
+            {{ option }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="pending-search-actions">
+      <button class="btn primary" type="submit">
+        Aplicar
+      </button>
+
+      {% if q or per_page != 20 %}
+        <a
+          class="btn"
+          href="{{ url_for('dispatch.pending_requests') }}"
+        >
           Limpiar
         </a>
       {% endif %}
@@ -113,15 +133,15 @@
                   <a href="{{ url_for('dispatch.request_detail', request_id=r.id) }}" class="btn small">
                     Atender
                   </a>
-                  {% set has_assignments = false %}
+                  {% set assignment_state = namespace(has_assignments=false) %}
 
                   {% for line in r.lines %}
                     {% if line.assignments %}
-                      {% set has_assignments = true %}
+                      {% set assignment_state.has_assignments = true %}
                     {% endif %}
                   {% endfor %}
 
-                  {% if role in ['admin', 'supervision', 'despachador'] and not has_assignments and r.status == 'PENDIENTE' %}
+                  {% if role in ['admin', 'supervision', 'despachador'] and not assignment_state.has_assignments and r.status == 'PENDIENTE' %}
                     <form
                       method="post"
                       action="{{ url_for('dispatch.delete_pending_request', request_id=r.id) }}"
@@ -140,7 +160,104 @@
         </tbody>
       </table>
     </div>
-  {% endif %}
+    {% if pagination %}
+      <div class="pending-pagination-summary">
+        <span>
+          Mostrando
+          {% if pagination.total > 0 %}
+            {{ ((pagination.page - 1) * pagination.per_page) + 1 }}
+            a
+            {{
+              [
+                pagination.page * pagination.per_page,
+                pagination.total
+              ]|min
+            }}
+          {% else %}
+            0
+          {% endif %}
+          de {{ pagination.total }} solicitudes.
+        </span>
+
+        <span>
+          Página {{ pagination.page }} de {{ pagination.pages or 1 }}
+        </span>
+      </div>
+
+      {% if pagination.pages > 1 %}
+        <nav
+          class="pending-pagination"
+          aria-label="Paginación de solicitudes"
+        >
+          {% if pagination.has_prev %}
+            <a
+              class="btn small"
+              href="{{ url_for(
+                'dispatch.pending_requests',
+                page=pagination.prev_num,
+                per_page=per_page,
+                q=q
+              ) }}"
+            >
+              ← Anterior
+            </a>
+          {% else %}
+            <span class="btn small pending-page-disabled">
+              ← Anterior
+            </span>
+          {% endif %}
+
+          <div class="pending-page-numbers">
+            {% for page_number in pagination.iter_pages(
+              left_edge=1,
+              right_edge=1,
+              left_current=2,
+              right_current=2
+            ) %}
+              {% if page_number %}
+                {% if page_number == pagination.page %}
+                  <span class="pending-page-number is-current">
+                    {{ page_number }}
+                  </span>
+                {% else %}
+                  <a
+                    class="pending-page-number"
+                    href="{{ url_for(
+                      'dispatch.pending_requests',
+                      page=page_number,
+                      per_page=per_page,
+                      q=q
+                    ) }}"
+                  >
+                    {{ page_number }}
+                  </a>
+                {% endif %}
+              {% else %}
+                <span class="pending-page-ellipsis">…</span>
+              {% endif %}
+            {% endfor %}
+          </div>
+
+          {% if pagination.has_next %}
+            <a
+              class="btn small"
+              href="{{ url_for(
+                'dispatch.pending_requests',
+                page=pagination.next_num,
+                per_page=per_page,
+                q=q
+              ) }}"
+            >
+              Siguiente →
+            </a>
+          {% else %}
+            <span class="btn small pending-page-disabled">
+              Siguiente →
+            </span>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% endif %}
 </div>
 
 <div id="rescheduleModal" class="reschedule-modal-backdrop">
@@ -266,9 +383,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
 .pending-search-form{
   display:grid;
-  grid-template-columns:minmax(240px, 1fr) auto;
+  grid-template-columns:minmax(240px, 1fr) minmax(170px, 220px) auto;
   gap:10px;
   align-items:end;
+}
+
+.pending-search-form label{
+  display:block;
+  margin-bottom:6px;
+  font-size:12px;
+  font-weight:900;
+}
+
+.pending-search-form input,
+.pending-search-form select{
+  width:100%;
+  box-sizing:border-box;
 }
 
 .pending-search-actions{
@@ -335,6 +465,93 @@ document.addEventListener("DOMContentLoaded", () => {
   justify-content:flex-end;
   gap:10px;
   margin-top:18px;
+}
+
+.pending-pagination-summary{
+  margin-top:14px;
+  padding-top:12px;
+  border-top:1px solid rgba(148,163,184,.18);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+  font-size:12px;
+  font-weight:800;
+  color:#94a3b8;
+}
+
+.pending-pagination{
+  margin-top:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.pending-page-numbers{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.pending-page-number{
+  min-width:34px;
+  height:34px;
+  padding:0 8px;
+  box-sizing:border-box;
+  border-radius:10px;
+  border:1px solid rgba(148,163,184,.25);
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  text-decoration:none;
+  font-size:12px;
+  font-weight:900;
+  color:#e2e8f0;
+  background:rgba(15,23,42,.25);
+}
+
+.pending-page-number:hover{
+  background:rgba(51,65,85,.55);
+}
+
+.pending-page-number.is-current{
+  background:#2563eb;
+  border-color:#2563eb;
+  color:#ffffff;
+}
+
+.pending-page-ellipsis{
+  min-width:24px;
+  text-align:center;
+  color:#94a3b8;
+  font-weight:900;
+}
+
+.pending-page-disabled{
+  opacity:.45;
+  cursor:not-allowed;
+  pointer-events:none;
+}
+
+@media(max-width:700px){
+  .pending-pagination-summary{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .pending-pagination{
+    justify-content:space-between;
+  }
+
+  .pending-page-numbers{
+    width:100%;
+    order:3;
+  }
 }
 
 </style>

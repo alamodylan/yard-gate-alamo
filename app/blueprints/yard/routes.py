@@ -13,6 +13,7 @@ from flask import (
     flash,
     session,
     abort,
+    g,
 )
 from flask_login import login_required, current_user
 
@@ -68,21 +69,79 @@ SIDE_TO_POSITION = {
 
 POSITION_TO_SIDE = {v: k for k, v in SIDE_TO_POSITION.items()}
 
+# =========================================================
+# Cachés internos de catálogos y estructura de BD
+# =========================================================
+
+# Las columnas de estas tablas no cambian durante la ejecución normal
+# de la aplicación. Las migraciones/redeploy reinician los workers y,
+# por tanto, también este caché.
+_TABLE_COLUMNS_CACHE: dict[tuple[str, str], frozenset[str]] = {}
+
+# tire_positions es un catálogo estable. Evita consultar la misma
+# posición repetidamente durante el registro de llantas/marchamos.
+_TIRE_POSITION_ID_CACHE: dict[tuple[int, str], int] = {}
 
 # =========================
 # Multi-predio helpers
 # =========================
 def _allowed_sites_for_user(user):
-    if getattr(user, "role", None) == "admin":
-        return Site.query.filter_by(is_active=True).order_by(Site.name.asc()).all()
+    """
+    Retorna los predios permitidos al usuario.
 
-    return (
-        db.session.query(Site)
-        .join(UserSite, UserSite.site_id == Site.id)
-        .filter(UserSite.user_id == user.id, Site.is_active == True)  # noqa: E712
-        .order_by(Site.name.asc())
-        .all()
+    El resultado se conserva únicamente durante la petición actual para
+    evitar repetir la misma consulta cuando varias funciones necesitan
+    validar o mostrar los predios del usuario.
+    """
+    user_id = getattr(user, "id", None)
+    user_role = (getattr(user, "role", None) or "").strip().lower()
+
+    cache_key = (
+        int(user_id) if user_id is not None else None,
+        user_role,
     )
+
+    cached_key = getattr(
+        g,
+        "_allowed_sites_cache_key",
+        None,
+    )
+
+    cached_sites = getattr(
+        g,
+        "_allowed_sites_cache",
+        None,
+    )
+
+    if cached_key == cache_key and cached_sites is not None:
+        return cached_sites
+
+    if user_role == "admin":
+        allowed_sites = (
+            Site.query
+            .filter_by(is_active=True)
+            .order_by(Site.name.asc())
+            .all()
+        )
+    else:
+        allowed_sites = (
+            db.session.query(Site)
+            .join(
+                UserSite,
+                UserSite.site_id == Site.id,
+            )
+            .filter(
+                UserSite.user_id == user_id,
+                Site.is_active == True,  # noqa: E712
+            )
+            .order_by(Site.name.asc())
+            .all()
+        )
+
+    g._allowed_sites_cache_key = cache_key
+    g._allowed_sites_cache = allowed_sites
+
+    return allowed_sites
 
 
 def _get_active_site_id():
@@ -94,25 +153,94 @@ def _set_active_site_id(site_id: int):
 
 
 def _ensure_active_site():
+    """
+    Valida y retorna el predio activo.
+
+    Reutiliza los datos cacheados durante la petición y sincroniza
+    flask.g cuando el predio activo debe establecerse o corregirse.
+    """
     allowed = _allowed_sites_for_user(current_user)
+
     if not allowed:
         abort(403)
 
     active_id = _get_active_site_id()
-    allowed_ids = {s.id for s in allowed}
 
-    if not active_id or active_id not in allowed_ids:
-        _set_active_site_id(allowed[0].id)
-        active_id = allowed[0].id
+    try:
+        active_id = (
+            int(active_id)
+            if active_id is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        active_id = None
+
+    allowed_by_id = {
+        int(site.id): site
+        for site in allowed
+    }
+
+    if active_id not in allowed_by_id:
+        active_site = allowed[0]
+        active_id = int(active_site.id)
+        _set_active_site_id(active_id)
+    else:
+        active_site = allowed_by_id[active_id]
+
+    # Mantiene sincronizado el contexto de la petición para que otras
+    # funciones no tengan que volver a consultar el mismo Site.
+    g.active_site_id = active_id
+    g.active_site = active_site
 
     return active_id
 
 
 def _active_site():
+    """
+    Retorna el predio activo reutilizando flask.g cuando ya fue cargado.
+    """
     site_id = session.get("active_site_id")
+
+    try:
+        site_id = (
+            int(site_id)
+            if site_id is not None
+            else None
+        )
+    except (TypeError, ValueError):
+        site_id = None
+
     if not site_id:
         return None
-    return Site.query.get(site_id)
+
+    cached_site_id = getattr(
+        g,
+        "active_site_id",
+        None,
+    )
+
+    cached_site = getattr(
+        g,
+        "active_site",
+        None,
+    )
+
+    if (
+        cached_site is not None
+        and cached_site_id is not None
+        and int(cached_site_id) == site_id
+    ):
+        return cached_site
+
+    site = db.session.get(
+        Site,
+        site_id,
+    )
+
+    g.active_site_id = site_id
+    g.active_site = site
+
+    return site
 
 
 def _active_site_key():
@@ -184,8 +312,39 @@ def inject_active_site():
 
 
 def _is_predio_site(site_id: int) -> bool:
-    s = Site.query.get(site_id)
-    return bool(s and (s.code or "").upper() in PREDIO_CODES)
+    try:
+        site_id = int(site_id)
+    except (TypeError, ValueError):
+        return False
+
+    cached_site_id = getattr(
+        g,
+        "active_site_id",
+        None,
+    )
+
+    cached_site = getattr(
+        g,
+        "active_site",
+        None,
+    )
+
+    if (
+        cached_site is not None
+        and cached_site_id is not None
+        and int(cached_site_id) == site_id
+    ):
+        site = cached_site
+    else:
+        site = db.session.get(
+            Site,
+            site_id,
+        )
+
+    return bool(
+        site
+        and (site.code or "").strip().upper() in PREDIO_CODES
+    )
 
 
 # =========================
@@ -499,9 +658,31 @@ def _normalize_position_for_tire_master(pos: str) -> str | None:
 
 
 def _resolve_tire_position_id(axles: int, pos: str) -> int:
+    """
+    Resuelve el ID maestro de una posición de llanta.
+
+    tire_positions es un catálogo estable, por lo que el resultado se
+    conserva en memoria para evitar repetir la misma consulta durante
+    Gate In, EIR y registros de marchamos.
+    """
     master_pos = _normalize_position_for_tire_master(pos)
+
     if not master_pos:
-        raise ValueError(f"Posición inválida para tire_positions: {pos}")
+        raise ValueError(
+            f"Posición inválida para tire_positions: {pos}"
+        )
+
+    resolved_axles = int(axles)
+
+    cache_key = (
+        resolved_axles,
+        master_pos,
+    )
+
+    cached_id = _TIRE_POSITION_ID_CACHE.get(cache_key)
+
+    if cached_id is not None:
+        return cached_id
 
     sql = text("""
         SELECT id
@@ -510,17 +691,27 @@ def _resolve_tire_position_id(axles: int, pos: str) -> int:
           AND position_code = :position_code
         LIMIT 1
     """)
-    row = db.session.execute(sql, {
-        "axles": int(axles),
-        "position_code": master_pos,
-    }).mappings().first()
+
+    row = db.session.execute(
+        sql,
+        {
+            "axles": resolved_axles,
+            "position_code": master_pos,
+        },
+    ).mappings().first()
 
     if not row:
         raise ValueError(
-            f"No existe tire_positions para axle_count={axles}, position_code={master_pos}"
+            "No existe tire_positions para "
+            f"axle_count={resolved_axles}, "
+            f"position_code={master_pos}"
         )
 
-    return int(row["id"])
+    tire_position_id = int(row["id"])
+
+    _TIRE_POSITION_ID_CACHE[cache_key] = tire_position_id
+
+    return tire_position_id
 
 
 def _condition_from_tire_states(states: list[str]) -> str:
@@ -544,14 +735,53 @@ def _pick_valid_pressure(values: list) -> float | None:
     return None
 
 
-def _get_table_columns(schema: str, table: str) -> set[str]:
+def _get_table_columns(schema: str, table: str) -> frozenset[str]:
+    """
+    Retorna las columnas existentes de una tabla.
+
+    La consulta a information_schema se ejecuta una sola vez por tabla
+    y por worker de Gunicorn. Esto evita consultar el catálogo de
+    PostgreSQL antes de cada INSERT dinámico.
+    """
+    normalized_schema = (schema or "").strip()
+    normalized_table = (table or "").strip()
+
+    if not normalized_schema or not normalized_table:
+        return frozenset()
+
+    cache_key = (
+        normalized_schema,
+        normalized_table,
+    )
+
+    cached_columns = _TABLE_COLUMNS_CACHE.get(cache_key)
+
+    if cached_columns is not None:
+        return cached_columns
+
     sql = text("""
         SELECT column_name
         FROM information_schema.columns
-        WHERE table_schema = :schema AND table_name = :table
+        WHERE table_schema = :schema
+          AND table_name = :table
     """)
-    rows = db.session.execute(sql, {"schema": schema, "table": table}).fetchall()
-    return {r[0] for r in rows}
+
+    rows = db.session.execute(
+        sql,
+        {
+            "schema": normalized_schema,
+            "table": normalized_table,
+        },
+    ).fetchall()
+
+    columns = frozenset(
+        row[0]
+        for row in rows
+    )
+
+    _TABLE_COLUMNS_CACHE[cache_key] = columns
+
+    return columns
 
 
 def _insert_dynamic(schema: str, table: str, values: dict) -> int | None:

@@ -12,7 +12,6 @@ from flask import (
     g,
     request,
     session,
-    url_for,
 )
 from flask_login import current_user
 
@@ -219,86 +218,15 @@ def create_app():
     @app.context_processor
     def inject_notifications():
         """
-        Mantiene el funcionamiento actual de la campanita.
+        Inyecta únicamente valores iniciales vacíos.
 
-        En una siguiente etapa se moverá a carga diferida desde
-        base.html para eliminar estas consultas de cada pantalla.
+        Las notificaciones se cargarán de forma diferida desde base.html
+        mediante un endpoint JSON, evitando consultas a PostgreSQL durante
+        la carga principal de cada pantalla.
         """
-        from app.models.dispatch import UserNotification
-        from app.services.notifications import notification_url
-
-        if not current_user.is_authenticated:
-            return {
-                "notification_count": 0,
-                "notification_items": [],
-            }
-
-        active_site_id = getattr(
-            g,
-            "active_site_id",
-            None,
-        )
-
-        unread_query = UserNotification.query.filter(
-            UserNotification.user_id == current_user.id,
-            UserNotification.is_read == False,  # noqa: E712
-        )
-
-        list_query = UserNotification.query.filter(
-            UserNotification.user_id == current_user.id,
-        )
-
-        if active_site_id:
-            unread_query = unread_query.filter(
-                UserNotification.site_id == active_site_id,
-            )
-
-            list_query = list_query.filter(
-                UserNotification.site_id == active_site_id,
-            )
-
-        latest_notifications = (
-            list_query
-            .order_by(
-                UserNotification.created_at.desc(),
-                UserNotification.id.desc(),
-            )
-            .limit(10)
-            .all()
-        )
-
-        notification_items = []
-
-        for notification in latest_notifications:
-            endpoint, params = notification_url(
-                notification
-            )
-
-            href = "#"
-
-            if (
-                endpoint
-                and endpoint in current_app.view_functions
-            ):
-                href = url_for(
-                    "dispatch.read_notification",
-                    notification_id=notification.id,
-                )
-
-            notification_items.append({
-                "id": notification.id,
-                "title": notification.title,
-                "message": notification.message,
-                "related_type": notification.related_type,
-                "related_id": notification.related_id,
-                "created_at": notification.created_at,
-                "is_read": notification.is_read,
-                "href": href,
-            })
-
         return {
-            "notification_count": unread_query.count(),
-            "notification_items": notification_items,
+            "notification_count": 0,
+            "notification_items": [],
         }
 
     # =========================================================
