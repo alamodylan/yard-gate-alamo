@@ -138,27 +138,154 @@ def gate_in_view():
         .all()
     )
 
-    sql_rows = db.session.execute(text("""
-        SELECT
-            c.id,
-            c.chassis_number,
-            c.plate,
-            c.axles,
-            c.status,
-            c.site_id,
-            c.type_code
-        FROM yard_gate_alamo.chassis c
-        ORDER BY c.chassis_number ASC
-    """)).mappings().all()
-
-    chassis_rows = [dict(r) for r in sql_rows]
-
     return render_template(
         "yard/gate_in.html",
         blocks=blocks,
         sizes=SIZES,
-        chassis_rows=chassis_rows,
     )
+
+@yard_bp.get("/api/chassis/search")
+@login_required
+def api_chassis_search():
+    """
+    Busca chasis por número o placa para el formulario Gate In.
+
+    Reglas:
+    - Requiere al menos 2 caracteres.
+    - Busca por número de chasis o placa.
+    - Ignora mayúsculas, minúsculas, espacios y guiones.
+    - Devuelve un máximo de 20 resultados.
+    - No modifica ningún registro.
+    """
+    _ensure_active_site()
+
+    query_raw = (request.args.get("q") or "").strip()
+
+    if len(query_raw) < 2:
+        return jsonify({
+            "ok": True,
+            "items": [],
+        })
+
+    normalized_query = (
+        query_raw
+        .upper()
+        .replace("-", "")
+        .replace(" ", "")
+    )
+
+    if len(normalized_query) < 2:
+        return jsonify({
+            "ok": True,
+            "items": [],
+        })
+
+    rows = db.session.execute(
+        text("""
+            SELECT
+                c.id,
+                c.chassis_number,
+                c.plate,
+                c.axles,
+                c.status,
+                c.site_id,
+                c.type_code
+            FROM yard_gate_alamo.chassis c
+            WHERE
+                REPLACE(
+                    REPLACE(
+                        UPPER(COALESCE(c.chassis_number, '')),
+                        '-',
+                        ''
+                    ),
+                    ' ',
+                    ''
+                ) LIKE :search_pattern
+                OR
+                REPLACE(
+                    REPLACE(
+                        UPPER(COALESCE(c.plate, '')),
+                        '-',
+                        ''
+                    ),
+                    ' ',
+                    ''
+                ) LIKE :search_pattern
+            ORDER BY
+                CASE
+                    WHEN REPLACE(
+                        REPLACE(
+                            UPPER(COALESCE(c.chassis_number, '')),
+                            '-',
+                            ''
+                        ),
+                        ' ',
+                        ''
+                    ) = :exact_query
+                    THEN 0
+
+                    WHEN REPLACE(
+                        REPLACE(
+                            UPPER(COALESCE(c.plate, '')),
+                            '-',
+                            ''
+                        ),
+                        ' ',
+                        ''
+                    ) = :exact_query
+                    THEN 1
+
+                    WHEN REPLACE(
+                        REPLACE(
+                            UPPER(COALESCE(c.chassis_number, '')),
+                            '-',
+                            ''
+                        ),
+                        ' ',
+                        ''
+                    ) LIKE :starts_with_pattern
+                    THEN 2
+
+                    WHEN REPLACE(
+                        REPLACE(
+                            UPPER(COALESCE(c.plate, '')),
+                            '-',
+                            ''
+                        ),
+                        ' ',
+                        ''
+                    ) LIKE :starts_with_pattern
+                    THEN 3
+
+                    ELSE 4
+                END,
+                c.chassis_number ASC
+            LIMIT 20
+        """),
+        {
+            "exact_query": normalized_query,
+            "starts_with_pattern": f"{normalized_query}%",
+            "search_pattern": f"%{normalized_query}%",
+        },
+    ).mappings().all()
+
+    items = [
+        {
+            "id": row["id"],
+            "chassis_number": row["chassis_number"],
+            "plate": row["plate"],
+            "axles": row["axles"],
+            "status": row["status"],
+            "site_id": row["site_id"],
+            "type_code": row["type_code"],
+        }
+        for row in rows
+    ]
+
+    return jsonify({
+        "ok": True,
+        "items": items,
+    })
 
 
 @yard_bp.get("/api/container-prefill/<code>")

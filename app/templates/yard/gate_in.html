@@ -761,14 +761,16 @@
           <label>Buscar / seleccionar chasis</label>
           <input id="chassisSearch" list="chassisList" type="text" placeholder="Digita número de chasis o placa..." autocomplete="off">
 
-          <datalist id="chassisList">
-            {% for ch in (chassis_rows or []) %}
-              <option value="{{ ch.chassis_number }}">{{ ch.chassis_number }} | {{ ch.plate or 'SIN PLACA' }} | {{ ch.axles or '?' }} ejes</option>
-            {% endfor %}
-          </datalist>
+          <datalist id="chassisList"></datalist>
 
           <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;">
-            <button type="button" id="btnLoadSelectedChassis" class="btn" onclick="window.__forceLoadChassis && window.__forceLoadChassis()">Cargar chasis</button>
+            <button
+              type="button"
+              id="btnLoadSelectedChassis"
+              class="btn"
+            >
+              Cargar chasis
+            </button>
             <button type="button" id="btnClearSelectedChassis" class="btn btn-ghost">Limpiar</button>
           </div>
 
@@ -830,7 +832,9 @@
           </div>
 
           <div class="hint" style="margin-top:8px;">
-            Total chasis cargados: {{ (chassis_rows or []) | length }}
+            <span id="chassisSearchStatus">
+              Escribe al menos 2 caracteres para buscar un chasis.
+            </span>
           </div>
         </div>
 
@@ -1338,12 +1342,17 @@
   </div>
 </div>
 
-<script id="chassisRowsData" type="application/json">{{ (chassis_rows if chassis_rows is defined else []) | tojson }}</script>
 <script src="{{ url_for('static', filename='js/container_mask.js') }}"></script>
 
 <script>
-  const API_CHASSIS_TIRES_URL_TEMPLATE = "{{ url_for('yard.api_chassis_tires_get', chassis_id=999999) }}";
-  const API_CONTAINER_PREFILL_TEMPLATE = "{{ url_for('yard.api_container_prefill', code='CONT_CODE_PLACEHOLDER') }}";
+  const API_CHASSIS_SEARCH_URL =
+    "{{ url_for('yard.api_chassis_search') }}";
+
+  const API_CHASSIS_TIRES_URL_TEMPLATE =
+    "{{ url_for('yard.api_chassis_tires_get', chassis_id=999999) }}";
+
+  const API_CONTAINER_PREFILL_TEMPLATE =
+    "{{ url_for('yard.api_container_prefill', code='CONT_CODE_PLACEHOLDER') }}";
 </script>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -1395,9 +1404,17 @@ document.addEventListener("DOMContentLoaded", () => {
   const summaryHidden = document.getElementById("summary_text");
 
   const chassisSearch = document.getElementById("chassisSearch");
-  const btnLoadSelectedChassis = document.getElementById("btnLoadSelectedChassis");
-  const btnClearSelectedChassis = document.getElementById("btnClearSelectedChassis");
-  const btnReloadChassis = document.getElementById("btnReloadChassis");
+  const chassisList = document.getElementById("chassisList");
+  const chassisSearchStatus = document.getElementById("chassisSearchStatus");
+
+  const btnLoadSelectedChassis =
+    document.getElementById("btnLoadSelectedChassis");
+
+  const btnClearSelectedChassis =
+    document.getElementById("btnClearSelectedChassis");
+
+  const btnReloadChassis =
+    document.getElementById("btnReloadChassis");
 
   const chassisBlock = document.getElementById("chassisBlock");
   const chassisSummaryPill = document.getElementById("chassisSummaryPill");
@@ -1458,7 +1475,16 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedChassisAxles = 2;
   let chassisConfigCache = {};
   let chassisChecksCache = {};
+
+  /*
+  * Ya no contiene todo el catálogo.
+  * Solamente guarda los últimos resultados obtenidos por AJAX.
+  */
   let chassisRowsMaster = [];
+
+  let chassisSearchTimer = null;
+  let chassisSearchAbortController = null;
+
   let currentPos = null;
   let prefillTouched = false;
   let chassisBundleCache = [];
@@ -2298,34 +2324,224 @@ document.addEventListener("DOMContentLoaded", () => {
     closeChassisModal();
   }
 
-  function preloadChassisRows(){
-    try{
-      const raw = document.getElementById("chassisRowsData")?.textContent || "[]";
-      const rows = JSON.parse(raw);
-      chassisRowsMaster = Array.isArray(rows) ? rows : [];
-    }catch(e){
-      console.error("No se pudieron precargar los chasis:", e);
-      chassisRowsMaster = [];
+  function setChassisSearchStatus(message){
+    if (chassisSearchStatus){
+      chassisSearchStatus.textContent = message || "";
     }
   }
 
-  function findChassisByInputValue(value){
-    const q = normalizeText(value);
-    if (!q) return null;
 
-    let found = chassisRowsMaster.find(item => {
-      const number = normalizeText(item.chassis_number);
-      const plate = normalizeText(item.plate);
-      return number === q || plate === q;
+  function clearChassisSearchResults(){
+    chassisRowsMaster = [];
+
+    if (chassisList){
+      chassisList.replaceChildren();
+    }
+  }
+
+
+  function renderChassisSearchResults(rows){
+    chassisRowsMaster = Array.isArray(rows) ? rows : [];
+
+    if (!chassisList){
+      return;
+    }
+
+    const fragment = document.createDocumentFragment();
+
+    chassisRowsMaster.forEach(item => {
+      const chassisNumber = (item.chassis_number || "").trim();
+
+      if (!chassisNumber){
+        return;
+      }
+
+      const option = document.createElement("option");
+
+      /*
+      * El value debe ser el número de chasis porque es lo que
+      * luego queda escrito en el input al seleccionar.
+      */
+      option.value = chassisNumber;
+
+      option.label = [
+        chassisNumber,
+        item.plate || "SIN PLACA",
+        `${item.axles || "?"} ejes`,
+        item.status || "SIN ESTADO"
+      ].join(" | ");
+
+      fragment.appendChild(option);
     });
 
-    if (found) return found;
+    chassisList.replaceChildren(fragment);
+  }
 
-    return chassisRowsMaster.find(item => {
-      const number = normalizeText(item.chassis_number);
+
+  async function searchChassisRows(value){
+    const query = (value || "").trim();
+
+    if (query.length < 2){
+      if (chassisSearchAbortController){
+        chassisSearchAbortController.abort();
+        chassisSearchAbortController = null;
+      }
+
+      clearChassisSearchResults();
+
+      setChassisSearchStatus(
+        "Escribe al menos 2 caracteres para buscar un chasis."
+      );
+
+      return [];
+    }
+
+    if (chassisSearchAbortController){
+      chassisSearchAbortController.abort();
+    }
+
+    chassisSearchAbortController = new AbortController();
+
+    setChassisSearchStatus("Buscando chasis...");
+
+    try{
+      const url =
+        `${API_CHASSIS_SEARCH_URL}?q=${encodeURIComponent(query)}`;
+
+      const response = await fetch(url, {
+        headers: {
+          "Accept": "application/json"
+        },
+        signal: chassisSearchAbortController.signal
+      });
+
+      let data = {};
+
+      try{
+        data = await response.json();
+      }catch(_error){
+        throw new Error(
+          `Respuesta inválida del servidor (${response.status})`
+        );
+      }
+
+      if (!response.ok || !data.ok){
+        throw new Error(
+          data.error || `CHASSIS_SEARCH_FAILED (${response.status})`
+        );
+      }
+
+      const rows = Array.isArray(data.items)
+        ? data.items
+        : [];
+
+      renderChassisSearchResults(rows);
+
+      if (!rows.length){
+        setChassisSearchStatus(
+          "No se encontraron chasis con ese criterio."
+        );
+      }else{
+        setChassisSearchStatus(
+          `Resultados encontrados: ${rows.length}.`
+        );
+      }
+
+      return rows;
+
+    }catch(error){
+      if (error.name === "AbortError"){
+        return [];
+      }
+
+      console.error("Error buscando chasis:", error);
+
+      clearChassisSearchResults();
+
+      setChassisSearchStatus(
+        "No se pudo consultar el catálogo de chasis."
+      );
+
+      return [];
+
+    }finally{
+      chassisSearchAbortController = null;
+    }
+  }
+
+
+  function scheduleChassisSearch(value){
+    if (chassisSearchTimer){
+      clearTimeout(chassisSearchTimer);
+    }
+
+    chassisSearchTimer = setTimeout(() => {
+      searchChassisRows(value);
+    }, 300);
+  }
+
+
+  function findChassisByInputValue(value){
+    const query = normalizeText(value);
+
+    if (!query){
+      return null;
+    }
+
+    /*
+    * Primero busca coincidencia exacta por número o placa.
+    */
+    const exactMatch = chassisRowsMaster.find(item => {
+      const chassisNumber = normalizeText(item.chassis_number);
       const plate = normalizeText(item.plate);
-      return number.includes(q) || plate.includes(q);
+
+      return chassisNumber === query || plate === query;
+    });
+
+    if (exactMatch){
+      return exactMatch;
+    }
+
+    /*
+    * Como respaldo, permite coincidencia parcial dentro de los
+    * resultados que ya devolvió el backend.
+    */
+    return chassisRowsMaster.find(item => {
+      const chassisNumber = normalizeText(item.chassis_number);
+      const plate = normalizeText(item.plate);
+
+      return (
+        chassisNumber.includes(query) ||
+        plate.includes(query)
+      );
     }) || null;
+  }
+
+
+  async function resolveChassisByInputValue(value){
+    const inputValue = (value || "").trim();
+
+    if (!inputValue){
+      return null;
+    }
+
+    /*
+    * Si ya está entre los resultados actuales, no vuelve a consultar.
+    */
+    let found = findChassisByInputValue(inputValue);
+
+    if (found){
+      return found;
+    }
+
+    /*
+    * Si no está en caché, realiza una búsqueda inmediata.
+    */
+    await searchChassisRows(inputValue);
+
+    found = findChassisByInputValue(inputValue);
+
+    return found || null;
   }
 
   function clearChassisPanel(){
@@ -2623,34 +2839,65 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       document
-          .querySelectorAll(".bundle-chassis-input")
-          .forEach(input => {
+      .querySelectorAll(".bundle-chassis-input")
+      .forEach(input => {
 
-              input.addEventListener("change", () => {
+        input.addEventListener("input", () => {
+          scheduleChassisSearch(input.value);
+        });
 
-                  const idx = Number(input.dataset.index);
-                  const found = findChassisByInputValue(input.value);
-                  const oldItem = chassisBundleCache[idx] || makeEmptyBundleItem();
+        input.addEventListener("change", async () => {
+          const idx = Number(input.dataset.index);
 
-                  chassisBundleCache[idx] = {
-                      ...oldItem,
-                      search: input.value,
-                      chassis_id: found ? found.id : null,
-                      chassis_number: found ? found.chassis_number : "",
-                      plate: found ? found.plate : "",
-                      axles: found ? Number(found.axles || 2) : 2,
-                      status: found ? (found.status || "") : "",
-                      tire_checks: {},
-                      inspection: {
-                        plate_text: found ? (found.plate || "") : ""
-                      },
-                      axle_seals: {}
-                  };
+          const found = await resolveChassisByInputValue(
+            input.value
+          );
 
-                  syncHiddenChassisPayloads();
-                  renderBundleRows();
-              });
-          });
+          const oldItem =
+            chassisBundleCache[idx] || makeEmptyBundleItem();
+
+          chassisBundleCache[idx] = {
+            ...oldItem,
+
+            search: found
+              ? found.chassis_number
+              : input.value,
+
+            chassis_id: found
+              ? found.id
+              : null,
+
+            chassis_number: found
+              ? found.chassis_number
+              : "",
+
+            plate: found
+              ? found.plate
+              : "",
+
+            axles: found
+              ? Number(found.axles || 2)
+              : 2,
+
+            status: found
+              ? (found.status || "")
+              : "",
+
+            tire_checks: {},
+
+            inspection: {
+              plate_text: found
+                ? (found.plate || "")
+                : ""
+            },
+
+            axle_seals: {}
+          };
+
+          syncHiddenChassisPayloads();
+          renderBundleRows();
+        });
+      });
 
       document
           .querySelectorAll(".btn-remove-bundle")
@@ -2693,7 +2940,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function loadSelectedChassisFromInput(){
-    const item = findChassisByInputValue(chassisSearch?.value || "");
+    const searchValue = chassisSearch?.value || "";
+
+    const item = await resolveChassisByInputValue(searchValue);
 
     if (modeIsBundle()){
       if (!item){
@@ -2859,17 +3108,43 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (btnClearSelectedChassis) {
     btnClearSelectedChassis.addEventListener("click", () => {
-      if (chassisSearch) chassisSearch.value = "";
+      if (chassisSearch){
+        chassisSearch.value = "";
+      }
+
+      clearChassisSearchResults();
+
+      setChassisSearchStatus(
+        "Escribe al menos 2 caracteres para buscar un chasis."
+      );
+
       clearChassisPanel();
     });
   }
 
   if (chassisSearch) {
-    chassisSearch.addEventListener("keydown", (e) => {
-      if (e.key === "Enter"){
-        e.preventDefault();
-        loadSelectedChassisFromInput();
+    chassisSearch.addEventListener("input", () => {
+      scheduleChassisSearch(chassisSearch.value);
+    });
+
+    chassisSearch.addEventListener("change", async () => {
+      const item = await resolveChassisByInputValue(
+        chassisSearch.value
+      );
+
+      if (item){
+        chassisSearch.value = item.chassis_number || chassisSearch.value;
       }
+    });
+
+    chassisSearch.addEventListener("keydown", async e => {
+      if (e.key !== "Enter"){
+        return;
+      }
+
+      e.preventDefault();
+
+      await loadSelectedChassisFromInput();
     });
   }
 
@@ -2998,7 +3273,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  preloadChassisRows();
+  clearChassisSearchResults();
+
+  setChassisSearchStatus(
+    "Escribe al menos 2 caracteres para buscar un chasis."
+  );
+
   clearChassisPanel();
 
   if (blockSelect) {
