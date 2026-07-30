@@ -26,6 +26,7 @@ class User(db.Model, UserMixin):
     ROLE_TALLER = "taller"
     ROLE_TRACKING = "tracking"
     ROLE_SEGURIDAD = "seguridad"
+    ROLE_TRAFICO = "trafico"
 
     # Compatibilidad temporal con usuarios existentes
     ROLE_PREDIO = "predio"
@@ -40,18 +41,31 @@ class User(db.Model, UserMixin):
         ROLE_OPERADOR,
         ROLE_TALLER,
         ROLE_TRACKING,
-        ROLE_PREDIO,
         ROLE_SEGURIDAD,
+        ROLE_TRAFICO,
+        ROLE_PREDIO,
     }
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
 
-    role = db.Column(db.String(20), nullable=False, default=ROLE_INSPECCION)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    role = db.Column(
+        db.String(20),
+        nullable=False,
+        default=ROLE_INSPECCION,
+    )
+    is_active = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+    )
 
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    created_at = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
 
     # -------------------------
     # Auth helpers
@@ -74,7 +88,10 @@ class User(db.Model, UserMixin):
         return self.normalized_role == self.ROLE_ADMIN
 
     def has_role(self, *roles: str) -> bool:
-        allowed = {(role or "").strip().lower() for role in roles}
+        allowed = {
+            (role or "").strip().lower()
+            for role in roles
+        }
         return self.normalized_role in allowed
 
     # -------------------------

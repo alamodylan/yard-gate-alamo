@@ -1,4 +1,5 @@
-# models/__init__.py
+# app/models/__init__.py
+
 from .user import User
 from .yard import YardBlock, YardBay
 from .container import Container, ContainerPosition
@@ -15,4 +16,19 @@ from .dispatch import (
     DispatchRequestLine,
     DispatchAssignment,
     UserNotification,
+)
+
+from .transport import (
+    TruckOwner,
+    Driver,
+    DriverDocument,
+    DriverApmRecord,
+    Truck,
+    TruckDocument,
+    DriverTruckAssignment,
+    DriverExitPermission,
+    TransportIncident,
+    TransportIncidentFollowUp,
+    TransportDocumentChange,
+    TransportAttachment,
 )

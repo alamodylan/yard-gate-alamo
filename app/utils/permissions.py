@@ -51,6 +51,22 @@ ROLE_PERMISSIONS = {
         "reports.export",
 
         "audit.view",
+
+        # Gestión de choferes y cabezales
+        "drivers.view",
+        "drivers.actions",
+        "drivers.import",
+        "drivers.history.view",
+        "drivers.operations",
+    },
+
+    "trafico": {
+        # Gestión completa del módulo de choferes y cabezales
+        "drivers.view",
+        "drivers.actions",
+        "drivers.import",
+        "drivers.history.view",
+        "drivers.operations",
     },
 
     "patio": {
@@ -73,6 +89,13 @@ ROLE_PERMISSIONS = {
 
         "eir.view",
         "eir.actions",
+
+        # Choferes y cabezales:
+        # consulta, historial y acciones operativas.
+        # No puede editar datos maestros ni cargar Excel.
+        "drivers.view",
+        "drivers.history.view",
+        "drivers.operations",
     },
 
     "inspeccion": {
@@ -168,6 +191,11 @@ ROLE_PERMISSIONS = {
 
         "eir.view",
         "eir.actions",
+
+        # Mantiene equivalencia operativa con el rol patio.
+        "drivers.view",
+        "drivers.history.view",
+        "drivers.operations",
     },
 }
 

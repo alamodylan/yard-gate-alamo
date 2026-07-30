@@ -366,13 +366,30 @@ def gate_out_post():
         chassis_id_raw = (request.form.get("chassis_id") or "").strip()
         container_id_raw = (request.form.get("container_id") or "").strip()
 
-        terminal_name = (request.form.get("terminal_name") or (active_site.name if active_site else "")).strip()
+        terminal_name = (
+            request.form.get("terminal_name")
+            or (active_site.name if active_site else "")
+        ).strip()
+
         trip_date_raw = (request.form.get("trip_date") or "").strip()
         trip_time_raw = (request.form.get("trip_time") or "").strip()
-        carrier = (request.form.get("carrier") or "ATM").strip() or "ATM"
+
+        carrier_input = (request.form.get("carrier") or "").strip()
+
+        # Solo contenedor = transportista editable.
+        # Cualquier EIR que incluya chasis pertenece a ATM / Álamo.
+        is_container_only = bool(has_container and not has_chassis)
+
+        if is_container_only:
+            carrier = carrier_input
+        else:
+            carrier = "ATM"
+
         origin = (request.form.get("origin") or site_code).strip()
         destination = (request.form.get("destination") or "").strip()
-        operation_type = (request.form.get("operation_type") or "").strip().upper()
+        operation_type = (
+            request.form.get("operation_type") or ""
+        ).strip().upper()
 
         driver_name = (request.form.get("driver_name") or "").strip()
         driver_id_doc = (request.form.get("driver_id_doc") or "").strip()
@@ -410,9 +427,20 @@ def gate_out_post():
 
         damage_points_raw = (request.form.get("container_damage_points_json") or "[]").strip()
 
-        terminal_name = terminal_name or (active_site.name if active_site else site_code or "ATM")
-        origin = origin or (active_site.name if active_site else site_code or "ATM")
-        carrier = carrier or "ATM"
+        terminal_name = (
+            terminal_name
+            or (active_site.name if active_site else site_code or "ATM")
+        )
+
+        origin = (
+            origin
+            or (active_site.name if active_site else site_code or "ATM")
+        )
+
+        # En solo contenedor no se debe reemplazar silenciosamente por ATM.
+        # En cualquier operación con chasis sí se mantiene ATM.
+        if not is_container_only:
+            carrier = "ATM"
 
         if trip_date_raw:
             try:
@@ -623,6 +651,13 @@ def gate_out_post():
             flash("Debes indicar al menos un equipo: chasis o contenedor.", "danger")
             return redirect(url_for("yard.gate_out_view"))
 
+        if not is_draft and is_container_only and not carrier:
+            flash(
+                "Debes indicar el transportista para el EIR de solo contenedor.",
+                "danger",
+            )
+            return redirect(url_for("yard.gate_out_view"))
+
         if not is_draft and has_container and not c:
             flash("Debes seleccionar un contenedor válido.", "danger")
             return redirect(url_for("yard.gate_out_view"))
@@ -660,7 +695,7 @@ def gate_out_post():
                 terminal_name=terminal_name or "",
                 trip_date=trip_date,
                 trip_time=trip_time,
-                carrier=carrier or "ATM",
+                carrier=carrier,
                 origin=origin or "",
                 destination=destination or "",
                 operation_type=operation_type or None,
@@ -679,7 +714,7 @@ def gate_out_post():
         eir.terminal_name = terminal_name or ""
         eir.trip_date = trip_date
         eir.trip_time = trip_time
-        eir.carrier = carrier or "ATM"
+        eir.carrier = carrier
         eir.origin = origin or ""
         eir.destination = destination or ""
         eir.operation_type = operation_type or None
