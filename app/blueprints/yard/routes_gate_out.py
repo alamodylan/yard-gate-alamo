@@ -246,27 +246,16 @@ def api_gate_out_search_containers():
         "EVACUACION_MONTADA",
     }
 
-    sql_last_class = text("""
-        SELECT DISTINCT ON (cc.container_id)
-            cc.container_id,
-            cc.shipping_line
-        FROM yard_gate_alamo.container_classifications cc
-        WHERE cc.site_id = :site_id
-        ORDER BY cc.container_id, cc.classified_at DESC NULLS LAST, cc.id DESC
-    """)
-
-    class_rows = db.session.execute(
-        sql_last_class,
-        {"site_id": site_id},
-    ).mappings().all()
-
-    shipping_line_map = {
-        int(r["container_id"]): (r["shipping_line"] or "").strip().upper()
-        for r in class_rows
-    }
-
+    # =====================================================
+    # Primero obtener únicamente los 20 contenedores
+    # que realmente se mostrarán en el buscador.
+    # =====================================================
     query = (
-        db.session.query(Container, ContainerPosition, YardBay)
+        db.session.query(
+            Container,
+            ContainerPosition,
+            YardBay,
+        )
         .outerjoin(
             ContainerPosition,
             ContainerPosition.container_id == Container.id,
@@ -278,7 +267,9 @@ def api_gate_out_search_containers():
         .filter(
             Container.is_in_yard == True,  # noqa: E712
             Container.site_id == site_id,
-            Container.dispatch_status.in_(list(allowed_gate_out_statuses)),
+            Container.dispatch_status.in_(
+                list(allowed_gate_out_statuses)
+            ),
         )
     )
 
@@ -304,13 +295,64 @@ def api_gate_out_search_containers():
         .all()
     )
 
+    # =====================================================
+    # Consultar clasificaciones únicamente para esos
+    # contenedores, no para todo el predio.
+    # =====================================================
+    container_ids = [
+        c.id
+        for c, _, _ in rows
+        if c and c.id
+    ]
+
+    shipping_line_map = {}
+
+    if container_ids:
+        sql_last_class = text("""
+            SELECT DISTINCT ON (cc.container_id)
+                cc.container_id,
+                cc.shipping_line
+            FROM yard_gate_alamo.container_classifications cc
+            WHERE cc.site_id = :site_id
+              AND cc.container_id = ANY(:container_ids)
+            ORDER BY
+                cc.container_id,
+                cc.classified_at DESC NULLS LAST,
+                cc.id DESC
+        """)
+
+        class_rows = (
+            db.session.execute(
+                sql_last_class,
+                {
+                    "site_id": site_id,
+                    "container_ids": container_ids,
+                },
+            )
+            .mappings()
+            .all()
+        )
+
+        shipping_line_map = {
+            int(row["container_id"]): (
+                row["shipping_line"] or ""
+            ).strip().upper()
+            for row in class_rows
+        }
+
     results = []
 
-    for c, p, b in rows:
-        dispatch_status = (c.dispatch_status or "NORMAL").strip().upper()
+    for container, position, bay in rows:
+        dispatch_status = (
+            container.dispatch_status or "NORMAL"
+        ).strip().upper()
 
-        if b and p:
-            position_label = f"{b.code} F{str(p.depth_row).zfill(2)} N{p.tier}"
+        if bay and position:
+            position_label = (
+                f"{bay.code} "
+                f"F{str(position.depth_row).zfill(2)} "
+                f"N{position.tier}"
+            )
         else:
             position_label = "Montado / sin posición física"
 
@@ -319,20 +361,39 @@ def api_gate_out_search_containers():
             "EVACUAR_SOLICITADO": "Solicitado para evacuar",
             "DESPACHO_MONTADO": "Despacho montado",
             "EVACUACION_MONTADA": "Evacuación montada",
-        }.get(dispatch_status, dispatch_status)
+        }.get(
+            dispatch_status,
+            dispatch_status,
+        )
 
-        label = f"{c.code} · {c.size} · {position_label} · {status_label}"
+        label = (
+            f"{container.code} · "
+            f"{container.size} · "
+            f"{position_label} · "
+            f"{status_label}"
+        )
 
         results.append({
-            "id": c.id,
+            "id": container.id,
             "label": label,
-            "code": c.code or "",
-            "size": c.size or "",
-            "bay": b.code if b else "",
-            "row": p.depth_row if p else "",
-            "tier": p.tier if p else "",
+            "code": container.code or "",
+            "size": container.size or "",
+            "bay": bay.code if bay else "",
+            "row": (
+                position.depth_row
+                if position
+                else ""
+            ),
+            "tier": (
+                position.tier
+                if position
+                else ""
+            ),
             "dispatch_status": dispatch_status,
-            "shipping_line": shipping_line_map.get(c.id, ""),
+            "shipping_line": shipping_line_map.get(
+                container.id,
+                "",
+            ),
             "position_label": position_label,
         })
 

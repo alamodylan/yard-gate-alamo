@@ -3,7 +3,7 @@ from datetime import datetime
 
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-
+from sqlalchemy.orm import selectinload
 from app.extensions import db, login_manager
 
 SCHEMA = "yard_gate_alamo"
@@ -108,10 +108,13 @@ class User(db.Model, UserMixin):
         if self.is_admin:
             return []
 
+        user_sites = getattr(self, "user_sites", None) or []
+
         return [
             user_site.site_id
-            for user_site in (getattr(self, "user_sites", None) or [])
+            for user_site in user_sites
         ]
+
 
     @property
     def has_multiple_sites(self) -> bool:
@@ -122,7 +125,10 @@ class User(db.Model, UserMixin):
         if self.is_admin:
             return True
 
-        return len(self.site_ids) > 1
+        user_sites = getattr(self, "user_sites", None) or []
+
+        return len(user_sites) > 1
+
 
     def can_access_site(self, site_id: int | None) -> bool:
         """
@@ -138,9 +144,27 @@ class User(db.Model, UserMixin):
         if not site_id:
             return False
 
-        return int(site_id) in set(self.site_ids)
+        requested_site_id = int(site_id)
+        user_sites = getattr(self, "user_sites", None) or []
+
+        return any(
+            user_site.site_id == requested_site_id
+            for user_site in user_sites
+        )
 
 
 @login_manager.user_loader
 def load_user(user_id: str):
-    return User.query.get(int(user_id))
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+    return (
+        User.query
+        .options(
+            selectinload(User.user_sites)
+        )
+        .filter(User.id == user_id_int)
+        .first()
+    )

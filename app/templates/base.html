@@ -260,12 +260,59 @@
 </head>
 
 <body>
+  {# =========================================================
+     Valores globales calculados una sola vez por render.
+     Evita repetir can(), has_endpoint() y propiedades del usuario
+     en el menú de escritorio y el menú móvil.
+     ========================================================= #}
+  {% set p_map_view = can('map.view') %}
+  {% set p_gate_in_view = can('gate_in.view') %}
+  {% set p_gate_out_view = can('gate_out.view') %}
+  {% set p_inventory_view = can('inventory.view') %}
+  {% set p_empty_list_view = can('empty_list.view') %}
+  {% set p_dispatch_requests_view = can('dispatch.requests.view') %}
+  {% set p_dispatch_assigned_view = can('dispatch.assigned.view') %}
+  {% set p_dispatch_new_request = can('dispatch.new_request') %}
+  {% set p_dispatch_agenda_view = can('dispatch.agenda.view') %}
+  {% set p_dispatch_prelist_view = can('dispatch.prelist.view') %}
+  {% set p_tracking_view = can('tracking.view') %}
+  {% set p_dispatch_mounted_view = can('dispatch.mounted.view') %}
+  {% set p_chassis_view = can('chassis.view') %}
+  {% set p_tires_view = can('tires.view') %}
+  {% set p_eir_view = can('eir.view') %}
+  {% set p_reports_view = can('reports.view') %}
+  {% set p_admin_access = can('admin.access') %}
+  {% set p_audit_view = can('audit.view') %}
+  {% set p_map_config_view = can('map_config.view') %}
+
+  {% set ep_evacuation_list = has_endpoint('inventory.evacuation_list') %}
+  {% set ep_pending_requests = has_endpoint('dispatch.pending_requests') %}
+  {% set ep_assigned_requests = has_endpoint('dispatch.assigned_requests') %}
+  {% set ep_new_request = has_endpoint('dispatch.new_request') %}
+  {% set ep_agenda = has_endpoint('dispatch.agenda') %}
+  {% set ep_prelist = has_endpoint('dispatch.prelist') %}
+  {% set ep_gps_inventory = has_endpoint('dispatch.gps_inventory') %}
+  {% set ep_mounted = has_endpoint('dispatch.mounted') %}
+  {% set ep_mark_notifications_read = has_endpoint('dispatch.mark_notifications_read') %}
+
+  {% set user_has_multiple_sites = current_user.has_multiple_sites if current_user.is_authenticated else false %}
+  {% set site_key_value = active_site_key if active_site_key is defined else '' %}
+  {% set active_site_display =
+      active_site_name
+      if active_site_name is defined
+      else (
+        site_key_value
+        if site_key_value
+        else 'Activo'
+      )
+  %}
+
   <header class="topbar">
     <div class="topbar-inner">
 
       <a
         class="brand"
-        href="{% if can('map.view') %}{{ url_for('yard.map_view') }}{% else %}{{ url_for('yard.sites_dashboard') }}{% endif %}"
+        href="{% if p_map_view %}{{ url_for('yard.map_view') }}{% else %}{{ url_for('yard.sites_dashboard') }}{% endif %}"
         aria-label="Ir al inicio"
       >
         <img
@@ -283,19 +330,19 @@
       <nav class="navlinks" aria-label="Navegación principal">
 
         <div class="nav-group">
-          {% if can('map.view') %}
+          {% if p_map_view %}
             <a class="navlink" href="{{ url_for('yard.map_view') }}">Mapa</a>
           {% endif %}
 
-          {% if can('gate_in.view') %}
+          {% if p_gate_in_view %}
             <a class="navlink" href="{{ url_for('yard.gate_in_view') }}">
               Gate In
             </a>
           {% endif %}
 
-          {% if can('gate_out.view') %}
+          {% if p_gate_out_view %}
             <a class="navlink" href="{{ url_for('yard.gate_out_view') }}">
-              {% if active_site_key in ['COYOL', 'CALDERA', 'LIMON'] %}
+              {% if site_key_value in ['COYOL', 'CALDERA', 'LIMON'] %}
                 Gate Out / EIR
               {% else %}
                 Gate Out
@@ -303,13 +350,13 @@
             </a>
           {% endif %}
 
-          {% if can('inventory.view') %}
+          {% if p_inventory_view %}
             <a class="navlink" href="{{ url_for('inventory.inventory_index') }}">
               Inventario
             </a>
           {% endif %}
 
-          {% if can('empty_list.view') and has_endpoint('inventory.evacuation_list') %}
+          {% if p_empty_list_view and ep_evacuation_list %}
             <a class="navlink" href="{{ url_for('inventory.evacuation_list') }}">
               Lista de Vacíos
             </a>
@@ -317,43 +364,43 @@
         </div>
 
         <div class="nav-group">
-          {% if can('dispatch.requests.view') and has_endpoint('dispatch.pending_requests') %}
+          {% if p_dispatch_requests_view and ep_pending_requests %}
             <a class="navlink" href="{{ url_for('dispatch.pending_requests') }}">
               Solicitudes
             </a>
           {% endif %}
 
-          {% if can('dispatch.assigned.view') and has_endpoint('dispatch.assigned_requests') %}
+          {% if p_dispatch_assigned_view and ep_assigned_requests %}
             <a class="navlink" href="{{ url_for('dispatch.assigned_requests') }}">
               Asignadas
             </a>
           {% endif %}
 
-          {% if can('dispatch.new_request') and has_endpoint('dispatch.new_request') %}
+          {% if p_dispatch_new_request and ep_new_request %}
             <a class="navlink" href="{{ url_for('dispatch.new_request') }}">
               Nueva Solicitud
             </a>
           {% endif %}
 
-          {% if can('dispatch.agenda.view') and has_endpoint('dispatch.agenda') %}
+          {% if p_dispatch_agenda_view and ep_agenda %}
             <a class="navlink" href="{{ url_for('dispatch.agenda') }}">
               Agenda
             </a>
           {% endif %}
 
-          {% if can('dispatch.prelist.view') and has_endpoint('dispatch.prelist') %}
+          {% if p_dispatch_prelist_view and ep_prelist %}
             <a class="navlink" href="{{ url_for('dispatch.prelist') }}">
               Prelista
             </a>
           {% endif %}
 
-          {% if can('tracking.view') and has_endpoint('dispatch.gps_inventory') %}
+          {% if p_tracking_view and ep_gps_inventory %}
             <a class="navlink" href="{{ url_for('dispatch.gps_inventory') }}">
               Tracking
             </a>
           {% endif %}
 
-          {% if can('dispatch.mounted.view') and has_endpoint('dispatch.mounted') %}
+          {% if p_dispatch_mounted_view and ep_mounted %}
             <a class="navlink" href="{{ url_for('dispatch.mounted') }}">
               Montado
             </a>
@@ -361,25 +408,25 @@
         </div>
 
         <div class="nav-group">
-          {% if can('chassis.view') %}
+          {% if p_chassis_view %}
             <a class="navlink" href="{{ url_for('yard.chassis_list') }}">
               Chasis
             </a>
           {% endif %}
 
-          {% if can('tires.view') %}
+          {% if p_tires_view %}
             <a class="navlink" href="{{ url_for('yard.tires_list') }}">
               Llantas
             </a>
           {% endif %}
 
-          {% if can('eir.view') %}
+          {% if p_eir_view %}
             <a class="navlink" href="{{ url_for('yard.eir_list_view') }}">
               EIR
             </a>
           {% endif %}
 
-          {% if can('reports.view') %}
+          {% if p_reports_view %}
             {% if session.get('active_site_id') in [2, 3, 4] %}
               <a class="navlink" href="{{ url_for('yard.reports_dashboard') }}">
                 Reportes
@@ -392,21 +439,21 @@
           {% endif %}
         </div>
 
-        {% if current_user.is_authenticated and (can('admin.access') or can('audit.view') or can('map_config.view')) %}
+        {% if current_user.is_authenticated and (p_admin_access or p_audit_view or p_map_config_view) %}
           <div class="nav-group nav-group-admin">
-            {% if can('map_config.view') %}
+            {% if p_map_config_view %}
               <a class="navlink" href="{{ url_for('yard.map_config_view') }}">
                 Configuración Patio
               </a>
             {% endif %}
 
-            {% if can('admin.access') %}
+            {% if p_admin_access %}
               <a class="navlink" href="{{ url_for('admin.users_view') }}">
                 Usuarios
               </a>
             {% endif %}
 
-            {% if can('audit.view') %}
+            {% if p_audit_view %}
               <a class="navlink" href="{{ url_for('admin.audit_view') }}">
                 Auditoría
               </a>
@@ -483,7 +530,7 @@
               </div>
             </div>
 
-            {% if current_user.has_multiple_sites %}
+            {% if user_has_multiple_sites %}
               <a
                 class="navlink"
                 href="{{ url_for('yard.sites_dashboard') }}"
@@ -497,15 +544,7 @@
               <span class="site-chip-label">Predio</span>
 
               <strong>
-                {{
-                  active_site_name
-                  if active_site_name is defined
-                  else (
-                    active_site_key
-                    if active_site_key is defined
-                    else 'Activo'
-                  )
-                }}
+                {{ active_site_display }}
               </strong>
             </div>
 
@@ -553,28 +592,28 @@
 
   {% if current_user.is_authenticated %}
     <nav class="mobile-bottom-nav" aria-label="Navegación móvil">
-      {% if can('map.view') %}
+      {% if p_map_view %}
         <a href="{{ url_for('yard.map_view') }}">
           <span class="mobile-nav-icon">⌂</span>
           <span>Mapa</span>
         </a>
       {% endif %}
 
-      {% if can('gate_in.view') %}
+      {% if p_gate_in_view %}
         <a href="{{ url_for('yard.gate_in_view') }}">
           <span class="mobile-nav-icon">＋</span>
           <span>Gate In</span>
         </a>
       {% endif %}
 
-      {% if can('gate_out.view') %}
+      {% if p_gate_out_view %}
         <a href="{{ url_for('yard.gate_out_view') }}">
           <span class="mobile-nav-icon">↗</span>
           <span>Gate Out</span>
         </a>
       {% endif %}
 
-      {% if can('inventory.view') %}
+      {% if p_inventory_view %}
         <a href="{{ url_for('inventory.inventory_index') }}">
           <span class="mobile-nav-icon">▣</span>
           <span>Inventario</span>
@@ -603,15 +642,7 @@
         <div class="mobile-menu-site">
           <span>Predio activo</span>
           <strong>
-            {{
-              active_site_name
-              if active_site_name is defined
-              else (
-                active_site_key
-                if active_site_key is defined
-                else 'Activo'
-              )
-            }}
+            {{ active_site_display }}
           </strong>
         </div>
 
@@ -667,51 +698,51 @@
         <div class="mobile-menu-section-title">Operación</div>
 
         <div class="mobile-menu-links">
-          {% if can('map.view') %}
+          {% if p_map_view %}
             <a href="{{ url_for('yard.map_view') }}">Mapa</a>
           {% endif %}
 
-          {% if can('gate_in.view') %}
+          {% if p_gate_in_view %}
             <a href="{{ url_for('yard.gate_in_view') }}">Gate In</a>
           {% endif %}
 
-          {% if can('gate_out.view') %}
+          {% if p_gate_out_view %}
             <a href="{{ url_for('yard.gate_out_view') }}">Gate Out</a>
           {% endif %}
 
-          {% if can('inventory.view') %}
+          {% if p_inventory_view %}
             <a href="{{ url_for('inventory.inventory_index') }}">Inventario</a>
           {% endif %}
 
-          {% if can('empty_list.view') and has_endpoint('inventory.evacuation_list') %}
+          {% if p_empty_list_view and ep_evacuation_list %}
             <a href="{{ url_for('inventory.evacuation_list') }}">Lista de Vacíos</a>
           {% endif %}
 
-          {% if can('dispatch.requests.view') and has_endpoint('dispatch.pending_requests') %}
+          {% if p_dispatch_requests_view and ep_pending_requests %}
             <a href="{{ url_for('dispatch.pending_requests') }}">Solicitudes</a>
           {% endif %}
 
-          {% if can('dispatch.assigned.view') and has_endpoint('dispatch.assigned_requests') %}
+          {% if p_dispatch_assigned_view and ep_assigned_requests %}
             <a href="{{ url_for('dispatch.assigned_requests') }}">Asignadas</a>
           {% endif %}
 
-          {% if can('dispatch.new_request') and has_endpoint('dispatch.new_request') %}
+          {% if p_dispatch_new_request and ep_new_request %}
             <a href="{{ url_for('dispatch.new_request') }}">Nueva Solicitud</a>
           {% endif %}
 
-          {% if can('dispatch.agenda.view') and has_endpoint('dispatch.agenda') %}
+          {% if p_dispatch_agenda_view and ep_agenda %}
             <a href="{{ url_for('dispatch.agenda') }}">Agenda</a>
           {% endif %}
 
-          {% if can('dispatch.prelist.view') and has_endpoint('dispatch.prelist') %}
+          {% if p_dispatch_prelist_view and ep_prelist %}
             <a href="{{ url_for('dispatch.prelist') }}">Prelista</a>
           {% endif %}
 
-          {% if can('tracking.view') and has_endpoint('dispatch.gps_inventory') %}
+          {% if p_tracking_view and ep_gps_inventory %}
             <a href="{{ url_for('dispatch.gps_inventory') }}">Tracking</a>
           {% endif %}
 
-          {% if can('dispatch.mounted.view') and has_endpoint('dispatch.mounted') %}
+          {% if p_dispatch_mounted_view and ep_mounted %}
             <a href="{{ url_for('dispatch.mounted') }}">Montado</a>
           {% endif %}
         </div>
@@ -719,19 +750,19 @@
         <div class="mobile-menu-section-title">Equipo</div>
 
         <div class="mobile-menu-links">
-          {% if can('chassis.view') %}
+          {% if p_chassis_view %}
             <a href="{{ url_for('yard.chassis_list') }}">Chasis</a>
           {% endif %}
 
-          {% if can('tires.view') %}
+          {% if p_tires_view %}
             <a href="{{ url_for('yard.tires_list') }}">Llantas</a>
           {% endif %}
 
-          {% if can('eir.view') %}
+          {% if p_eir_view %}
             <a href="{{ url_for('yard.eir_list_view') }}">EIR</a>
           {% endif %}
 
-          {% if can('reports.view') %}
+          {% if p_reports_view %}
             {% if session.get('active_site_id') in [2, 3, 4] %}
               <a href="{{ url_for('yard.reports_dashboard') }}">Reportes</a>
             {% else %}
@@ -740,19 +771,19 @@
           {% endif %}
         </div>
 
-        {% if can('admin.access') or can('audit.view') or can('map_config.view') %}
+        {% if p_admin_access or p_audit_view or p_map_config_view %}
           <div class="mobile-menu-section-title">Administración</div>
 
           <div class="mobile-menu-links">
-            {% if can('map_config.view') %}
+            {% if p_map_config_view %}
               <a href="{{ url_for('yard.map_config_view') }}">Configuración Patio</a>
             {% endif %}
 
-            {% if can('admin.access') %}
+            {% if p_admin_access %}
               <a href="{{ url_for('admin.users_view') }}">Usuarios</a>
             {% endif %}
 
-            {% if can('audit.view') %}
+            {% if p_audit_view %}
               <a href="{{ url_for('admin.audit_view') }}">Auditoría</a>
             {% endif %}
           </div>
@@ -761,7 +792,7 @@
         <div class="mobile-menu-section-title">Sesión</div>
 
         <div class="mobile-menu-links">
-          {% if current_user.has_multiple_sites %}
+          {% if user_has_multiple_sites %}
             <a href="{{ url_for('yard.sites_dashboard') }}">Cambiar predio</a>
           {% endif %}
 
@@ -851,7 +882,7 @@
       const mobilePanel = document.getElementById("mobileNotificationPanel");
       const mobileCount = document.getElementById("mobileNotificationCount");
 
-      const markReadUrl = "{{ url_for('dispatch.mark_notifications_read') if has_endpoint('dispatch.mark_notifications_read') else '' }}";
+      const markReadUrl = "{{ url_for('dispatch.mark_notifications_read') if ep_mark_notifications_read else '' }}";
 
       let alreadyMarked = false;
 
