@@ -10,11 +10,12 @@ from flask import (
     Flask,
     current_app,
     g,
+    has_request_context,
     request,
     session,
 )
 from flask_login import current_user
-
+from sqlalchemy import event
 from app.config import Config
 from app.extensions import db, migrate, login_manager
 
@@ -33,6 +34,67 @@ def create_app():
 
     login_manager.init_app(app)
     login_manager.login_view = "auth.login"
+
+    # =========================================================
+    # Instrumentación SQL por petición
+    # =========================================================
+    with app.app_context():
+        engine = db.engine
+
+        if not getattr(engine, "_yard_sql_metrics_registered", False):
+
+            @event.listens_for(engine, "before_cursor_execute")
+            def before_cursor_execute(
+                conn,
+                cursor,
+                statement,
+                parameters,
+                context,
+                executemany,
+            ):
+                if has_request_context():
+                    context._yard_query_started_at = perf_counter()
+
+            @event.listens_for(engine, "after_cursor_execute")
+            def after_cursor_execute(
+                conn,
+                cursor,
+                statement,
+                parameters,
+                context,
+                executemany,
+            ):
+                if not has_request_context():
+                    return
+
+                started_at = getattr(
+                    context,
+                    "_yard_query_started_at",
+                    None,
+                )
+
+                if started_at is None:
+                    return
+
+                elapsed_ms = (
+                    perf_counter() - started_at
+                ) * 1000
+
+                g.sql_query_count = (
+                    getattr(g, "sql_query_count", 0) + 1
+                )
+
+                g.sql_total_ms = (
+                    getattr(g, "sql_total_ms", 0.0)
+                    + elapsed_ms
+                )
+
+                g.sql_slowest_ms = max(
+                    getattr(g, "sql_slowest_ms", 0.0),
+                    elapsed_ms,
+                )
+
+            engine._yard_sql_metrics_registered = True
 
     # =========================================================
     # Timezone / Date formatting
@@ -75,10 +137,21 @@ def create_app():
         """
         Prepara datos reutilizables durante una única petición.
 
-        Evita que distintos context processors consulten varias veces
-        el mismo predio activo.
+        Evita consultas duplicadas del predio activo y no consulta PostgreSQL
+        para recursos estáticos ni para el healthcheck.
         """
         g.request_started_at = perf_counter()
+
+        g.sql_query_count = 0
+        g.sql_total_ms = 0.0
+        g.sql_slowest_ms = 0.0
+
+        g.active_site_id = None
+        g.active_site = None
+
+        # No consultar PostgreSQL para archivos estáticos ni healthcheck.
+        if request.endpoint == "static" or request.path == "/health":
+            return None
 
         active_site_id = session.get("active_site_id")
 
@@ -92,7 +165,6 @@ def create_app():
             active_site_id = None
 
         g.active_site_id = active_site_id
-        g.active_site = None
 
         if active_site_id:
             from app.models.site import Site
@@ -102,15 +174,21 @@ def create_app():
                 active_site_id,
             )
 
+        return None
+
     # =========================================================
     # Medición de rendimiento
     # =========================================================
     @app.after_request
     def log_slow_request(response):
         """
-        Registra en Render las peticiones lentas.
+        Registra las peticiones lentas incluyendo métricas SQL.
 
-        No cambia la respuesta ni afecta la lógica de negocio.
+        Permite distinguir entre:
+        - tiempo consumido ejecutando SQL;
+        - cantidad de consultas;
+        - consulta más lenta;
+        - tiempo restante fuera de PostgreSQL.
         """
         started_at = getattr(
             g,
@@ -125,6 +203,29 @@ def create_app():
             perf_counter() - started_at
         ) * 1000
 
+        sql_query_count = getattr(
+            g,
+            "sql_query_count",
+            0,
+        )
+
+        sql_total_ms = getattr(
+            g,
+            "sql_total_ms",
+            0.0,
+        )
+
+        sql_slowest_ms = getattr(
+            g,
+            "sql_slowest_ms",
+            0.0,
+        )
+
+        non_sql_ms = max(
+            elapsed_ms - sql_total_ms,
+            0.0,
+        )
+
         try:
             slow_request_ms = int(
                 current_app.config.get(
@@ -135,13 +236,35 @@ def create_app():
         except (TypeError, ValueError):
             slow_request_ms = 1000
 
+        # Información útil visible también desde DevTools del navegador.
+        response.headers["Server-Timing"] = (
+            f"app;dur={elapsed_ms:.2f}, "
+            f"sql;dur={sql_total_ms:.2f}"
+        )
+
         if elapsed_ms >= slow_request_ms:
             current_app.logger.warning(
-                "SLOW_REQUEST method=%s path=%s status=%s duration_ms=%.2f",
+                (
+                    "SLOW_REQUEST "
+                    "method=%s "
+                    "path=%s "
+                    "endpoint=%s "
+                    "status=%s "
+                    "duration_ms=%.2f "
+                    "sql_queries=%s "
+                    "sql_total_ms=%.2f "
+                    "sql_slowest_ms=%.2f "
+                    "non_sql_ms=%.2f"
+                ),
                 request.method,
                 request.path,
+                request.endpoint,
                 response.status_code,
                 elapsed_ms,
+                sql_query_count,
+                sql_total_ms,
+                sql_slowest_ms,
+                non_sql_ms,
             )
 
         return response

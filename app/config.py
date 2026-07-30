@@ -51,6 +51,24 @@ class Config:
     # ==========================================================
     # Cola de impresión
     # ==========================================================
+
+    # Permite congelar completamente la consulta de trabajos
+    # sin eliminar rutas ni modificar la base de datos.
+    #
+    # false:
+    # - /api/print/pending responde sin consultar PostgreSQL.
+    # - no se reclaman trabajos.
+    # - el barrido de CLAIMED vencidos no se ejecuta.
+    #
+    # true:
+    # - la cola funciona normalmente.
+    PRINT_QUEUE_ENABLED = (
+        os.getenv("PRINT_QUEUE_ENABLED", "false")
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+
     PRINT_JOB_STALE_MINUTES = int(
         os.getenv("PRINT_JOB_STALE_MINUTES", "5")
     )

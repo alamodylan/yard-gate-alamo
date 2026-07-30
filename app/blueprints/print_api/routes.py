@@ -42,6 +42,31 @@ def _require_agent_key():
 
     return bool(expected) and key == expected
 
+def _print_queue_enabled() -> bool:
+    """
+    Indica si la cola de impresión está habilitada.
+
+    Cuando está deshabilitada:
+    - /api/print/pending responde sin consultar PostgreSQL.
+    - no se reclaman trabajos.
+    - no se ejecuta el barrido de trabajos vencidos.
+    - /api/print/jobs no crea nuevos registros.
+    """
+    value = current_app.config.get(
+        "PRINT_QUEUE_ENABLED",
+        False,
+    )
+
+    if isinstance(value, bool):
+        return value
+
+    return (
+        str(value)
+        .strip()
+        .lower()
+        in {"1", "true", "yes", "on"}
+    )
+
 
 # =========================================================
 # Barrido controlado de trabajos CLAIMED vencidos
@@ -152,8 +177,25 @@ def _requeue_stale_claimed_jobs(now: datetime) -> int:
 def create_job():
     """
     Lo llama la aplicación web cuando solicita una impresión.
+
+    Cuando PRINT_QUEUE_ENABLED=False:
+    - no crea registros en print_jobs;
+    - responde correctamente para no romper el flujo actual.
     """
     data = request.get_json(silent=True) or {}
+
+    # Cola temporalmente deshabilitada.
+    # No se inserta ningún trabajo en PostgreSQL.
+    if not _print_queue_enabled():
+        return jsonify({
+            "ok": True,
+            "job_id": None,
+            "queue_enabled": False,
+            "message": (
+                "La cola de impresión está temporalmente "
+                "deshabilitada."
+            ),
+        })
 
     payload_text = (
         data.get("payload_text") or ""
@@ -179,6 +221,7 @@ def create_job():
         return jsonify({
             "ok": True,
             "job_id": job.id,
+            "queue_enabled": True,
         })
 
     except (ProgrammingError, OperationalError):
@@ -199,18 +242,30 @@ def claim_next_job():
     """
     Lo consulta el agente instalado en la PC del Gate.
 
-    Flujo optimizado:
+    Cuando PRINT_QUEUE_ENABLED=False:
+    - valida la clave del agente;
+    - responde inmediatamente;
+    - no consulta PostgreSQL;
+    - no ejecuta el barrido de CLAIMED vencidos;
+    - no abre transacciones.
 
-    1. Valida la clave del agente.
-    2. Ejecuta el barrido de CLAIMED vencidos solo cada cierto tiempo.
-    3. Busca el trabajo PENDING más antiguo.
-    4. Lo bloquea con FOR UPDATE SKIP LOCKED.
-    5. Lo marca como CLAIMED.
+    Cuando PRINT_QUEUE_ENABLED=True:
+    - ejecuta el flujo normal de impresión.
     """
     if not _require_agent_key():
         return jsonify({
             "error": "unauthorized",
         }), 401
+
+    # =====================================================
+    # Cola temporalmente congelada
+    # =====================================================
+    if not _print_queue_enabled():
+        return jsonify({
+            "ok": True,
+            "job": None,
+            "queue_enabled": False,
+        })
 
     device_id = (
         request.args.get("device_id") or "GATE-PC"
@@ -241,6 +296,7 @@ def claim_next_job():
             return jsonify({
                 "ok": True,
                 "job": None,
+                "queue_enabled": True,
             })
 
         job.status = "CLAIMED"
@@ -252,6 +308,7 @@ def claim_next_job():
 
         return jsonify({
             "ok": True,
+            "queue_enabled": True,
             "job": {
                 "id": job.id,
                 "payload_text": job.payload_text,
@@ -266,6 +323,7 @@ def claim_next_job():
         return jsonify({
             "ok": True,
             "job": None,
+            "queue_enabled": True,
         })
 
 
