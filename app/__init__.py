@@ -361,6 +361,7 @@ def create_app():
     from app.blueprints.inventory import inventory_bp
     from app.blueprints.dispatch import dispatch_bp
     from app.blueprints.print_api.routes import bp as print_api_bp
+    from app.blueprints.tica import tica_bp
 
     app.register_blueprint(inventory_bp)
     app.register_blueprint(auth_bp)
@@ -368,6 +369,7 @@ def create_app():
     app.register_blueprint(admin_bp)
     app.register_blueprint(dispatch_bp)
     app.register_blueprint(print_api_bp)
+    app.register_blueprint(tica_bp)
 
     # =========================================================
     # Healthcheck

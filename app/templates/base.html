@@ -299,7 +299,11 @@
   {% set ep_tica_generator = has_endpoint('tica.generator') %}
 
   {% set user_has_multiple_sites = current_user.has_multiple_sites if current_user.is_authenticated else false %}
-  {% set site_key_value = active_site_key if active_site_key is defined else '' %}
+  {% set site_key_value =
+      (active_site.code or '')|upper
+      if active_site
+      else ''
+  %}
   {% set active_site_display =
       active_site_name
       if active_site_name is defined
