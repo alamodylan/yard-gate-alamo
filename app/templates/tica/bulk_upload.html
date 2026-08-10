@@ -1,0 +1,443 @@
+{% extends "base.html" %}
+
+{% block title %}Carga Masiva TICA{% endblock %}
+
+{% block content %}
+
+<div class="card card-pad">
+
+  <div class="page-head">
+
+    <div>
+      <h2>Carga masiva TICA</h2>
+
+      <p>
+        Importación de transportistas, choferes y ubicaciones.
+      </p>
+    </div>
+
+    <a
+      class="btn"
+      href="{{ url_for('tica.generator') }}"
+    >
+      Volver al generador
+    </a>
+
+  </div>
+
+</div>
+
+
+<div class="bulk-grid">
+
+
+  <!-- TRANSPORTISTAS -->
+
+  <div class="card card-pad bulk-card">
+
+    <div class="bulk-icon">
+      T
+    </div>
+
+    <h3>Transportistas</h3>
+
+    <p>
+      Nombre, cédula y estado del transportista.
+    </p>
+
+    <a
+      class="btn"
+      href="{{ url_for(
+        'tica.bulk_template',
+        template_type='TRANSPORTERS'
+      ) }}"
+    >
+      Descargar plantilla
+    </a>
+
+  </div>
+
+
+  <!-- CHOFERES -->
+
+  <div class="card card-pad bulk-card">
+
+    <div class="bulk-icon">
+      C
+    </div>
+
+    <h3>Choferes</h3>
+
+    <p>
+      Nombre, cédula, placa y transportista asociado.
+    </p>
+
+    <a
+      class="btn"
+      href="{{ url_for(
+        'tica.bulk_template',
+        template_type='DRIVERS'
+      ) }}"
+    >
+      Descargar plantilla
+    </a>
+
+  </div>
+
+
+  <!-- DESTINOS -->
+
+  <div class="card card-pad bulk-card">
+
+    <div class="bulk-icon">
+      U
+    </div>
+
+    <h3>Ubicaciones</h3>
+
+    <p>
+      Nombre de ubicación y código TICA.
+    </p>
+
+    <a
+      class="btn"
+      href="{{ url_for(
+        'tica.bulk_template',
+        template_type='DESTINATIONS'
+      ) }}"
+    >
+      Descargar plantilla
+    </a>
+
+  </div>
+
+</div>
+
+
+<div class="card card-pad" style="margin-top:16px;">
+
+  <h3>Importar archivo</h3>
+
+  <form
+    method="post"
+    action="{{ url_for('tica.bulk_upload_post') }}"
+    enctype="multipart/form-data"
+    class="upload-form"
+  >
+
+    <div>
+
+      <label>Tipo de catálogo</label>
+
+      <select
+        name="import_type"
+        required
+      >
+
+        <option value="">
+          Seleccionar...
+        </option>
+
+        <option value="TRANSPORTERS">
+          Transportistas
+        </option>
+
+        <option value="DRIVERS">
+          Choferes
+        </option>
+
+        <option value="DESTINATIONS">
+          Ubicaciones
+        </option>
+
+      </select>
+
+    </div>
+
+
+    <div>
+
+      <label>Archivo Excel</label>
+
+      <input
+        type="file"
+        name="file"
+        accept=".xlsx,.xlsm"
+        required
+      >
+
+    </div>
+
+
+    <div class="upload-action">
+
+      <button
+        class="btn primary"
+        type="submit"
+      >
+        Procesar carga
+      </button>
+
+    </div>
+
+  </form>
+
+  <div class="upload-note">
+
+    Si una cédula o código ya existe, el sistema actualizará el
+    registro existente en lugar de crear un duplicado.
+
+  </div>
+
+</div>
+
+
+<div class="card card-pad" style="margin-top:16px;">
+
+  <h3>Últimas cargas</h3>
+
+  {% if not recent_imports %}
+
+    <div class="empty">
+      No existen cargas masivas registradas.
+    </div>
+
+  {% else %}
+
+    <div class="table-wrap">
+
+      <table class="table">
+
+        <thead>
+
+          <tr>
+            <th>Fecha</th>
+            <th>Archivo</th>
+            <th>Tipo</th>
+            <th>Total</th>
+            <th>Creados</th>
+            <th>Actualizados</th>
+            <th>Omitidos</th>
+            <th>Errores</th>
+            <th>Estado</th>
+          </tr>
+
+        </thead>
+
+
+        <tbody>
+
+          {% for item in recent_imports %}
+
+            <tr>
+
+              <td>
+                {{ item.created_at|dt_cr("%d/%m/%Y %I:%M %p") }}
+              </td>
+
+              <td>
+                {{ item.original_file_name }}
+              </td>
+
+              <td>
+                {{ item.import_type }}
+              </td>
+
+              <td>
+                {{ item.total_rows }}
+              </td>
+
+              <td>
+                {{ item.created_rows }}
+              </td>
+
+              <td>
+                {{ item.updated_rows }}
+              </td>
+
+              <td>
+                {{ item.skipped_rows }}
+              </td>
+
+              <td>
+                {{ item.error_rows }}
+              </td>
+
+              <td>
+
+                <span
+                  class="status status-{{ item.status|lower }}"
+                >
+                  {{ item.status }}
+                </span>
+
+              </td>
+
+            </tr>
+
+          {% endfor %}
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  {% endif %}
+
+</div>
+
+
+<style>
+
+.page-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:14px;
+}
+
+.page-head h2{
+  margin:0;
+}
+
+.page-head p{
+  margin:4px 0 0;
+  opacity:.65;
+}
+
+.bulk-grid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:14px;
+  margin-top:16px;
+}
+
+.bulk-card{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+}
+
+.bulk-card h3{
+  margin:12px 0 4px;
+}
+
+.bulk-card p{
+  flex:1;
+  margin:0 0 14px;
+  opacity:.65;
+}
+
+.bulk-icon{
+  width:42px;
+  height:42px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:12px;
+  background:#1d4ed8;
+  color:white;
+  font-size:18px;
+  font-weight:900;
+}
+
+.upload-form{
+  display:grid;
+  grid-template-columns:220px 1fr auto;
+  gap:12px;
+  align-items:end;
+}
+
+.upload-form label{
+  display:block;
+  margin-bottom:6px;
+  font-weight:900;
+}
+
+.upload-form select,
+.upload-form input{
+  width:100%;
+  box-sizing:border-box;
+}
+
+.upload-note{
+  margin-top:14px;
+  padding:12px 14px;
+  border-radius:12px;
+  background:#f8fafc;
+  color:#475569;
+  font-size:13px;
+}
+
+.table-wrap{
+  overflow:auto;
+}
+
+.table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.table th,
+.table td{
+  padding:9px;
+  border-bottom:1px solid rgba(148,163,184,.2);
+  text-align:left;
+  font-size:13px;
+}
+
+.status{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:900;
+}
+
+.status-completed{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.status-partial{
+  background:#fef3c7;
+  color:#92400e;
+}
+
+.status-error{
+  background:#fee2e2;
+  color:#991b1b;
+}
+
+.status-processing{
+  background:#dbeafe;
+  color:#1d4ed8;
+}
+
+.empty{
+  padding:26px;
+  text-align:center;
+  opacity:.65;
+}
+
+@media(max-width:900px){
+
+  .bulk-grid{
+    grid-template-columns:1fr;
+  }
+
+  .upload-form{
+    grid-template-columns:1fr;
+  }
+
+  .page-head{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+}
+
+</style>
+
+{% endblock %}

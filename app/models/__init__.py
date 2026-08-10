@@ -32,3 +32,11 @@ from .transport import (
     TransportDocumentChange,
     TransportAttachment,
 )
+
+from .tica import (
+    TicaTransporter,
+    TicaDriver,
+    TicaDestination,
+    TicaGeneratedFile,
+    TicaImportBatch,
+)

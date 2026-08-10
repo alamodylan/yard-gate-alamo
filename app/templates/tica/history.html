@@ -1,0 +1,600 @@
+{% extends "base.html" %}
+
+{% block title %}Historial TICA{% endblock %}
+
+{% block content %}
+
+<div class="card card-pad">
+
+  <div class="page-head">
+
+    <div>
+      <h2>Historial de archivos TRM</h2>
+
+      <p>
+        Copia histórica de los archivos generados por el sistema.
+      </p>
+    </div>
+
+    <a
+      href="{{ url_for('tica.generator') }}"
+      class="btn primary"
+    >
+      + Generar TRM
+    </a>
+
+  </div>
+
+</div>
+
+
+<div
+  class="path-note"
+  style="margin-top:14px;"
+>
+  Los archivos descargados deben guardarse en:
+  <strong>{{ out_path_display }}</strong>
+</div>
+
+
+<div
+  class="card card-pad"
+  style="margin-top:14px;"
+>
+
+  <form method="get" class="filter-grid">
+
+    <div>
+      <label>Buscar</label>
+
+      <input
+        type="text"
+        name="q"
+        value="{{ q or '' }}"
+        placeholder="Viaje, contenedor, archivo, chofer..."
+      >
+    </div>
+
+
+    <div>
+      <label>Movimiento</label>
+
+      <select name="movement_type">
+
+        <option value="">
+          Todos
+        </option>
+
+        <option
+          value="E"
+          {% if movement_type == 'E' %}selected{% endif %}
+        >
+          Entrada
+        </option>
+
+        <option
+          value="S"
+          {% if movement_type == 'S' %}selected{% endif %}
+        >
+          Salida
+        </option>
+
+      </select>
+    </div>
+
+
+    <div class="filter-actions">
+
+      <button
+        type="submit"
+        class="btn primary"
+      >
+        Buscar
+      </button>
+
+      <a
+        href="{{ url_for('tica.history') }}"
+        class="btn"
+      >
+        Limpiar
+      </a>
+
+    </div>
+
+  </form>
+
+</div>
+
+
+<div
+  class="card card-pad"
+  style="margin-top:14px;"
+>
+
+  {% if not items %}
+
+    <div class="empty-state">
+      No existen archivos TRM con los filtros seleccionados.
+    </div>
+
+  {% else %}
+
+    <div class="table-wrap">
+
+      <table class="tica-table">
+
+        <thead>
+
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Archivo</th>
+            <th>Viaje</th>
+            <th>Ordinal</th>
+            <th>Transportista</th>
+            <th>Chofer</th>
+            <th>Contenedor</th>
+            <th>Destino</th>
+            <th>Usuario</th>
+            <th>Acciones</th>
+          </tr>
+
+        </thead>
+
+
+        <tbody>
+
+          {% for item in items %}
+
+            {% set r = item.record %}
+
+            <tr>
+
+              <td>
+                {{ r.created_at|dt_cr("%d/%m/%Y %I:%M %p") }}
+              </td>
+
+
+              <td>
+
+                {% if r.movement_type == "E" %}
+                  <span class="badge type-entry">
+                    Entrada
+                  </span>
+                {% else %}
+                  <span class="badge type-exit">
+                    Salida
+                  </span>
+                {% endif %}
+
+              </td>
+
+
+              <td>
+                <strong>
+                  {{ r.file_name }}
+                </strong>
+              </td>
+
+
+              <td>
+                {{ r.trip_number }}
+              </td>
+
+
+              <td>
+                {{ r.dua_ordinal }}
+              </td>
+
+
+              <td>
+
+                {{ r.transporter_name_snapshot or "—" }}
+
+                <small class="subline">
+                  {{ r.transporter_identification }}
+                </small>
+
+              </td>
+
+
+              <td>
+
+                {{ r.driver_name }}
+
+                <small class="subline">
+                  {{ r.driver_identification }}
+                  · {{ r.plate }}
+                </small>
+
+              </td>
+
+
+              <td>
+                {{ r.container_number }}
+              </td>
+
+
+              <td>
+
+                {{ r.destination_name_snapshot or "—" }}
+
+                <small class="subline">
+                  {{ r.destination_code }}
+                </small>
+
+              </td>
+
+
+              <td>
+                {{ item.username }}
+              </td>
+
+
+              <td>
+
+                <div class="actions">
+
+                  <a
+                    class="btn small primary"
+                    href="{{ url_for('tica.history_download', file_id=r.id) }}"
+                  >
+                    Descargar
+                  </a>
+
+
+                  <button
+                        type="button"
+                        class="btn small btn-view-content"
+                        data-id="{{ r.id }}"
+                        data-name="{{ r.file_name }}"
+                    >
+                        Ver
+                    </button>
+
+                </div>
+
+              </td>
+
+            </tr>
+
+          {% endfor %}
+
+        </tbody>
+
+      </table>
+
+    </div>
+
+  {% endif %}
+
+
+  {% if pagination.pages > 1 %}
+
+    <div class="pagination">
+
+      {% if pagination.has_prev %}
+
+        <a
+          class="btn small"
+          href="{{ url_for(
+            'tica.history',
+            page=pagination.prev_num,
+            q=q,
+            movement_type=movement_type
+          ) }}"
+        >
+          ← Anterior
+        </a>
+
+      {% endif %}
+
+
+      <span>
+        Página {{ pagination.page }}
+        de {{ pagination.pages }}
+      </span>
+
+
+      {% if pagination.has_next %}
+
+        <a
+          class="btn small"
+          href="{{ url_for(
+            'tica.history',
+            page=pagination.next_num,
+            q=q,
+            movement_type=movement_type
+          ) }}"
+        >
+          Siguiente →
+        </a>
+
+      {% endif %}
+
+    </div>
+
+  {% endif %}
+
+</div>
+
+
+<div class="modal-backdrop" id="contentModal">
+
+  <div class="content-modal">
+
+    <div class="modal-head">
+
+      <div>
+        <h3 id="contentModalTitle">
+          Archivo TRM
+        </h3>
+      </div>
+
+      <button
+        type="button"
+        class="close-button"
+        onclick="closeTicaContent()"
+      >
+        ×
+      </button>
+
+    </div>
+
+    <pre id="ticaContentBox"></pre>
+
+  </div>
+
+</div>
+
+
+<script>
+
+async function openTicaContent(id, fileName){
+
+  const modal =
+    document.getElementById(
+      "contentModal"
+    );
+
+  const title =
+    document.getElementById(
+      "contentModalTitle"
+    );
+
+  const box =
+    document.getElementById(
+      "ticaContentBox"
+    );
+
+  title.textContent = fileName;
+
+  box.textContent =
+    "Cargando...";
+
+  modal.style.display =
+    "flex";
+
+  try{
+
+    const base =
+      "{{ url_for('tica.history_content', file_id=999999) }}";
+
+    const url =
+      base.replace(
+        "999999",
+        String(id)
+      );
+
+    const response =
+      await fetch(url);
+
+    if (!response.ok){
+      throw new Error();
+    }
+
+    box.textContent =
+      await response.text();
+
+  }catch(error){
+
+    box.textContent =
+      "No se pudo cargar el contenido.";
+
+  }
+
+}
+
+
+function closeTicaContent(){
+
+  document.getElementById(
+    "contentModal"
+  ).style.display = "none";
+
+}
+
+document.querySelectorAll(".btn-view-content").forEach(btn => {
+
+    btn.addEventListener("click", () => {
+
+        openTicaContent(
+            btn.dataset.id,
+            btn.dataset.name
+        );
+
+    });
+
+});
+</script>
+
+
+
+<style>
+
+.page-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+}
+
+.page-head h2{
+  margin:0;
+}
+
+.page-head p{
+  margin:4px 0 0;
+  opacity:.65;
+}
+
+.path-note{
+  padding:12px 16px;
+  border-radius:12px;
+  background:#fffbeb;
+  border:1px solid #fde68a;
+  color:#78350f;
+}
+
+.path-note strong{
+  font-family:monospace;
+}
+
+.filter-grid{
+  display:grid;
+  grid-template-columns:1fr 220px auto;
+  gap:12px;
+  align-items:end;
+}
+
+.filter-actions{
+  display:flex;
+  gap:8px;
+}
+
+.table-wrap{
+  overflow:auto;
+}
+
+.tica-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.tica-table th,
+.tica-table td{
+  padding:10px;
+  border-bottom:1px solid rgba(148,163,184,.2);
+  text-align:left;
+  vertical-align:top;
+  font-size:13px;
+}
+
+.tica-table th{
+  white-space:nowrap;
+}
+
+.subline{
+  display:block;
+  margin-top:3px;
+  opacity:.65;
+}
+
+.badge{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:900;
+}
+
+.type-entry{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.type-exit{
+  background:#fee2e2;
+  color:#991b1b;
+}
+
+.actions{
+  display:flex;
+  gap:6px;
+}
+
+.pagination{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:12px;
+  margin-top:16px;
+}
+
+.empty-state{
+  padding:30px;
+  text-align:center;
+  opacity:.65;
+}
+
+.modal-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:5000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  background:rgba(15,23,42,.55);
+}
+
+.content-modal{
+  width:min(900px,100%);
+  max-height:85vh;
+  display:flex;
+  flex-direction:column;
+  padding:20px;
+  border-radius:16px;
+  background:white;
+  color:#0f172a;
+}
+
+.modal-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.close-button{
+  border:0;
+  background:none;
+  font-size:28px;
+  cursor:pointer;
+}
+
+#ticaContentBox{
+  overflow:auto;
+  padding:16px;
+  border-radius:10px;
+  background:#0f172a;
+  color:#e2e8f0;
+  font-size:12px;
+  white-space:pre-wrap;
+}
+
+@media(max-width:800px){
+
+  .page-head{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .filter-grid{
+    grid-template-columns:1fr;
+  }
+
+}
+
+</style>
+
+{% endblock %}

@@ -1,0 +1,2034 @@
+{% extends "base.html" %}
+
+{% block title %}Generador TICA{% endblock %}
+
+{% block content %}
+
+<div class="tica-page">
+
+  <div class="tica-header card card-pad">
+    <div>
+      <div class="tica-eyebrow">Integración TICA</div>
+      <h2>Generador de archivo TRM</h2>
+      <p>
+        Complete los datos del movimiento. El sistema generará el archivo
+        compatible con TICA y conservará una copia en el historial.
+      </p>
+    </div>
+
+    <div class="tica-header-actions">
+      <a
+        href="{{ url_for('tica.history') }}"
+        class="btn"
+      >
+        Historial
+      </a>
+
+      <a
+        href="{{ url_for('tica.transporters') }}"
+        class="btn"
+      >
+        Catálogos
+      </a>
+
+      <a
+        href="{{ url_for('tica.bulk_upload') }}"
+        class="btn"
+      >
+        Carga masiva
+      </a>
+    </div>
+  </div>
+
+
+  <div class="tica-path-card">
+    <div>
+      <span class="tica-path-label">
+        Ruta donde debe guardar el archivo
+      </span>
+
+      <strong id="ticaOutPath">
+        {{ out_path_display }}
+      </strong>
+    </div>
+
+    <button
+      type="button"
+      class="btn small"
+      id="btnCopyTicaPath"
+    >
+      Copiar ruta
+    </button>
+  </div>
+
+
+  <form
+    method="post"
+    action="{{ url_for('tica.generate') }}"
+    id="ticaGeneratorForm"
+  >
+
+    <!-- =====================================================
+         TIPO DE MOVIMIENTO
+         ===================================================== -->
+
+    <div class="card card-pad tica-section">
+
+      <div class="tica-section-title">
+        <span class="tica-step">1</span>
+
+        <div>
+          <h3>Tipo de movimiento</h3>
+          <p>
+            La selección se aplicará automáticamente en TRTENTSAL
+            y TRTMOVPRCTPO.
+          </p>
+        </div>
+      </div>
+
+      <div class="movement-selector">
+
+        <label class="movement-option">
+          <input
+            type="radio"
+            name="movement_type"
+            value="E"
+            checked
+          >
+
+          <span class="movement-card">
+            <span class="movement-code">E</span>
+
+            <span>
+              <strong>Entrada</strong>
+              <small>Movimiento de entrada</small>
+            </span>
+          </span>
+        </label>
+
+
+        <label class="movement-option">
+          <input
+            type="radio"
+            name="movement_type"
+            value="S"
+          >
+
+          <span class="movement-card">
+            <span class="movement-code">S</span>
+
+            <span>
+              <strong>Salida</strong>
+              <small>Movimiento de salida</small>
+            </span>
+          </span>
+        </label>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         TRANSPORTISTA
+         ===================================================== -->
+
+    <div class="card card-pad tica-section">
+
+      <div class="tica-section-title">
+        <span class="tica-step">2</span>
+
+        <div>
+          <h3>Transportista</h3>
+          <p>
+            Busque el transportista por nombre o cédula.
+          </p>
+        </div>
+      </div>
+
+
+      <div class="tica-grid two">
+
+        <div class="tica-field tica-search-field">
+
+          <label>
+            Nombre del transportista
+          </label>
+
+          <div class="input-action-row">
+
+            <div class="autocomplete-wrapper">
+              <input
+                type="text"
+                id="transporterSearch"
+                autocomplete="off"
+                placeholder="Escriba nombre o cédula..."
+              >
+
+              <div
+                class="autocomplete-results"
+                id="transporterResults"
+              ></div>
+            </div>
+
+            <button
+              type="button"
+              class="btn"
+              id="btnNewTransporter"
+            >
+              + Nuevo
+            </button>
+
+          </div>
+
+          <input
+            type="hidden"
+            name="transporter_id"
+            id="transporterId"
+          >
+
+        </div>
+
+
+        <div class="tica-field">
+
+          <label>
+            Cédula del transportista
+          </label>
+
+          <input
+            type="text"
+            name="transporter_identification"
+            id="transporterIdentification"
+            placeholder="Se cargará automáticamente"
+            required
+          >
+
+          <small>
+            Este es el valor que será enviado al archivo TRM.
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div
+        class="selected-record"
+        id="selectedTransporter"
+        hidden
+      >
+        <div>
+          <small>Transportista seleccionado</small>
+          <strong id="selectedTransporterName"></strong>
+        </div>
+
+        <button
+          type="button"
+          class="link-button"
+          id="btnClearTransporter"
+        >
+          Cambiar
+        </button>
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         CHOFER
+         ===================================================== -->
+
+    <div class="card card-pad tica-section">
+
+      <div class="tica-section-title">
+        <span class="tica-step">3</span>
+
+        <div>
+          <h3>Chofer y cabezal</h3>
+          <p>
+            Los choferes disponibles dependen del transportista seleccionado.
+          </p>
+        </div>
+      </div>
+
+
+      <div class="tica-field">
+
+        <label>
+          Buscar chofer
+        </label>
+
+        <div class="input-action-row">
+
+          <div class="autocomplete-wrapper">
+            <input
+              type="text"
+              id="driverSearch"
+              autocomplete="off"
+              placeholder="Primero seleccione un transportista"
+              disabled
+            >
+
+            <div
+              class="autocomplete-results"
+              id="driverResults"
+            ></div>
+          </div>
+
+          <button
+            type="button"
+            class="btn"
+            id="btnNewDriver"
+            disabled
+          >
+            + Nuevo
+          </button>
+
+        </div>
+
+        <input
+          type="hidden"
+          name="driver_id"
+          id="driverId"
+        >
+
+      </div>
+
+
+      <div class="tica-grid three">
+
+        <div class="tica-field">
+          <label>Nombre del chofer</label>
+
+          <input
+            type="text"
+            name="driver_name"
+            id="driverName"
+            required
+          >
+        </div>
+
+
+        <div class="tica-field">
+          <label>Cédula del chofer</label>
+
+          <input
+            type="text"
+            name="driver_identification"
+            id="driverIdentification"
+            required
+          >
+        </div>
+
+
+        <div class="tica-field">
+          <label>Placa</label>
+
+          <input
+            type="text"
+            name="plate"
+            id="driverPlate"
+            required
+          >
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         DATOS MOVIMIENTO
+         ===================================================== -->
+
+    <div class="card card-pad tica-section">
+
+      <div class="tica-section-title">
+        <span class="tica-step">4</span>
+
+        <div>
+          <h3>Datos del movimiento</h3>
+          <p>
+            Información que será incorporada directamente en el archivo.
+          </p>
+        </div>
+      </div>
+
+
+      <div class="tica-grid three">
+
+        <div class="tica-field">
+          <label>Viaje</label>
+
+          <input
+            type="text"
+            name="trip_number"
+            inputmode="numeric"
+            placeholder="Ej. 202690290"
+            required
+          >
+        </div>
+
+
+        <div class="tica-field">
+
+          <label>Ordinal de DUA</label>
+
+          <input
+            type="number"
+            name="dua_ordinal"
+            min="1"
+            step="1"
+            value="{{ default_dua_ordinal or 1 }}"
+            required
+          >
+
+          <small>
+            Se aplicará a todos los campos NUM y TRTMOVORD.
+          </small>
+
+        </div>
+
+
+        <div class="tica-field">
+
+          <label>Fecha</label>
+
+          <input
+            type="text"
+            value="{{ today_cr.strftime('%d/%m/%Y') }}"
+            readonly
+          >
+
+          <small>
+            Fecha automática de Costa Rica.
+          </small>
+
+        </div>
+
+      </div>
+
+
+      <div class="tica-grid two">
+
+        <div class="tica-field">
+          <label>Peso</label>
+
+          <input
+            type="number"
+            name="weight"
+            min="0"
+            step="0.001"
+            required
+          >
+        </div>
+
+
+        <div class="tica-field">
+          <label>Bultos</label>
+
+          <input
+            type="number"
+            name="packages"
+            min="0"
+            step="1"
+            required
+          >
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         UBICACIÓN
+         ===================================================== -->
+
+    <div class="card card-pad tica-section">
+
+      <div class="tica-section-title">
+
+        <span class="tica-step">5</span>
+
+        <div>
+          <h3>Ubicación / destino</h3>
+          <p>
+            Se mostrará el nombre, pero al TRM se enviará el código.
+          </p>
+        </div>
+
+      </div>
+
+
+      <div class="tica-grid two">
+
+        <div class="tica-field">
+
+          <label>Ubicación</label>
+
+          <div class="input-action-row">
+
+            <div class="autocomplete-wrapper">
+
+              <input
+                type="text"
+                id="destinationSearch"
+                autocomplete="off"
+                placeholder="Escriba nombre o código..."
+              >
+
+              <div
+                class="autocomplete-results"
+                id="destinationResults"
+              ></div>
+
+            </div>
+
+            <button
+              type="button"
+              class="btn"
+              id="btnNewDestination"
+            >
+              + Nueva
+            </button>
+
+          </div>
+
+          <input
+            type="hidden"
+            name="destination_id"
+            id="destinationId"
+          >
+
+        </div>
+
+
+        <div class="tica-field">
+
+          <label>Código del destino</label>
+
+          <input
+            type="text"
+            name="destination_code"
+            id="destinationCode"
+            required
+          >
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         CONTENEDOR
+         ===================================================== -->
+
+    <div class="card card-pad tica-section">
+
+      <div class="tica-section-title">
+
+        <span class="tica-step">6</span>
+
+        <div>
+          <h3>Contenedor y marchamo</h3>
+        </div>
+
+      </div>
+
+
+      <div class="tica-grid two">
+
+        <div class="tica-field">
+
+          <label>Contenedor</label>
+
+          <input
+            type="text"
+            name="container_number"
+            maxlength="30"
+            autocomplete="off"
+            placeholder="Ej. FCIU5752715"
+            required
+          >
+
+        </div>
+
+
+        <div class="tica-field">
+
+          <label>Marchamo</label>
+
+          <input
+            type="text"
+            name="seal_number"
+            maxlength="120"
+            autocomplete="off"
+            required
+          >
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- =====================================================
+         GENERAR
+         ===================================================== -->
+
+    <div class="tica-generate-bar">
+
+      <div>
+        <strong>Archivo listo para generar</strong>
+
+        <span>
+          Al descargarlo, guárdelo en
+          <b>{{ out_path_display }}</b>
+        </span>
+      </div>
+
+
+      <button
+        type="submit"
+        class="btn success tica-generate-button"
+        id="btnGenerate"
+      >
+        Generar archivo TRM
+      </button>
+
+    </div>
+
+  </form>
+
+</div>
+
+
+<!-- =========================================================
+     MODAL TRANSPORTISTA
+     ========================================================= -->
+
+<div class="tica-modal-backdrop" id="transporterModal">
+
+  <div class="tica-modal">
+
+    <div class="tica-modal-header">
+      <div>
+        <h3>Nuevo transportista</h3>
+        <p>
+          El nombre se utiliza únicamente en el sistema.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        class="modal-close"
+        data-close-modal="transporterModal"
+      >
+        ×
+      </button>
+    </div>
+
+
+    <div class="tica-field">
+      <label>Nombre</label>
+
+      <input
+        type="text"
+        id="newTransporterName"
+      >
+    </div>
+
+
+    <div class="tica-field">
+      <label>Cédula</label>
+
+      <input
+        type="text"
+        id="newTransporterIdentification"
+      >
+    </div>
+
+
+    <div class="tica-modal-actions">
+
+      <button
+        type="button"
+        class="btn"
+        data-close-modal="transporterModal"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="button"
+        class="btn primary"
+        id="btnSaveTransporter"
+      >
+        Guardar transportista
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =========================================================
+     MODAL CHOFER
+     ========================================================= -->
+
+<div class="tica-modal-backdrop" id="driverModal">
+
+  <div class="tica-modal">
+
+    <div class="tica-modal-header">
+
+      <div>
+        <h3>Nuevo chofer</h3>
+
+        <p>
+          Se ligará al transportista seleccionado.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        class="modal-close"
+        data-close-modal="driverModal"
+      >
+        ×
+      </button>
+
+    </div>
+
+
+    <div class="tica-field">
+      <label>Nombre</label>
+
+      <input
+        type="text"
+        id="newDriverName"
+      >
+    </div>
+
+
+    <div class="tica-grid two">
+
+      <div class="tica-field">
+        <label>Cédula</label>
+
+        <input
+          type="text"
+          id="newDriverIdentification"
+        >
+      </div>
+
+
+      <div class="tica-field">
+        <label>Placa</label>
+
+        <input
+          type="text"
+          id="newDriverPlate"
+        >
+      </div>
+
+    </div>
+
+
+    <div class="tica-modal-actions">
+
+      <button
+        type="button"
+        class="btn"
+        data-close-modal="driverModal"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="button"
+        class="btn primary"
+        id="btnSaveDriver"
+      >
+        Guardar chofer
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<!-- =========================================================
+     MODAL UBICACIÓN
+     ========================================================= -->
+
+<div class="tica-modal-backdrop" id="destinationModal">
+
+  <div class="tica-modal">
+
+    <div class="tica-modal-header">
+
+      <div>
+        <h3>Nueva ubicación</h3>
+      </div>
+
+      <button
+        type="button"
+        class="modal-close"
+        data-close-modal="destinationModal"
+      >
+        ×
+      </button>
+
+    </div>
+
+
+    <div class="tica-field">
+      <label>Nombre</label>
+
+      <input
+        type="text"
+        id="newDestinationName"
+      >
+    </div>
+
+
+    <div class="tica-field">
+      <label>Código</label>
+
+      <input
+        type="text"
+        id="newDestinationCode"
+      >
+    </div>
+
+
+    <div class="tica-modal-actions">
+
+      <button
+        type="button"
+        class="btn"
+        data-close-modal="destinationModal"
+      >
+        Cancelar
+      </button>
+
+      <button
+        type="button"
+        class="btn primary"
+        id="btnSaveDestination"
+      >
+        Guardar ubicación
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+
+  const URL_TRANSPORTERS =
+    "{{ url_for('tica.api_search_transporters') }}";
+
+  const URL_SAVE_TRANSPORTER =
+    "{{ url_for('tica.api_save_transporter') }}";
+
+  const URL_DRIVERS =
+    "{{ url_for('tica.api_search_drivers') }}";
+
+  const URL_SAVE_DRIVER =
+    "{{ url_for('tica.api_save_driver') }}";
+
+  const URL_DESTINATIONS =
+    "{{ url_for('tica.api_search_destinations') }}";
+
+  const URL_SAVE_DESTINATION =
+    "{{ url_for('tica.api_save_destination') }}";
+
+
+  const transporterSearch =
+    document.getElementById("transporterSearch");
+
+  const transporterResults =
+    document.getElementById("transporterResults");
+
+  const transporterId =
+    document.getElementById("transporterId");
+
+  const transporterIdentification =
+    document.getElementById(
+      "transporterIdentification"
+    );
+
+  const selectedTransporter =
+    document.getElementById(
+      "selectedTransporter"
+    );
+
+  const selectedTransporterName =
+    document.getElementById(
+      "selectedTransporterName"
+    );
+
+
+  const driverSearch =
+    document.getElementById("driverSearch");
+
+  const driverResults =
+    document.getElementById("driverResults");
+
+  const driverId =
+    document.getElementById("driverId");
+
+  const driverName =
+    document.getElementById("driverName");
+
+  const driverIdentification =
+    document.getElementById(
+      "driverIdentification"
+    );
+
+  const driverPlate =
+    document.getElementById("driverPlate");
+
+  const btnNewDriver =
+    document.getElementById("btnNewDriver");
+
+
+  const destinationSearch =
+    document.getElementById(
+      "destinationSearch"
+    );
+
+  const destinationResults =
+    document.getElementById(
+      "destinationResults"
+    );
+
+  const destinationId =
+    document.getElementById(
+      "destinationId"
+    );
+
+  const destinationCode =
+    document.getElementById(
+      "destinationCode"
+    );
+
+
+  let transporterTimer = null;
+  let driverTimer = null;
+  let destinationTimer = null;
+
+
+  function openModal(id){
+    const modal = document.getElementById(id);
+
+    if (modal){
+      modal.style.display = "flex";
+    }
+  }
+
+
+  function closeModal(id){
+    const modal = document.getElementById(id);
+
+    if (modal){
+      modal.style.display = "none";
+    }
+  }
+
+
+  document.querySelectorAll(
+    "[data-close-modal]"
+  ).forEach(button => {
+
+    button.addEventListener("click", () => {
+      closeModal(
+        button.dataset.closeModal
+      );
+    });
+
+  });
+
+
+  document.querySelectorAll(
+    ".tica-modal-backdrop"
+  ).forEach(modal => {
+
+    modal.addEventListener("click", event => {
+
+      if (event.target === modal){
+        closeModal(modal.id);
+      }
+
+    });
+
+  });
+
+
+  async function fetchJSON(url, options = {}){
+    const response = await fetch(
+      url,
+      options
+    );
+
+    const data = await response.json();
+
+    if (!response.ok || data.ok === false){
+      throw new Error(
+        data.message ||
+        data.error ||
+        "Error procesando solicitud."
+      );
+    }
+
+    return data;
+  }
+
+
+  function clearResults(element){
+    element.innerHTML = "";
+    element.classList.remove("open");
+  }
+
+
+  function showResults(element){
+    element.classList.add("open");
+  }
+
+
+  function clearDriver(){
+    driverId.value = "";
+    driverSearch.value = "";
+    driverName.value = "";
+    driverIdentification.value = "";
+    driverPlate.value = "";
+    clearResults(driverResults);
+  }
+
+
+  function selectTransporter(item){
+
+    transporterId.value = item.id;
+
+    transporterSearch.value =
+      item.name;
+
+    transporterIdentification.value =
+      item.identification_number || "";
+
+    selectedTransporterName.textContent =
+      `${item.name} · ${item.identification_number}`;
+
+    selectedTransporter.hidden = false;
+
+    driverSearch.disabled = false;
+    btnNewDriver.disabled = false;
+
+    driverSearch.placeholder =
+      "Buscar chofer...";
+
+    clearResults(
+      transporterResults
+    );
+
+    clearDriver();
+
+    loadDrivers("");
+
+  }
+
+
+  function selectDriver(item){
+
+    driverId.value =
+      item.id;
+
+    driverSearch.value =
+      item.name;
+
+    driverName.value =
+      item.name || "";
+
+    driverIdentification.value =
+      item.identification_number || "";
+
+    driverPlate.value =
+      item.plate || "";
+
+    clearResults(driverResults);
+
+  }
+
+
+  function selectDestination(item){
+
+    destinationId.value =
+      item.id;
+
+    destinationSearch.value =
+      item.name;
+
+    destinationCode.value =
+      item.code || "";
+
+    clearResults(destinationResults);
+
+  }
+
+
+  async function searchTransporters(value){
+
+    const q = value.trim();
+
+    if (q.length < 2){
+      clearResults(transporterResults);
+      return;
+    }
+
+    try{
+
+      const data = await fetchJSON(
+        `${URL_TRANSPORTERS}?q=${encodeURIComponent(q)}`
+      );
+
+      transporterResults.innerHTML = "";
+
+      if (!data.items.length){
+
+        transporterResults.innerHTML = `
+          <div class="autocomplete-empty">
+            No se encontraron transportistas.
+          </div>
+        `;
+
+        showResults(transporterResults);
+
+        return;
+      }
+
+      data.items.forEach(item => {
+
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+          "autocomplete-item";
+
+        button.innerHTML = `
+          <strong>${escapeHtml(item.name)}</strong>
+          <small>${escapeHtml(item.identification_number)}</small>
+        `;
+
+        button.addEventListener(
+          "click",
+          () => selectTransporter(item)
+        );
+
+        transporterResults.appendChild(
+          button
+        );
+
+      });
+
+      showResults(transporterResults);
+
+    }catch(error){
+
+      console.error(error);
+
+    }
+
+  }
+
+
+  async function loadDrivers(q = ""){
+
+    const transporter =
+      transporterId.value;
+
+    if (!transporter){
+      return;
+    }
+
+    try{
+
+      const data = await fetchJSON(
+        `${URL_DRIVERS}?transporter_id=${encodeURIComponent(transporter)}&q=${encodeURIComponent(q)}`
+      );
+
+      driverResults.innerHTML = "";
+
+      if (!data.items.length){
+
+        driverResults.innerHTML = `
+          <div class="autocomplete-empty">
+            No hay choferes disponibles.
+          </div>
+        `;
+
+        showResults(driverResults);
+
+        return;
+      }
+
+      data.items.forEach(item => {
+
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+          "autocomplete-item";
+
+        button.innerHTML = `
+          <strong>${escapeHtml(item.name)}</strong>
+          <small>
+            ${escapeHtml(item.identification_number)}
+            · ${escapeHtml(item.plate || "")}
+          </small>
+        `;
+
+        button.addEventListener(
+          "click",
+          () => selectDriver(item)
+        );
+
+        driverResults.appendChild(
+          button
+        );
+
+      });
+
+      showResults(driverResults);
+
+    }catch(error){
+
+      console.error(error);
+
+    }
+
+  }
+
+
+  async function searchDestinations(value){
+
+    const q = value.trim();
+
+    if (q.length < 2){
+      clearResults(destinationResults);
+      return;
+    }
+
+    try{
+
+      const data = await fetchJSON(
+        `${URL_DESTINATIONS}?q=${encodeURIComponent(q)}`
+      );
+
+      destinationResults.innerHTML = "";
+
+      if (!data.items.length){
+
+        destinationResults.innerHTML = `
+          <div class="autocomplete-empty">
+            No se encontraron ubicaciones.
+          </div>
+        `;
+
+        showResults(destinationResults);
+
+        return;
+      }
+
+      data.items.forEach(item => {
+
+        const button =
+          document.createElement("button");
+
+        button.type = "button";
+
+        button.className =
+          "autocomplete-item";
+
+        button.innerHTML = `
+          <strong>${escapeHtml(item.name)}</strong>
+          <small>${escapeHtml(item.code)}</small>
+        `;
+
+        button.addEventListener(
+          "click",
+          () => selectDestination(item)
+        );
+
+        destinationResults.appendChild(
+          button
+        );
+
+      });
+
+      showResults(destinationResults);
+
+    }catch(error){
+
+      console.error(error);
+
+    }
+
+  }
+
+
+  function escapeHtml(value){
+
+    const div =
+      document.createElement("div");
+
+    div.textContent =
+      value == null ? "" : String(value);
+
+    return div.innerHTML;
+
+  }
+
+
+  transporterSearch.addEventListener(
+    "input",
+    () => {
+
+      transporterId.value = "";
+      selectedTransporter.hidden = true;
+
+      clearTimeout(transporterTimer);
+
+      transporterTimer = setTimeout(
+        () => searchTransporters(
+          transporterSearch.value
+        ),
+        300
+      );
+
+    }
+  );
+
+
+  driverSearch.addEventListener(
+    "focus",
+    () => {
+
+      if (
+        transporterId.value &&
+        !driverSearch.value
+      ){
+        loadDrivers("");
+      }
+
+    }
+  );
+
+
+  driverSearch.addEventListener(
+    "input",
+    () => {
+
+      driverId.value = "";
+
+      clearTimeout(driverTimer);
+
+      driverTimer = setTimeout(
+        () => loadDrivers(
+          driverSearch.value
+        ),
+        300
+      );
+
+    }
+  );
+
+
+  destinationSearch.addEventListener(
+    "input",
+    () => {
+
+      destinationId.value = "";
+
+      clearTimeout(destinationTimer);
+
+      destinationTimer = setTimeout(
+        () => searchDestinations(
+          destinationSearch.value
+        ),
+        300
+      );
+
+    }
+  );
+
+
+  document.getElementById(
+    "btnClearTransporter"
+  ).addEventListener(
+    "click",
+    () => {
+
+      transporterId.value = "";
+      transporterSearch.value = "";
+      transporterIdentification.value = "";
+
+      selectedTransporter.hidden = true;
+
+      driverSearch.disabled = true;
+      btnNewDriver.disabled = true;
+
+      driverSearch.placeholder =
+        "Primero seleccione un transportista";
+
+      clearDriver();
+
+      transporterSearch.focus();
+
+    }
+  );
+
+
+  document.getElementById(
+    "btnNewTransporter"
+  ).addEventListener(
+    "click",
+    () => openModal("transporterModal")
+  );
+
+
+  btnNewDriver.addEventListener(
+    "click",
+    () => {
+
+      if (!transporterId.value){
+        alert(
+          "Seleccione primero un transportista."
+        );
+
+        return;
+      }
+
+      openModal("driverModal");
+
+    }
+  );
+
+
+  document.getElementById(
+    "btnNewDestination"
+  ).addEventListener(
+    "click",
+    () => openModal("destinationModal")
+  );
+
+
+  document.getElementById(
+    "btnSaveTransporter"
+  ).addEventListener(
+    "click",
+    async () => {
+
+      try{
+
+        const data = await fetchJSON(
+          URL_SAVE_TRANSPORTER,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              name:
+                document.getElementById(
+                  "newTransporterName"
+                ).value,
+
+              identification_number:
+                document.getElementById(
+                  "newTransporterIdentification"
+                ).value,
+
+              is_active: true
+            })
+          }
+        );
+
+        selectTransporter(data.item);
+
+        closeModal(
+          "transporterModal"
+        );
+
+      }catch(error){
+
+        alert(error.message);
+
+      }
+
+    }
+  );
+
+
+  document.getElementById(
+    "btnSaveDriver"
+  ).addEventListener(
+    "click",
+    async () => {
+
+      try{
+
+        const data = await fetchJSON(
+          URL_SAVE_DRIVER,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              transporter_id:
+                transporterId.value,
+
+              name:
+                document.getElementById(
+                  "newDriverName"
+                ).value,
+
+              identification_number:
+                document.getElementById(
+                  "newDriverIdentification"
+                ).value,
+
+              plate:
+                document.getElementById(
+                  "newDriverPlate"
+                ).value,
+
+              is_active: true
+            })
+          }
+        );
+
+        selectDriver(data.item);
+
+        closeModal(
+          "driverModal"
+        );
+
+      }catch(error){
+
+        alert(error.message);
+
+      }
+
+    }
+  );
+
+
+  document.getElementById(
+    "btnSaveDestination"
+  ).addEventListener(
+    "click",
+    async () => {
+
+      try{
+
+        const data = await fetchJSON(
+          URL_SAVE_DESTINATION,
+          {
+            method: "POST",
+
+            headers: {
+              "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+              name:
+                document.getElementById(
+                  "newDestinationName"
+                ).value,
+
+              code:
+                document.getElementById(
+                  "newDestinationCode"
+                ).value,
+
+              is_active: true
+            })
+          }
+        );
+
+        selectDestination(
+          data.item
+        );
+
+        closeModal(
+          "destinationModal"
+        );
+
+      }catch(error){
+
+        alert(error.message);
+
+      }
+
+    }
+  );
+
+
+  document.getElementById(
+    "btnCopyTicaPath"
+  ).addEventListener(
+    "click",
+    async () => {
+
+      const path =
+        document.getElementById(
+          "ticaOutPath"
+        ).textContent.trim();
+
+      try{
+
+        await navigator.clipboard.writeText(
+          path
+        );
+
+        alert(
+          "Ruta copiada: " + path
+        );
+
+      }catch(error){
+
+        alert(path);
+
+      }
+
+    }
+  );
+
+
+  document.addEventListener(
+    "click",
+    event => {
+
+      if (
+        !event.target.closest(
+          ".autocomplete-wrapper"
+        )
+      ){
+        clearResults(
+          transporterResults
+        );
+
+        clearResults(
+          driverResults
+        );
+
+        clearResults(
+          destinationResults
+        );
+      }
+
+    }
+  );
+
+});
+</script>
+
+
+<style>
+
+.tica-page{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+.tica-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+}
+
+.tica-header h2{
+  margin:2px 0 4px;
+}
+
+.tica-header p{
+  margin:0;
+  opacity:.72;
+}
+
+.tica-eyebrow{
+  font-size:11px;
+  font-weight:900;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  opacity:.65;
+}
+
+.tica-header-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.tica-path-card{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  padding:14px 18px;
+  border:1px solid #fde68a;
+  border-radius:14px;
+  background:#fffbeb;
+  color:#78350f;
+}
+
+.tica-path-card strong{
+  display:block;
+  margin-top:3px;
+  font-family:monospace;
+  font-size:15px;
+}
+
+.tica-path-label{
+  font-size:12px;
+  font-weight:800;
+}
+
+.tica-section{
+  margin-bottom:16px;
+}
+
+.tica-section-title{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:18px;
+}
+
+.tica-section-title h3{
+  margin:0;
+}
+
+.tica-section-title p{
+  margin:4px 0 0;
+  opacity:.65;
+  font-size:13px;
+}
+
+.tica-step{
+  width:30px;
+  height:30px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex:none;
+  background:#1d4ed8;
+  color:white;
+  font-weight:900;
+}
+
+.tica-grid{
+  display:grid;
+  gap:14px;
+}
+
+.tica-grid.two{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+}
+
+.tica-grid.three{
+  grid-template-columns:repeat(3,minmax(0,1fr));
+}
+
+.tica-field{
+  margin-bottom:14px;
+}
+
+.tica-field label{
+  display:block;
+  margin-bottom:6px;
+  font-size:12px;
+  font-weight:900;
+}
+
+.tica-field input,
+.tica-field select{
+  width:100%;
+  box-sizing:border-box;
+}
+
+.tica-field small{
+  display:block;
+  margin-top:5px;
+  opacity:.65;
+}
+
+.input-action-row{
+  display:flex;
+  gap:8px;
+  align-items:flex-start;
+}
+
+.input-action-row .autocomplete-wrapper{
+  flex:1;
+}
+
+.autocomplete-wrapper{
+  position:relative;
+}
+
+.autocomplete-results{
+  display:none;
+  position:absolute;
+  z-index:200;
+  top:calc(100% + 4px);
+  left:0;
+  right:0;
+  max-height:280px;
+  overflow:auto;
+  border:1px solid #dbe3ef;
+  background:white;
+  border-radius:12px;
+  box-shadow:0 18px 40px rgba(15,23,42,.14);
+}
+
+.autocomplete-results.open{
+  display:block;
+}
+
+.autocomplete-item{
+  width:100%;
+  border:0;
+  background:white;
+  text-align:left;
+  padding:10px 12px;
+  cursor:pointer;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  color:#0f172a;
+}
+
+.autocomplete-item:hover{
+  background:#f1f5f9;
+}
+
+.autocomplete-item small{
+  color:#64748b;
+}
+
+.autocomplete-empty{
+  padding:14px;
+  color:#64748b;
+  font-size:13px;
+}
+
+.selected-record{
+  margin-top:8px;
+  padding:12px 14px;
+  border-radius:12px;
+  background:#eff6ff;
+  color:#1e3a8a;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.selected-record small{
+  display:block;
+  opacity:.75;
+}
+
+.link-button{
+  border:0;
+  background:none;
+  color:#2563eb;
+  font-weight:900;
+  cursor:pointer;
+}
+
+.movement-selector{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+}
+
+.movement-option input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.movement-card{
+  padding:16px;
+  display:flex;
+  align-items:center;
+  gap:12px;
+  border:2px solid #dbe3ef;
+  border-radius:14px;
+  cursor:pointer;
+  background:white;
+  color:#0f172a;
+}
+
+.movement-option input:checked + .movement-card{
+  border-color:#2563eb;
+  background:#eff6ff;
+}
+
+.movement-code{
+  width:38px;
+  height:38px;
+  border-radius:10px;
+  background:#e2e8f0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:18px;
+  font-weight:900;
+}
+
+.movement-card strong,
+.movement-card small{
+  display:block;
+}
+
+.movement-card small{
+  margin-top:2px;
+  color:#64748b;
+}
+
+.tica-generate-bar{
+  position:sticky;
+  bottom:12px;
+  z-index:30;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:18px;
+  padding:16px 18px;
+  border-radius:16px;
+  background:#0f172a;
+  color:white;
+  box-shadow:0 18px 50px rgba(15,23,42,.25);
+}
+
+.tica-generate-bar span{
+  display:block;
+  margin-top:3px;
+  color:#cbd5e1;
+  font-size:12px;
+}
+
+.tica-generate-button{
+  min-width:190px;
+}
+
+.tica-modal-backdrop{
+  display:none;
+  position:fixed;
+  inset:0;
+  z-index:5000;
+  background:rgba(15,23,42,.55);
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+
+.tica-modal{
+  width:min(520px,100%);
+  padding:22px;
+  border-radius:18px;
+  background:white;
+  color:#0f172a;
+  box-shadow:0 30px 80px rgba(0,0,0,.25);
+}
+
+.tica-modal-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  margin-bottom:18px;
+}
+
+.tica-modal-header h3{
+  margin:0;
+}
+
+.tica-modal-header p{
+  margin:4px 0 0;
+  color:#64748b;
+  font-size:13px;
+}
+
+.modal-close{
+  border:0;
+  background:none;
+  font-size:28px;
+  cursor:pointer;
+  color:#64748b;
+}
+
+.tica-modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  margin-top:16px;
+}
+
+@media(max-width:850px){
+
+  .tica-header{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .tica-grid.two,
+  .tica-grid.three,
+  .movement-selector{
+    grid-template-columns:1fr;
+  }
+
+  .tica-generate-bar{
+    position:static;
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .tica-generate-button{
+    width:100%;
+  }
+
+}
+
+</style>
+
+{% endblock %}
