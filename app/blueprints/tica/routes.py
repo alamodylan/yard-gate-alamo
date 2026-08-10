@@ -7,12 +7,14 @@ from datetime import datetime
 
 from flask import (
     Response,
+    abort,
     flash,
     jsonify,
     redirect,
     render_template,
     request,
     send_file,
+    session,
     url_for,
 )
 from flask_login import current_user, login_required
@@ -29,6 +31,7 @@ from app.models.tica import (
     TicaTransporter,
 )
 from app.models.user import User
+from app.models.site import Site
 from app.services.audit import audit_log
 
 from app.blueprints.tica.services import (
@@ -73,6 +76,45 @@ ALLOWED_EXCEL_EXTENSIONS = {
     ".xlsm",
 }
 
+
+def _require_tica_access():
+    """
+    Acceso permitido únicamente para:
+
+    - Rol admin
+    - Rol trafico
+
+    y únicamente cuando el predio activo sea CALDERA.
+    """
+
+    role = (
+        getattr(current_user, "role", "") or ""
+    ).strip().lower()
+
+    if role not in {"admin", "trafico"}:
+        abort(403)
+
+    active_site_id = session.get("active_site_id")
+
+    try:
+        active_site_id = int(active_site_id)
+    except (TypeError, ValueError):
+        abort(403)
+
+    site = db.session.get(
+        Site,
+        active_site_id,
+    )
+
+    if not site:
+        abort(403)
+
+    site_code = (
+        getattr(site, "code", "") or ""
+    ).strip().upper()
+
+    if site_code != "CALDERA":
+        abort(403)
 
 # =========================================================
 # Helpers internos
@@ -198,6 +240,7 @@ def _excel_extension(filename: str) -> str:
 @tica_bp.get("/")
 @login_required
 def generator():
+    _require_tica_access()
     """
     Pantalla principal.
 
@@ -217,6 +260,7 @@ def generator():
 @tica_bp.post("/generate")
 @login_required
 def generate():
+    _require_tica_access()
     """
     Genera el TRM.
 
@@ -439,6 +483,7 @@ def generate():
 @tica_bp.get("/api/transporters")
 @login_required
 def api_search_transporters():
+    _require_tica_access()
     q = (
         request.args.get("q")
         or ""
@@ -459,6 +504,7 @@ def api_search_transporters():
 @tica_bp.post("/api/transporters")
 @login_required
 def api_save_transporter():
+    _require_tica_access()
     """
     Crea un transportista o actualiza uno existente
     cuando coincide la cédula.
@@ -544,6 +590,7 @@ def api_save_transporter():
 @tica_bp.get("/api/drivers")
 @login_required
 def api_search_drivers():
+    _require_tica_access()
     transporter_id = _optional_int(
         request.args.get("transporter_id")
     )
@@ -575,6 +622,7 @@ def api_search_drivers():
 @tica_bp.post("/api/drivers")
 @login_required
 def api_save_driver():
+    _require_tica_access()
     """
     Crea/actualiza chofer y lo liga a un transportista.
     """
@@ -668,6 +716,7 @@ def api_save_driver():
 @tica_bp.get("/api/destinations")
 @login_required
 def api_search_destinations():
+    _require_tica_access()
     q = (
         request.args.get("q")
         or ""
@@ -688,6 +737,7 @@ def api_search_destinations():
 @tica_bp.post("/api/destinations")
 @login_required
 def api_save_destination():
+    _require_tica_access()
     data = _request_payload()
 
     try:
@@ -762,6 +812,7 @@ def api_save_destination():
 @tica_bp.get("/history")
 @login_required
 def history():
+    _require_tica_access()
     """
     Historial paginado.
 
@@ -865,6 +916,7 @@ def history():
 @tica_bp.get("/history/<int:file_id>/download")
 @login_required
 def history_download(file_id: int):
+    _require_tica_access()
     generated_file = db.session.get(
         TicaGeneratedFile,
         file_id,
@@ -907,6 +959,7 @@ def history_download(file_id: int):
 @tica_bp.get("/history/<int:file_id>/content")
 @login_required
 def history_content(file_id: int):
+    _require_tica_access()
     """
     Permite visualizar el contenido guardado sin regenerarlo.
     """
@@ -955,6 +1008,7 @@ def history_content(file_id: int):
 @tica_bp.get("/transporters")
 @login_required
 def transporters():
+    _require_tica_access()
     page = request.args.get(
         "page",
         1,
@@ -1042,6 +1096,7 @@ def transporters():
 @tica_bp.get("/drivers")
 @login_required
 def drivers():
+    _require_tica_access()
     page = request.args.get(
         "page",
         1,
@@ -1112,6 +1167,7 @@ def drivers():
 @tica_bp.get("/destinations")
 @login_required
 def destinations():
+    _require_tica_access()
     page = request.args.get(
         "page",
         1,
@@ -1167,6 +1223,7 @@ def destinations():
 @tica_bp.post("/transporters/<int:item_id>/toggle")
 @login_required
 def transporter_toggle(item_id: int):
+    _require_tica_access()
     item = db.session.get(
         TicaTransporter,
         item_id,
@@ -1206,6 +1263,7 @@ def transporter_toggle(item_id: int):
 @tica_bp.post("/drivers/<int:item_id>/toggle")
 @login_required
 def driver_toggle(item_id: int):
+    _require_tica_access()
     item = db.session.get(
         TicaDriver,
         item_id,
@@ -1245,6 +1303,7 @@ def driver_toggle(item_id: int):
 @tica_bp.post("/destinations/<int:item_id>/toggle")
 @login_required
 def destination_toggle(item_id: int):
+    _require_tica_access()
     item = db.session.get(
         TicaDestination,
         item_id,
@@ -1288,6 +1347,7 @@ def destination_toggle(item_id: int):
 @tica_bp.get("/bulk")
 @login_required
 def bulk_upload():
+    _require_tica_access()
     recent_imports = (
         TicaImportBatch.query
         .order_by(
@@ -1307,6 +1367,7 @@ def bulk_upload():
 @tica_bp.post("/bulk")
 @login_required
 def bulk_upload_post():
+    _require_tica_access()
     import_type = (
         request.form.get("import_type")
         or ""
@@ -1456,6 +1517,7 @@ def bulk_upload_post():
 @tica_bp.get("/bulk/template/<string:template_type>")
 @login_required
 def bulk_template(template_type: str):
+    _require_tica_access()
     template_type = (
         template_type
         or ""
