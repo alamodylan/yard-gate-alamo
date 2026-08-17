@@ -6,7 +6,9 @@ from datetime import date, datetime, timedelta
 
 from flask import (
     abort,
+    current_app,
     flash,
+    g,
     redirect,
     render_template,
     request,
@@ -1479,63 +1481,142 @@ def drivers_bulk_upload():
 @login_required
 @require_permission("drivers.import")
 def drivers_bulk_upload_post():
-    file = request.files.get("file")
+    """
+    Procesa la carga masiva de choferes y cabezales.
 
-    if not file or not file.filename:
+    El predio activo se utiliza únicamente como dato técnico
+    para registered_site_id de cabezales nuevos.
+
+    habitual_site_id se utiliza exclusivamente como distintivo
+    de patiero cuando el usuario lo selecciona expresamente.
+    """
+
+    # =====================================================
+    # 1. ARCHIVO
+    # =====================================================
+    file = request.files.get(
+        "file"
+    )
+
+    if (
+        file is None
+        or not file.filename
+    ):
         flash(
             "Debe seleccionar un archivo Excel.",
             "warning",
         )
 
-        return redirect(
-            url_for(
-                "transport.drivers_bulk_upload"
-            )
+        return render_template(
+            "transport/drivers_bulk_upload.html",
+            result=None,
+            sites=_get_sites(),
         )
 
+    # =====================================================
+    # 2. VALIDAR EXTENSIÓN
+    # =====================================================
     filename = (
-        file.filename or ""
-    ).lower()
+        file.filename
+        or ""
+    ).strip().lower()
 
     if not filename.endswith(
-        (".xlsx", ".xlsm")
+        (
+            ".xlsx",
+            ".xlsm",
+        )
     ):
         flash(
-            "El archivo debe ser .xlsx o .xlsm.",
+            "El archivo debe tener formato .xlsx o .xlsm.",
             "warning",
         )
 
-        return redirect(
-            url_for(
-                "transport.drivers_bulk_upload"
-            )
+        return render_template(
+            "transport/drivers_bulk_upload.html",
+            result=None,
+            sites=_get_sites(),
         )
 
+    # =====================================================
+    # 3. PATIERO
+    #
+    # Es OPCIONAL.
+    #
+    # None:
+    #   chofer normal
+    #
+    # ID:
+    #   patiero del predio seleccionado
+    # =====================================================
     habitual_site_id = request.form.get(
         "habitual_site_id",
         type=int,
     )
 
-    try:
-        result = bulk_import_transport_excel(
-            file.stream,
-            user_id=current_user.id,
-            habitual_site_id=habitual_site_id,
-        )
+    # =====================================================
+    # 4. PREDIO TÉCNICO PARA CABEZALES NUEVOS
+    #
+    # No viene del formulario.
+    #
+    # Se usa el predio activo únicamente porque la BD exige
+    # registered_site_id para Truck.
+    #
+    # NO condiciona la lista ni la operación del chofer.
+    # =====================================================
+    registered_site_id = getattr(
+        g,
+        "active_site_id",
+        None,
+    )
 
+    if not registered_site_id:
         flash(
             (
-                f"Carga finalizada. "
-                f"{result['processed']} filas procesadas, "
-                f"{result['created_drivers']} choferes creados, "
-                f"{result['created_trucks']} cabezales creados."
+                "No fue posible determinar el predio activo "
+                "para registrar técnicamente los cabezales."
             ),
-            "success",
+            "danger",
         )
 
         return render_template(
             "transport/drivers_bulk_upload.html",
-            result=result,
+            result=None,
+            sites=_get_sites(),
+        )
+
+    # =====================================================
+    # 5. PROCESAR
+    # =====================================================
+    try:
+        result = (
+            bulk_import_transport_excel(
+                file.stream,
+                user_id=current_user.id,
+
+                # Predio técnico del Truck.
+                registered_site_id=(
+                    registered_site_id
+                ),
+
+                # Solo distintivo patiero.
+                habitual_site_id=(
+                    habitual_site_id
+                ),
+            )
+        )
+
+    except TransportValidationError as exc:
+        db.session.rollback()
+
+        flash(
+            str(exc),
+            "warning",
+        )
+
+        return render_template(
+            "transport/drivers_bulk_upload.html",
+            result=None,
             sites=_get_sites(),
         )
 
@@ -1547,9 +1628,67 @@ def drivers_bulk_upload_post():
             "danger",
         )
 
+        return render_template(
+            "transport/drivers_bulk_upload.html",
+            result=None,
+            sites=_get_sites(),
+        )
+
+    except Exception:
+        db.session.rollback()
+
+        current_app.logger.exception(
+            "Error inesperado en carga masiva "
+            "de choferes/cabezales."
+        )
+
+        flash(
+            (
+                "Ocurrió un error inesperado durante "
+                "la carga masiva."
+            ),
+            "danger",
+        )
+
+        return render_template(
+            "transport/drivers_bulk_upload.html",
+            result=None,
+            sites=_get_sites(),
+        )
+
+    # =====================================================
+    # 6. MENSAJE FINAL
+    # =====================================================
+    if result.get(
+        "error_count",
+        0,
+    ):
+        flash(
+            (
+                "Carga completada con observaciones. "
+                f"Procesadas: {result.get('processed', 0)}. "
+                f"Omitidas: {result.get('skipped', 0)}. "
+                f"Observaciones: {result.get('error_count', 0)}."
+            ),
+            "warning",
+        )
+
+    else:
+        flash(
+            (
+                "Carga masiva completada correctamente. "
+                f"Se procesaron "
+                f"{result.get('processed', 0)} fila(s)."
+            ),
+            "success",
+        )
+
+    # =====================================================
+    # 7. MOSTRAR RESULTADO
+    # =====================================================
     return render_template(
         "transport/drivers_bulk_upload.html",
-        result=None,
+        result=result,
         sites=_get_sites(),
     )
 
