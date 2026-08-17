@@ -2878,35 +2878,34 @@ def bulk_import_transport_excel(
                             values[21]
                         )
 
+                        owner = None
+                        new_owner_created = False
+
                         if owner_name:
                             owner_key = (
                                 owner_name.upper()
                             )
 
-                            owner = (
-                                owners_by_name.get(
-                                    owner_key
-                                )
+                            # Los propietarios ya fueron precargados
+                            # antes de comenzar a recorrer el Excel.
+                            owner = owners_by_name.get(
+                                owner_key
                             )
 
-                            new_owner_created = False
-
                             if owner is None:
+                                # IMPORTANTE:
+                                # TruckOwner NO tiene:
+                                # - created_by_user_id
+                                # - updated_by_user_id
+                                #
+                                # No deben enviarse al constructor.
                                 owner = TruckOwner(
                                     name=owner_key,
-
                                     phone=(
                                         owner_phone
                                         or None
                                     ),
-
-                                    created_by_user_id=(
-                                        user_id
-                                    ),
-
-                                    updated_by_user_id=(
-                                        user_id
-                                    ),
+                                    is_active=True,
                                 )
 
                                 db.session.add(
@@ -2918,14 +2917,15 @@ def bulk_import_transport_excel(
                                 new_owner_created = True
 
                             else:
+                                # Si ya existe, solo actualizamos
+                                # información que realmente viene en Excel.
                                 if owner_phone:
                                     owner.phone = (
                                         owner_phone
                                     )
 
-                                owner.updated_by_user_id = (
-                                    user_id
-                                )
+                                if not owner.is_active:
+                                    owner.is_active = True
 
                                 owner.updated_at = (
                                     datetime.utcnow()
@@ -2934,10 +2934,6 @@ def bulk_import_transport_excel(
                             truck.owner_id = (
                                 owner.id
                             )
-
-                        else:
-                            owner = None
-                            new_owner_created = False
 
                         # =====================================
                         # DATOS CABEZAL
