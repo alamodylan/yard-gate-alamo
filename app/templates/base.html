@@ -286,6 +286,7 @@
   {% set p_map_config_view = can('map_config.view') %}
   {% set role_value = (current_user.role or '')|lower if current_user.is_authenticated else '' %}
   {% set p_tica_access = role_value in ['admin', 'trafico'] %}
+  {% set p_drivers_view = can('drivers.view') %}
 
   {% set ep_evacuation_list = has_endpoint('inventory.evacuation_list') %}
   {% set ep_pending_requests = has_endpoint('dispatch.pending_requests') %}
@@ -297,6 +298,7 @@
   {% set ep_mounted = has_endpoint('dispatch.mounted') %}
   {% set ep_mark_notifications_read = has_endpoint('dispatch.mark_notifications_read') %}
   {% set ep_tica_generator = has_endpoint('tica.generator') %}
+  {% set ep_transport_index = has_endpoint('transport.index') %}
 
   {% set user_has_multiple_sites = current_user.has_multiple_sites if current_user.is_authenticated else false %}
   {% set site_key_value =
@@ -430,6 +432,12 @@
           {% if p_eir_view %}
             <a class="navlink" href="{{ url_for('yard.eir_list_view') }}">
               EIR
+            </a>
+          {% endif %}
+
+          {% if p_drivers_view and ep_transport_index %}
+            <a class="navlink" href="{{ url_for('transport.index') }}">
+              Transportes
             </a>
           {% endif %}
 
@@ -773,6 +781,12 @@
 
           {% if p_eir_view %}
             <a href="{{ url_for('yard.eir_list_view') }}">EIR</a>
+          {% endif %}
+
+          {% if p_drivers_view and ep_transport_index %}
+            <a href="{{ url_for('transport.index') }}">
+              Transportes
+            </a>
           {% endif %}
 
           {% if site_key_value == 'CALDERA' and p_tica_access and ep_tica_generator %}
