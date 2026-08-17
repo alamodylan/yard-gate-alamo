@@ -31,6 +31,15 @@
         </a>
       {% endif %}
 
+      {% if can('drivers.import') %}
+        <a
+            href="{{ url_for('transport.drivers_bulk_upload') }}"
+            class="btn"
+        >
+            Carga masiva
+        </a>
+      {% endif %}
+
       {% if can('drivers.history.view') %}
         <a
           href="{{ url_for('transport.history') }}"

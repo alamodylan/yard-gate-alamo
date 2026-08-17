@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from flask import (
     abort,
@@ -12,6 +12,7 @@ from flask import (
     request,
     url_for,
 )
+
 from flask_login import current_user, login_required
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import (
@@ -60,6 +61,7 @@ from app.blueprints.transport.services import (
     upsert_driver_document,
     upsert_truck_document,
     update_driver_complete_row,
+    bulk_import_transport_excel,
 )
 from app.extensions import db
 from app.models.site import Site
@@ -1429,6 +1431,94 @@ def driver_apm_save(driver_id: int):
         )
     )
 
+@transport_bp.get("/drivers/bulk-upload")
+@login_required
+@require_permission("drivers.import")
+def drivers_bulk_upload():
+    return render_template(
+        "transport/drivers_bulk_upload.html",
+        result=None,
+        sites=_get_sites(),
+    )
+
+
+@transport_bp.post("/drivers/bulk-upload")
+@login_required
+@require_permission("drivers.import")
+def drivers_bulk_upload_post():
+    file = request.files.get("file")
+
+    if not file or not file.filename:
+        flash(
+            "Debe seleccionar un archivo Excel.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "transport.drivers_bulk_upload"
+            )
+        )
+
+    filename = (
+        file.filename or ""
+    ).lower()
+
+    if not filename.endswith(
+        (".xlsx", ".xlsm")
+    ):
+        flash(
+            "El archivo debe ser .xlsx o .xlsm.",
+            "warning",
+        )
+
+        return redirect(
+            url_for(
+                "transport.drivers_bulk_upload"
+            )
+        )
+
+    habitual_site_id = request.form.get(
+        "habitual_site_id",
+        type=int,
+    )
+
+    try:
+        result = bulk_import_transport_excel(
+            file.stream,
+            user_id=current_user.id,
+            habitual_site_id=habitual_site_id,
+        )
+
+        flash(
+            (
+                f"Carga finalizada. "
+                f"{result['processed']} filas procesadas, "
+                f"{result['created_drivers']} choferes creados, "
+                f"{result['created_trucks']} cabezales creados."
+            ),
+            "success",
+        )
+
+        return render_template(
+            "transport/drivers_bulk_upload.html",
+            result=result,
+            sites=_get_sites(),
+        )
+
+    except TransportServiceError as exc:
+        db.session.rollback()
+
+        flash(
+            str(exc),
+            "danger",
+        )
+
+    return render_template(
+        "transport/drivers_bulk_upload.html",
+        result=None,
+        sites=_get_sites(),
+    )
 
 # =========================================================
 # CABEZALES
