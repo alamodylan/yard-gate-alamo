@@ -65,11 +65,11 @@
       <div class="bulk-info-icon">2</div>
 
       <div>
-        <strong>Seleccione el predio</strong>
+        <strong>Marcar como patieros</strong>
 
         <span>
-          Se utilizará como predio habitual y de registro
-          cuando corresponda.
+          Seleccione un predio únicamente si todos los choferes
+          el archivo son patieros de ese predio.
         </span>
       </div>
     </div>
@@ -170,40 +170,32 @@
         <div class="bulk-field">
 
           <label for="habitualSite">
-            Predio
+            Marcar choferes como patieros
           </label>
 
           <select
             id="habitualSite"
             name="habitual_site_id"
-            required
           >
 
             <option value="">
-              Seleccione un predio
+              No marcar como patieros
             </option>
 
             {% for site in sites %}
 
-              <option
-                value="{{ site.id }}"
-                {% if
-                  active_site_id
-                  and active_site_id == site.id
-                %}
-                  selected
-                {% endif %}
-              >
-                {{ site.name or site.code }}
-              </option>
+            <option value="{{ site.id }}">
+                Patieros de {{ site.name or site.code }}
+            </option>
 
             {% endfor %}
 
           </select>
 
           <small>
-            Este predio será utilizado para los nuevos
-            registros que no tengan uno definido previamente.
+            Déjelo en “No marcar como patieros” para una carga normal.
+            Seleccione un predio solamente si todos los choferes del archivo
+            corresponden a patieros de ese predio.
           </small>
 
         </div>
@@ -230,6 +222,9 @@
             La identificación del chofer y la placa del cabezal
             se utilizan para reconocer registros ya existentes.
             Si existen, se actualizan; si no existen, se crean.
+
+            El selector de patiero es opcional y únicamente agrega
+            el distintivo del predio indicado.
           </p>
 
         </div>

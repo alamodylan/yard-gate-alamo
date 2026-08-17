@@ -1,1 +1,346 @@
-{% extends "base.html" %}{% block title %}{{ 'Nuevo chofer' if mode=='create' else 'Editar chofer' }}{% endblock %}{% block content %}{% include "transport/_styles.html" %}<div class="transport-shell"><div class="card card-pad"><div class="transport-head"><div><h2>{{ 'Nuevo chofer' if mode=='create' else 'Editar chofer' }}</h2></div><a class="btn" href="{{ url_for('transport.drivers_list') }}">Volver</a></div></div><form method="post" class="card card-pad"><div class="transport-grid three"><div class="transport-field"><label>Nombre</label><input name="name" value="{{ driver.name if driver else '' }}" required></div><div class="transport-field"><label>Cédula</label><input name="identification" value="{{ driver.identification if driver else '' }}" required></div><div class="transport-field"><label>Residencia</label><input name="residence" value="{{ driver.residence if driver else '' }}"></div><div class="transport-field"><label>Teléfono 1</label><input name="phone_1" value="{{ driver.phone_1 if driver else '' }}"></div><div class="transport-field"><label>Teléfono 2</label><input name="phone_2" value="{{ driver.phone_2 if driver else '' }}"></div><div class="transport-field"><label>Predio habitual</label><select name="habitual_site_id"><option value="">—</option>{% for s in sites %}<option value="{{ s.id }}" {% if driver and driver.habitual_site_id==s.id %}selected{% endif %}>{{ s.name or s.code }}</option>{% endfor %}</select></div><div class="transport-field"><label>Estado</label><select name="status">{% for v in driver_statuses|sort %}<option value="{{ v }}" {% if (driver and driver.status==v) or (not driver and v=='ACTIVE') %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div></div><div class="transport-field" style="margin-top:12px"><label>Notas</label><textarea name="notes">{{ driver.notes if driver else '' }}</textarea></div><div class="transport-actions" style="margin-top:14px"><button class="btn primary">{{ 'Crear chofer' if mode=='create' else 'Guardar cambios' }}</button><a class="btn" href="{{ url_for('transport.drivers_list') }}">Cancelar</a></div></form></div>{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}
+  {{ 'Nuevo chofer' if mode == 'create' else 'Editar chofer' }}
+{% endblock %}
+
+{% block content %}
+
+{% include "transport/_styles.html" %}
+
+<div class="transport-shell">
+
+  <!-- =====================================================
+       ENCABEZADO
+       ===================================================== -->
+  <div class="card card-pad">
+
+    <div class="transport-head">
+
+      <div>
+        <h2>
+          {{ 'Nuevo chofer' if mode == 'create' else 'Editar chofer' }}
+        </h2>
+
+        <p>
+          Información general del chofer.
+        </p>
+      </div>
+
+      <div class="transport-actions">
+
+        <a
+          class="btn"
+          href="{{ url_for('transport.drivers_list') }}"
+        >
+          ← Volver
+        </a>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       FORMULARIO
+       ===================================================== -->
+  <form
+    method="post"
+    class="card card-pad"
+  >
+
+    <!-- ===================================================
+         DATOS GENERALES
+         =================================================== -->
+    <div class="form-section">
+
+      <div class="form-section-title">
+        Datos generales
+      </div>
+
+      <div class="transport-grid three">
+
+        <!-- Nombre -->
+        <div class="transport-field">
+
+          <label for="name">
+            Nombre completo
+          </label>
+
+          <input
+            id="name"
+            name="name"
+            type="text"
+            value="{{ driver.name if driver else '' }}"
+            required
+            autocomplete="off"
+          >
+
+        </div>
+
+
+        <!-- Cédula -->
+        <div class="transport-field">
+
+          <label for="identification">
+            Cédula
+          </label>
+
+          <input
+            id="identification"
+            name="identification"
+            type="text"
+            value="{{ driver.identification if driver else '' }}"
+            required
+            autocomplete="off"
+          >
+
+        </div>
+
+
+        <!-- Residencia -->
+        <div class="transport-field">
+
+          <label for="residence">
+            Residencia
+          </label>
+
+          <input
+            id="residence"
+            name="residence"
+            type="text"
+            value="{{ driver.residence if driver else '' }}"
+            autocomplete="off"
+          >
+
+        </div>
+
+
+        <!-- Teléfono 1 -->
+        <div class="transport-field">
+
+          <label for="phone_1">
+            Teléfono principal
+          </label>
+
+          <input
+            id="phone_1"
+            name="phone_1"
+            type="text"
+            value="{{ driver.phone_1 if driver else '' }}"
+            autocomplete="off"
+          >
+
+        </div>
+
+
+        <!-- Teléfono 2 -->
+        <div class="transport-field">
+
+          <label for="phone_2">
+            Teléfono secundario
+          </label>
+
+          <input
+            id="phone_2"
+            name="phone_2"
+            type="text"
+            value="{{ driver.phone_2 if driver else '' }}"
+            autocomplete="off"
+          >
+
+        </div>
+
+
+        <!-- Patiero -->
+        <div class="transport-field">
+
+          <label for="habitual_site_id">
+            Patiero
+          </label>
+
+          <select
+            id="habitual_site_id"
+            name="habitual_site_id"
+          >
+
+            <option value="">
+              No es patiero
+            </option>
+
+            {% for s in sites %}
+
+              <option
+                value="{{ s.id }}"
+                {% if
+                  driver
+                  and driver.habitual_site_id == s.id
+                %}
+                  selected
+                {% endif %}
+              >
+                Patiero {{ s.name or s.code }}
+              </option>
+
+            {% endfor %}
+
+          </select>
+
+          <small>
+            Solo seleccione un predio si este chofer es patiero.
+            Esto no limita su visibilidad en otros predios.
+          </small>
+
+        </div>
+
+
+        <!-- Estado -->
+        <div class="transport-field">
+
+          <label for="status">
+            Estado
+          </label>
+
+          <select
+            id="status"
+            name="status"
+          >
+
+            {% for v in driver_statuses|sort %}
+
+              <option
+                value="{{ v }}"
+                {% if
+                  (driver and driver.status == v)
+                  or
+                  (not driver and v == 'ACTIVE')
+                %}
+                  selected
+                {% endif %}
+              >
+                {{ v }}
+              </option>
+
+            {% endfor %}
+
+          </select>
+
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <!-- ===================================================
+         NOTAS
+         =================================================== -->
+    <div class="form-section">
+
+      <div class="form-section-title">
+        Observaciones
+      </div>
+
+      <div class="transport-field">
+
+        <label for="notes">
+          Notas
+        </label>
+
+        <textarea
+          id="notes"
+          name="notes"
+          rows="4"
+        >{{ driver.notes if driver else '' }}</textarea>
+
+      </div>
+
+    </div>
+
+
+    <!-- ===================================================
+         ACCIONES
+         =================================================== -->
+    <div class="form-actions">
+
+      <a
+        class="btn"
+        href="{{ url_for('transport.drivers_list') }}"
+      >
+        Cancelar
+      </a>
+
+      <button
+        type="submit"
+        class="btn primary"
+      >
+        {{ 'Crear chofer' if mode == 'create' else 'Guardar cambios' }}
+      </button>
+
+    </div>
+
+  </form>
+
+</div>
+
+
+<style>
+
+.form-section{
+  margin-bottom:22px;
+}
+
+.form-section:last-of-type{
+  margin-bottom:0;
+}
+
+.form-section-title{
+  margin-bottom:12px;
+
+  color:#0f172a;
+
+  font-size:14px;
+  font-weight:950;
+}
+
+.transport-field small{
+  display:block;
+
+  margin-top:6px;
+
+  color:#64748b;
+
+  font-size:11px;
+  line-height:1.35;
+}
+
+.form-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+
+  margin-top:22px;
+  padding-top:18px;
+
+  border-top:1px solid #e2e8f0;
+}
+
+@media(max-width:760px){
+
+  .form-actions{
+    flex-direction:column-reverse;
+  }
+
+  .form-actions .btn{
+    width:100%;
+    box-sizing:border-box;
+    text-align:center;
+  }
+
+}
+
+</style>
+
+{% endblock %}

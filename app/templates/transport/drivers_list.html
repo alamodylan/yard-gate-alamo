@@ -16,7 +16,8 @@
 
       <p>
         Control documental y operativo de transportistas.
-        Los registros se muestran en orden alfabético por chofer.
+        La lista es global para todos los predios y los patieros
+        se identifican mediante su distintivo correspondiente.
       </p>
     </div>
 
@@ -33,10 +34,10 @@
 
       {% if can('drivers.import') %}
         <a
-            href="{{ url_for('transport.drivers_bulk_upload') }}"
-            class="btn"
+          href="{{ url_for('transport.drivers_bulk_upload') }}"
+          class="btn"
         >
-            Carga masiva
+          Carga masiva
         </a>
       {% endif %}
 
@@ -95,7 +96,7 @@
 
 
       <div>
-        <label>Predio habitual</label>
+        <label>Tipo / Patiero</label>
 
         <select name="habitual_site_id">
           <option value="">Todos</option>
@@ -105,7 +106,7 @@
               value="{{ site.id }}"
               {% if filters.habitual_site_id == site.id %}selected{% endif %}
             >
-              {{ site.name or site.code }}
+              Patiero {{ site.name or site.code }}
             </option>
           {% endfor %}
         </select>
@@ -169,6 +170,13 @@
     <div>
       <span class="legend-dot danger"></span>
       Vencido
+    </div>
+
+    <div>
+      <span class="legend-patiero-example">
+        PATIERO
+      </span>
+      Chofer patiero
     </div>
 
     <div class="drivers-legend-note">
@@ -320,26 +328,65 @@
 
 
                 <!-- =================================================
-                     CHOFER - FIJA
+                     CHOFER - FIJA + DISTINTIVO PATIERO
                      ================================================= -->
                 <td class="sticky-col sticky-driver driver-name-cell">
 
-                  {% if editable %}
+                  <div class="driver-name-content">
 
-                    <input
-                      form="driver-form-{{ driver.id }}"
-                      class="matrix-input driver-name-input"
-                      type="text"
-                      name="name"
-                      value="{{ driver.name or '' }}"
-                      required
-                    >
+                    {% if editable %}
 
-                  {% else %}
+                      <input
+                        form="driver-form-{{ driver.id }}"
+                        class="matrix-input driver-name-input"
+                        type="text"
+                        name="name"
+                        value="{{ driver.name or '' }}"
+                        required
+                      >
 
-                    <strong>{{ driver.name }}</strong>
+                    {% else %}
 
-                  {% endif %}
+                      <strong class="driver-name-text">
+                        {{ driver.name }}
+                      </strong>
+
+                    {% endif %}
+
+
+                    {% if driver.habitual_site_id %}
+
+                      {% set ns = namespace(patiero_site=None) %}
+
+                      {% for site in sites %}
+                        {% if site.id == driver.habitual_site_id %}
+                          {% set ns.patiero_site = site %}
+                        {% endif %}
+                      {% endfor %}
+
+                      {% if ns.patiero_site %}
+
+                        <span
+                          class="patiero-badge"
+                          title="Chofer patiero de {{ ns.patiero_site.name or ns.patiero_site.code }}"
+                        >
+                          PATIERO {{ ns.patiero_site.name or ns.patiero_site.code }}
+                        </span>
+
+                      {% else %}
+
+                        <span
+                          class="patiero-badge"
+                          title="Chofer patiero"
+                        >
+                          PATIERO
+                        </span>
+
+                      {% endif %}
+
+                    {% endif %}
+
+                  </div>
 
                 </td>
 
@@ -801,7 +848,7 @@
 
 
                 <!-- =================================================
-                     HD / HOJA DELINCUENCIA
+                     HD
                      ================================================= -->
                 <td>
 
@@ -887,9 +934,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     TC
-                     ================================================= -->
+                <!-- TC -->
                 <td>
 
                   {% if truck and editable %}
@@ -956,9 +1001,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     SEGURO
-                     ================================================= -->
+                <!-- SEGURO -->
                 <td>
 
                   {% if truck and editable %}
@@ -1015,9 +1058,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     AUT
-                     ================================================= -->
+                <!-- AUT -->
                 <td>
 
                   {% if truck and editable %}
@@ -1055,9 +1096,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     RT
-                     ================================================= -->
+                <!-- RT -->
                 <td>
 
                   {% if truck and editable %}
@@ -1114,9 +1153,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     PESOS DIMENSIONES
-                     ================================================= -->
+                <!-- PESOS DIMENSIONES -->
                 <td>
 
                   {% if truck and editable %}
@@ -1147,9 +1184,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     PÓLIZA
-                     ================================================= -->
+                <!-- PÓLIZA -->
                 <td>
 
                   {% if truck and editable %}
@@ -1170,9 +1205,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     CAUCIONADO
-                     ================================================= -->
+                <!-- CAUCIONADO -->
                 <td>
 
                   {% if truck and editable %}
@@ -1208,9 +1241,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     PENDIENTES
-                     ================================================= -->
+                <!-- PENDIENTES -->
                 <td class="pending-cell">
 
                   {% if row.pending_count == 0 %}
@@ -1260,9 +1291,7 @@
                 </td>
 
 
-                <!-- =================================================
-                     GUARDAR
-                     ================================================= -->
+                <!-- GUARDAR -->
                 {% if editable %}
 
                   <td class="actions-column">
@@ -1514,6 +1543,60 @@
 
 .legend-dot.danger{
   background:#dc2626;
+}
+
+
+/* =========================================================
+   DISTINTIVO PATIERO
+   ========================================================= */
+
+.driver-name-content{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:5px;
+}
+
+.driver-name-text{
+  display:block;
+  text-transform:uppercase;
+}
+
+.patiero-badge{
+  display:inline-flex;
+  align-items:center;
+
+  max-width:100%;
+  padding:3px 7px;
+
+  border:1px solid #93c5fd;
+  border-radius:999px;
+
+  background:#dbeafe;
+  color:#1d4ed8;
+
+  font-size:9px;
+  font-weight:950;
+  line-height:1.2;
+
+  white-space:nowrap;
+  text-transform:uppercase;
+}
+
+.legend-patiero-example{
+  display:inline-flex;
+  align-items:center;
+
+  padding:2px 6px;
+
+  border:1px solid #93c5fd;
+  border-radius:999px;
+
+  background:#dbeafe;
+  color:#1d4ed8;
+
+  font-size:9px;
+  font-weight:950;
 }
 
 
@@ -1815,6 +1898,7 @@ thead .actions-column{
   align-items:center;
   gap:12px;
 }
+
 
 @media(max-width:900px){
 
