@@ -483,11 +483,6 @@ def drivers_list():
     )
 
 
-@transport_bp.route(
-    "/drivers/new",
-    methods=["GET", "POST"],
-)
-
 @transport_bp.post(
     "/drivers/<int:driver_id>/inline-update"
 )
@@ -553,6 +548,11 @@ def driver_inline_update(driver_id: int):
         )
     )
 
+
+@transport_bp.route(
+    "/drivers/new",
+    methods=["GET", "POST"],
+)
 @login_required
 @require_permission("drivers.actions")
 def driver_create():

@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block title %}Transportes{% endblock %}{% block content %}{% include "transport/_styles.html" %}
+<div class="transport-shell">
+<div class="card card-pad"><div class="transport-head"><div><h2>Control de choferes y cabezales</h2><p>Gestión documental, asignaciones, permisos de salida e incidentes.</p></div>{% include "transport/_nav.html" %}</div></div>
+<div class="transport-stat-grid">
+<div class="transport-stat"><small>Choferes</small><strong>{{ driver_total }}</strong><span>{{ active_driver_total }} activos</span></div>
+<div class="transport-stat"><small>Cabezales</small><strong>{{ truck_total }}</strong><span>{{ active_truck_total }} activos</span></div>
+<div class="transport-stat"><small>Asignaciones activas</small><strong>{{ active_assignment_total }}</strong></div>
+<div class="transport-stat"><small>Permisos abiertos</small><strong>{{ active_exit_total }}</strong></div>
+<div class="transport-stat"><small>Incidentes abiertos</small><strong>{{ open_incident_total }}</strong></div>
+<div class="transport-stat"><small>Docs chofer vencidos</small><strong>{{ expired_driver_documents }}</strong></div>
+</div>
+<div class="card card-pad"><div class="transport-head"><div><h3>Accesos rápidos</h3></div><div class="transport-actions"><a class="btn primary" href="{{ url_for('transport.drivers_list') }}">Lista de choferes</a>{% if can('drivers.actions') %}<a class="btn success" href="{{ url_for('transport.driver_create') }}">+ Nuevo chofer</a><a class="btn" href="{{ url_for('transport.truck_create') }}">+ Nuevo cabezal</a><a class="btn" href="{{ url_for('transport.assignment_create') }}">Asignar chofer</a>{% endif %}</div></div></div>
+</div>{% endblock %}
