@@ -1748,12 +1748,13 @@ def update_driver_complete_row(
     - Documentos del chofer.
     - Información APM.
     - Asignación activa chofer-cabezal.
+    - Datos del cabezal asignado.
+    - Propietario del cabezal.
 
-    La función no guarda toda la tabla: procesa únicamente el chofer
-    recibido.
-
-    Si alguna operación falla, la ruta debe ejecutar rollback y ninguna
-    parte de la fila queda guardada parcialmente.
+    IMPORTANTE:
+    - Solo procesa el chofer recibido.
+    - No guarda la tabla completa.
+    - Todo queda dentro de una única transacción.
     """
 
     # =====================================================
@@ -1822,8 +1823,8 @@ def update_driver_complete_row(
             f"{prefix}_notes",
         }
 
-        # Solo toca el documento cuando la fila realmente envió
-        # alguno de sus campos.
+        # Solo modifica el documento si la fila envió
+        # al menos uno de sus campos.
         if not any(
             key in data
             for key in document_keys
@@ -1924,11 +1925,11 @@ def update_driver_complete_row(
             else None
         )
 
-        # No hace nada cuando el cabezal no cambió.
+        # Solo actúa cuando realmente cambió el cabezal.
         if requested_truck_id != current_truck_id:
 
             # ---------------------------------------------
-            # Retirar el cabezal actual
+            # Retirar cabezal
             # ---------------------------------------------
             if requested_truck_id is None:
                 if active_assignment is not None:
@@ -1946,8 +1947,10 @@ def update_driver_complete_row(
                         ),
                     )
 
+                    db.session.flush()
+
             # ---------------------------------------------
-            # Cambiar o asignar un nuevo cabezal
+            # Asignar / cambiar cabezal
             # ---------------------------------------------
             else:
                 target_truck = get_truck_or_404(
@@ -1990,8 +1993,6 @@ def update_driver_complete_row(
                         ),
                     )
 
-                    # Fuerza que el UPDATE de la asignación anterior
-                    # se refleje antes de validar la nueva asignación.
                     db.session.flush()
 
                 assign_driver_to_truck(
@@ -2008,13 +2009,239 @@ def update_driver_complete_row(
                     commit=False,
                 )
 
+                db.session.flush()
+
     # =====================================================
-    # 5. GUARDADO ÚNICO
+    # 5. CABEZAL ACTUAL
+    #
+    # Se vuelve a consultar la asignación porque pudo haber
+    # cambiado en el bloque anterior.
+    # =====================================================
+    active_assignment = (
+        get_active_assignment_for_driver(
+            driver.id
+        )
+    )
+
+    current_truck = None
+
+    if active_assignment is not None:
+        current_truck = get_truck_or_404(
+            active_assignment.truck_id
+        )
+
+    # =====================================================
+    # 6. DATOS DEL CABEZAL Y PROPIETARIO
+    #
+    # Todos los nombres enviados por la matriz llevan
+    # prefijo truck_ para no colisionar con datos del chofer.
+    # =====================================================
+    truck_keys = {
+        "truck_registration_date",
+        "truck_registered_site_id",
+        "truck_plate",
+        "truck_status",
+
+        "truck_owner_name",
+        "truck_owner_phone",
+        "truck_owner_email",
+        "truck_owner_notes",
+
+        "truck_dock_permit_number",
+        "truck_dock_permit_expiry_date",
+
+        "truck_circulation_card",
+
+        "truck_dekra_month",
+        "truck_dekra_year",
+
+        "truck_insurance_name",
+        "truck_insurance_expiry_date",
+
+        "truck_is_payroll",
+
+        "truck_rt_name",
+        "truck_rt_expiry_date",
+
+        "truck_weights_dimensions",
+        "truck_policy_number",
+        "truck_bonded_status",
+
+        "truck_notes",
+    }
+
+    wants_truck_update = any(
+        key in data
+        for key in truck_keys
+    )
+
+    if wants_truck_update:
+        if current_truck is None:
+            raise TransportValidationError(
+                "No se pueden guardar datos del cabezal porque "
+                "el chofer no tiene un cabezal asignado."
+            )
+
+        # ---------------------------------------------
+        # Datos actuales del propietario
+        # ---------------------------------------------
+        current_owner = current_truck.owner
+
+        current_owner_name = (
+            current_owner.name
+            if current_owner is not None
+            else None
+        )
+
+        current_owner_phone = (
+            current_owner.phone
+            if current_owner is not None
+            else None
+        )
+
+        current_owner_email = (
+            current_owner.email
+            if current_owner is not None
+            else None
+        )
+
+        current_owner_notes = (
+            current_owner.notes
+            if current_owner is not None
+            else None
+        )
+
+        # ---------------------------------------------
+        # Adaptamos nombres truck_* a los nombres que
+        # update_truck() ya utiliza.
+        # ---------------------------------------------
+        truck_data = {
+            "registration_date": data.get(
+                "truck_registration_date",
+                current_truck.registration_date,
+            ),
+
+            "registered_site_id": data.get(
+                "truck_registered_site_id",
+                current_truck.registered_site_id,
+            ),
+
+            "plate": data.get(
+                "truck_plate",
+                current_truck.plate,
+            ),
+
+            "status": data.get(
+                "truck_status",
+                current_truck.status,
+            ),
+
+            "owner_name": data.get(
+                "truck_owner_name",
+                current_owner_name,
+            ),
+
+            "owner_phone": data.get(
+                "truck_owner_phone",
+                current_owner_phone,
+            ),
+
+            "owner_email": data.get(
+                "truck_owner_email",
+                current_owner_email,
+            ),
+
+            "owner_notes": data.get(
+                "truck_owner_notes",
+                current_owner_notes,
+            ),
+
+            "dock_permit_number": data.get(
+                "truck_dock_permit_number",
+                current_truck.dock_permit_number,
+            ),
+
+            "dock_permit_expiry_date": data.get(
+                "truck_dock_permit_expiry_date",
+                current_truck.dock_permit_expiry_date,
+            ),
+
+            "circulation_card": data.get(
+                "truck_circulation_card",
+                current_truck.circulation_card,
+            ),
+
+            "dekra_month": data.get(
+                "truck_dekra_month",
+                current_truck.dekra_month,
+            ),
+
+            "dekra_year": data.get(
+                "truck_dekra_year",
+                current_truck.dekra_year,
+            ),
+
+            "insurance_name": data.get(
+                "truck_insurance_name",
+                current_truck.insurance_name,
+            ),
+
+            "insurance_expiry_date": data.get(
+                "truck_insurance_expiry_date",
+                current_truck.insurance_expiry_date,
+            ),
+
+            "is_payroll": data.get(
+                "truck_is_payroll",
+                current_truck.is_payroll,
+            ),
+
+            "rt_name": data.get(
+                "truck_rt_name",
+                current_truck.rt_name,
+            ),
+
+            "rt_expiry_date": data.get(
+                "truck_rt_expiry_date",
+                current_truck.rt_expiry_date,
+            ),
+
+            "weights_dimensions": data.get(
+                "truck_weights_dimensions",
+                current_truck.weights_dimensions,
+            ),
+
+            "policy_number": data.get(
+                "truck_policy_number",
+                current_truck.policy_number,
+            ),
+
+            "bonded_status": data.get(
+                "truck_bonded_status",
+                current_truck.bonded_status,
+            ),
+
+            "notes": data.get(
+                "truck_notes",
+                current_truck.notes,
+            ),
+        }
+
+        update_truck(
+            current_truck,
+            truck_data,
+            user_id=user_id,
+            commit=False,
+        )
+
+    # =====================================================
+    # 7. GUARDADO ÚNICO
     # =====================================================
     if commit:
         _commit_or_raise(
             "No fue posible guardar la fila del chofer. "
-            "Verifique los datos, documentos y asignación."
+            "Verifique los datos del chofer, documentos, "
+            "APM, asignación y cabezal."
         )
 
     return driver

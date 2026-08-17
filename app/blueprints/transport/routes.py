@@ -246,102 +246,11 @@ def _get_active_assignment_for_truck_detail(
 @require_permission("drivers.view")
 def index():
     """
-    Panel inicial.
-
-    Solo utiliza consultas COUNT independientes. No carga filas ni
-    relaciones completas.
+    La entrada principal del módulo Transportes lleva directamente
+    a la matriz operativa de choferes/cabezales.
     """
-    driver_total = db.session.scalar(
-        select(func.count(Driver.id))
-    ) or 0
-
-    active_driver_total = db.session.scalar(
-        select(func.count(Driver.id))
-        .where(
-            Driver.status == "ACTIVE"
-        )
-    ) or 0
-
-    truck_total = db.session.scalar(
-        select(func.count(Truck.id))
-    ) or 0
-
-    active_truck_total = db.session.scalar(
-        select(func.count(Truck.id))
-        .where(
-            Truck.status == "ACTIVE"
-        )
-    ) or 0
-
-    active_assignment_total = db.session.scalar(
-        select(
-            func.count(
-                DriverTruckAssignment.id
-            )
-        )
-        .where(
-            DriverTruckAssignment.status
-            == "ACTIVE"
-        )
-    ) or 0
-
-    open_incident_total = db.session.scalar(
-        select(
-            func.count(
-                TransportIncident.id
-            )
-        )
-        .where(
-            TransportIncident.status.in_(
-                (
-                    "OPEN",
-                    "FOLLOW_UP",
-                )
-            )
-        )
-    ) or 0
-
-    active_exit_total = db.session.scalar(
-        select(
-            func.count(
-                DriverExitPermission.id
-            )
-        )
-        .where(
-            DriverExitPermission.status
-            == "AUTHORIZED"
-        )
-    ) or 0
-
-    today = date.today()
-
-    expired_driver_documents = db.session.scalar(
-        select(
-            func.count(
-                DriverDocument.id
-            )
-        )
-        .where(
-            DriverDocument.expiry_date
-            < today,
-            DriverDocument.no_expiry.is_(False),
-            DriverDocument.status
-            != "NOT_APPLICABLE",
-        )
-    ) or 0
-
-    return render_template(
-        "transport/index.html",
-        driver_total=driver_total,
-        active_driver_total=active_driver_total,
-        truck_total=truck_total,
-        active_truck_total=active_truck_total,
-        active_assignment_total=active_assignment_total,
-        open_incident_total=open_incident_total,
-        active_exit_total=active_exit_total,
-        expired_driver_documents=(
-            expired_driver_documents
-        ),
+    return redirect(
+        url_for("transport.drivers_list")
     )
 
 
@@ -352,10 +261,32 @@ def index():
 @login_required
 @require_permission("drivers.view")
 def drivers_list():
+    """
+    Matriz principal de choferes y cabezales.
+
+    Diseño de rendimiento:
+    ----------------------
+    1. La consulta principal trae solamente los choferes de la página,
+       su asignación activa y los datos principales del cabezal.
+
+    2. Los documentos se consultan UNA sola vez para los choferes
+       de la página actual.
+
+    3. APM se consulta UNA sola vez para los choferes de la página.
+
+    De esta manera evitamos un patrón N+1.
+
+    La matriz se ordena siempre alfabéticamente por nombre de chofer.
+    """
+
+    # =====================================================
+    # 1. PAGINACIÓN Y FILTROS
+    # =====================================================
     page = _safe_page()
     per_page = _safe_per_page()
 
     search = _clean_arg("q")
+
     status = _clean_arg(
         "status",
         upper=True,
@@ -366,25 +297,156 @@ def drivers_list():
         type=int,
     )
 
+    # =====================================================
+    # 2. ALIASES
+    # =====================================================
     active_assignment = aliased(
         DriverTruckAssignment
     )
 
-    assigned_truck = aliased(Truck)
+    assigned_truck = aliased(
+        Truck
+    )
 
+    assigned_owner = aliased(
+        TruckOwner
+    )
+
+    # =====================================================
+    # 3. CONSULTA PRINCIPAL
+    #
+    # No cargamos relaciones completas.
+    #
+    # Traemos directamente las columnas del cabezal que
+    # necesita la matriz.
+    # =====================================================
     stmt = (
         select(
             Driver,
+
+            # ---------------------------------------------
+            # Asignación
+            # ---------------------------------------------
             active_assignment.id.label(
                 "active_assignment_id"
             ),
-            assigned_truck.id.label(
-                "assigned_truck_id"
+
+            active_assignment.started_at.label(
+                "assignment_started_at"
             ),
+
+            # ---------------------------------------------
+            # Cabezal
+            # ---------------------------------------------
+            assigned_truck.id.label(
+                "truck_id"
+            ),
+
+            assigned_truck.registration_date.label(
+                "registration_date"
+            ),
+
+            assigned_truck.registered_site_id.label(
+                "truck_site_id"
+            ),
+
             assigned_truck.plate.label(
-                "assigned_truck_plate"
+                "plate"
+            ),
+
+            assigned_truck.status.label(
+                "truck_status"
+            ),
+
+            # ---------------------------------------------
+            # Permiso de muelle del cabezal
+            # ---------------------------------------------
+            assigned_truck.dock_permit_number.label(
+                "truck_dock_permit_number"
+            ),
+
+            assigned_truck.dock_permit_expiry_date.label(
+                "truck_dock_permit_expiry_date"
+            ),
+
+            # ---------------------------------------------
+            # Tarjeta circulación
+            # ---------------------------------------------
+            assigned_truck.circulation_card.label(
+                "circulation_card"
+            ),
+
+            # ---------------------------------------------
+            # DEKRA / RTV
+            # ---------------------------------------------
+            assigned_truck.dekra_month.label(
+                "dekra_month"
+            ),
+
+            assigned_truck.dekra_year.label(
+                "dekra_year"
+            ),
+
+            # ---------------------------------------------
+            # Seguro / AUT
+            # ---------------------------------------------
+            assigned_truck.insurance_name.label(
+                "insurance_name"
+            ),
+
+            assigned_truck.insurance_expiry_date.label(
+                "insurance_expiry_date"
+            ),
+
+            assigned_truck.is_payroll.label(
+                "is_payroll"
+            ),
+
+            # ---------------------------------------------
+            # RT
+            # ---------------------------------------------
+            assigned_truck.rt_name.label(
+                "rt_name"
+            ),
+
+            assigned_truck.rt_expiry_date.label(
+                "rt_expiry_date"
+            ),
+
+            # ---------------------------------------------
+            # Otros datos del cabezal
+            # ---------------------------------------------
+            assigned_truck.weights_dimensions.label(
+                "weights_dimensions"
+            ),
+
+            assigned_truck.policy_number.label(
+                "policy_number"
+            ),
+
+            assigned_truck.bonded_status.label(
+                "bonded_status"
+            ),
+
+            # ---------------------------------------------
+            # Propietario
+            # ---------------------------------------------
+            assigned_owner.id.label(
+                "owner_id"
+            ),
+
+            assigned_owner.name.label(
+                "owner_name"
+            ),
+
+            assigned_owner.phone.label(
+                "owner_phone"
             ),
         )
+
+        # =================================================
+        # Asignación activa
+        # =================================================
         .outerjoin(
             active_assignment,
             (
@@ -396,69 +458,122 @@ def drivers_list():
                 == "ACTIVE"
             ),
         )
+
+        # =================================================
+        # Cabezal de la asignación
+        # =================================================
         .outerjoin(
             assigned_truck,
             assigned_truck.id
             == active_assignment.truck_id,
         )
+
+        # =================================================
+        # Propietario del cabezal
+        # =================================================
+        .outerjoin(
+            assigned_owner,
+            assigned_owner.id
+            == assigned_truck.owner_id,
+        )
+
+        # =================================================
+        # Relaciones que sí/no necesitamos
+        # =================================================
         .options(
             joinedload(
                 Driver.habitual_site
             ),
+
             noload(
                 Driver.documents
             ),
+
             noload(
                 Driver.apm_record
             ),
+
             noload(
                 Driver.assignments
             ),
+
             noload(
                 Driver.exit_permissions
             ),
+
             noload(
                 Driver.incidents
             ),
         )
+
+        # =================================================
+        # ORDEN OBLIGATORIO:
+        # ALFABÉTICO POR CHOFER
+        # =================================================
         .order_by(
             Driver.name.asc(),
             Driver.id.asc(),
         )
     )
 
+    # =====================================================
+    # 4. BÚSQUEDA
+    # =====================================================
     if search:
         like_value = f"%{search}%"
 
         stmt = stmt.where(
             or_(
-                Driver.name.ilike(like_value),
+                Driver.name.ilike(
+                    like_value
+                ),
+
                 Driver.identification.ilike(
                     like_value
                 ),
+
+                Driver.residence.ilike(
+                    like_value
+                ),
+
                 Driver.phone_1.ilike(
                     like_value
                 ),
+
                 Driver.phone_2.ilike(
                     like_value
                 ),
+
                 assigned_truck.plate.ilike(
+                    like_value
+                ),
+
+                assigned_owner.name.ilike(
                     like_value
                 ),
             )
         )
 
+    # =====================================================
+    # 5. FILTRO ESTADO CHOFER
+    # =====================================================
     if status in DRIVER_STATUSES:
         stmt = stmt.where(
             Driver.status == status
         )
 
+    # =====================================================
+    # 6. FILTRO PREDIO HABITUAL
+    # =====================================================
     if habitual_site_id:
         stmt = stmt.where(
             Driver.habitual_site_id
             == habitual_site_id
         )
 
+    # =====================================================
+    # 7. PAGINACIÓN
+    # =====================================================
     pagination = db.paginate(
         stmt,
         page=page,
@@ -466,11 +581,402 @@ def drivers_list():
         error_out=False,
     )
 
+    raw_rows = pagination.items
+
+    # =====================================================
+    # 8. IDS DE LOS CHOFERES DE ESTA PÁGINA
+    # =====================================================
+    driver_ids = [
+        row[0].id
+        for row in raw_rows
+    ]
+
+    # =====================================================
+    # 9. DOCUMENTOS DE CHOFERES
+    #
+    # UNA sola consulta para toda la página.
+    # =====================================================
+    documents_by_driver: dict[int, dict[str, dict]] = {}
+
+    if driver_ids:
+        documents_stmt = (
+            select(
+                DriverDocument.driver_id,
+                DriverDocument.document_type,
+                DriverDocument.document_number,
+                DriverDocument.status,
+                DriverDocument.issue_date,
+                DriverDocument.expiry_date,
+                DriverDocument.no_expiry,
+                DriverDocument.notes,
+            )
+            .where(
+                DriverDocument.driver_id.in_(
+                    driver_ids
+                )
+            )
+        )
+
+        document_rows = db.session.execute(
+            documents_stmt
+        ).all()
+
+        for document_row in document_rows:
+            driver_id = document_row.driver_id
+
+            if driver_id not in documents_by_driver:
+                documents_by_driver[driver_id] = {}
+
+            documents_by_driver[driver_id][
+                document_row.document_type
+            ] = {
+                "document_number": (
+                    document_row.document_number
+                ),
+                "status": (
+                    document_row.status
+                ),
+                "issue_date": (
+                    document_row.issue_date
+                ),
+                "expiry_date": (
+                    document_row.expiry_date
+                ),
+                "no_expiry": (
+                    bool(document_row.no_expiry)
+                ),
+                "notes": (
+                    document_row.notes
+                ),
+            }
+
+    # =====================================================
+    # 10. DATOS APM
+    #
+    # También UNA sola consulta.
+    # =====================================================
+    apm_by_driver: dict[int, dict] = {}
+
+    if driver_ids:
+        apm_stmt = (
+            select(
+                DriverApmRecord.driver_id,
+                DriverApmRecord.training_status,
+                DriverApmRecord.card_status,
+                DriverApmRecord.card_number,
+                DriverApmRecord.expiry_mode,
+                DriverApmRecord.expiry_date,
+                DriverApmRecord.notes,
+            )
+            .where(
+                DriverApmRecord.driver_id.in_(
+                    driver_ids
+                )
+            )
+        )
+
+        apm_rows = db.session.execute(
+            apm_stmt
+        ).all()
+
+        for apm_row in apm_rows:
+            apm_by_driver[
+                apm_row.driver_id
+            ] = {
+                "training_status": (
+                    apm_row.training_status
+                ),
+                "card_status": (
+                    apm_row.card_status
+                ),
+                "card_number": (
+                    apm_row.card_number
+                ),
+                "expiry_mode": (
+                    apm_row.expiry_mode
+                ),
+                "expiry_date": (
+                    apm_row.expiry_date
+                ),
+                "notes": (
+                    apm_row.notes
+                ),
+            }
+
+    # =====================================================
+    # 11. ARMAR FILAS DE LA MATRIZ
+    # =====================================================
+    matrix_rows = []
+
+    today = date.today()
+
+    document_labels = {
+        "DOCK_PERMIT": "Permiso muelle chofer",
+        "GENERAL_CARD": "Carnet",
+        "CHEMICAL_PERMIT": "Permiso químico",
+        "LICENSE": "Licencia",
+        "CRIMINAL_RECORD": "Hoja delincuencia",
+    }
+
+    for row in raw_rows:
+        driver = row[0]
+
+        documents = documents_by_driver.get(
+            driver.id,
+            {},
+        )
+
+        apm = apm_by_driver.get(
+            driver.id
+        )
+
+        pending_items: list[str] = []
+        expired_items: list[str] = []
+
+        # =================================================
+        # DOCUMENTOS DEL CHOFER
+        # =================================================
+        for (
+            document_type,
+            document_label,
+        ) in document_labels.items():
+
+            document = documents.get(
+                document_type
+            )
+
+            if document is None:
+                pending_items.append(
+                    document_label
+                )
+                continue
+
+            document_status = (
+                document.get("status")
+                or "PENDING"
+            )
+
+            if document_status == "PENDING":
+                pending_items.append(
+                    document_label
+                )
+
+            elif document_status == "EXPIRED":
+                expired_items.append(
+                    document_label
+                )
+
+            elif (
+                document_status != "NOT_APPLICABLE"
+                and not document.get("no_expiry")
+                and document.get("expiry_date")
+                and document["expiry_date"] < today
+            ):
+                expired_items.append(
+                    document_label
+                )
+
+        # =================================================
+        # APM
+        # =================================================
+        if apm is None:
+            pending_items.append(
+                "Capacitación APM"
+            )
+
+            pending_items.append(
+                "Carnet APM"
+            )
+
+        else:
+            if (
+                apm.get("training_status")
+                != "YES"
+            ):
+                pending_items.append(
+                    "Capacitación APM"
+                )
+
+            card_status = (
+                apm.get("card_status")
+                or "PENDING"
+            )
+
+            if card_status == "PENDING":
+                pending_items.append(
+                    "Carnet APM"
+                )
+
+            elif card_status == "EXPIRED":
+                expired_items.append(
+                    "Carnet APM"
+                )
+
+            elif (
+                apm.get("expiry_mode")
+                == "DATE"
+                and apm.get("expiry_date")
+                and apm["expiry_date"] < today
+            ):
+                expired_items.append(
+                    "Carnet APM"
+                )
+
+        # =================================================
+        # CABEZAL
+        #
+        # Si no hay asignación activa, solamente indicamos eso.
+        # No inventamos otros pendientes del cabezal.
+        # =================================================
+        truck_id = row.truck_id
+
+        if not truck_id:
+            pending_items.append(
+                "Cabezal sin asignar"
+            )
+
+        # =================================================
+        # MATRIZ
+        # =================================================
+        matrix_rows.append({
+            # ---------------------------------------------
+            # Chofer
+            # ---------------------------------------------
+            "driver": driver,
+
+            # ---------------------------------------------
+            # Fecha ingreso
+            #
+            # Actualmente proviene de Truck.registration_date,
+            # que es la fecha formal existente en la BD.
+            # ---------------------------------------------
+            "registration_date": (
+                row.registration_date
+            ),
+
+            # ---------------------------------------------
+            # Asignación
+            # ---------------------------------------------
+            "active_assignment_id": (
+                row.active_assignment_id
+            ),
+
+            "assignment_started_at": (
+                row.assignment_started_at
+            ),
+
+            # ---------------------------------------------
+            # Cabezal
+            # ---------------------------------------------
+            "truck": {
+                "id": row.truck_id,
+                "plate": row.plate,
+                "site_id": row.truck_site_id,
+                "status": row.truck_status,
+
+                "dock_permit_number": (
+                    row.truck_dock_permit_number
+                ),
+
+                "dock_permit_expiry_date": (
+                    row.truck_dock_permit_expiry_date
+                ),
+
+                "circulation_card": (
+                    row.circulation_card
+                ),
+
+                "dekra_month": (
+                    row.dekra_month
+                ),
+
+                "dekra_year": (
+                    row.dekra_year
+                ),
+
+                "insurance_name": (
+                    row.insurance_name
+                ),
+
+                "insurance_expiry_date": (
+                    row.insurance_expiry_date
+                ),
+
+                "is_payroll": (
+                    bool(row.is_payroll)
+                    if row.truck_id
+                    else False
+                ),
+
+                "rt_name": (
+                    row.rt_name
+                ),
+
+                "rt_expiry_date": (
+                    row.rt_expiry_date
+                ),
+
+                "weights_dimensions": (
+                    row.weights_dimensions
+                ),
+
+                "policy_number": (
+                    row.policy_number
+                ),
+
+                "bonded_status": (
+                    row.bonded_status
+                ),
+            }
+            if row.truck_id
+            else None,
+
+            # ---------------------------------------------
+            # Propietario
+            # ---------------------------------------------
+            "owner": {
+                "id": row.owner_id,
+                "name": row.owner_name,
+                "phone": row.owner_phone,
+            }
+            if row.owner_id
+            else None,
+
+            # ---------------------------------------------
+            # Documentos
+            # ---------------------------------------------
+            "documents": documents,
+
+            # ---------------------------------------------
+            # APM
+            # ---------------------------------------------
+            "apm": apm,
+
+            # ---------------------------------------------
+            # Pendientes
+            # ---------------------------------------------
+            "pending_items": pending_items,
+            "expired_items": expired_items,
+
+            "pending_count": (
+                len(pending_items)
+                + len(expired_items)
+            ),
+        })
+
+    # =====================================================
+    # 12. TEMPLATE
+    # =====================================================
     return render_template(
         "transport/drivers_list.html",
+
         pagination=pagination,
-        rows=pagination.items,
+
+        # La nueva plantilla debe utilizar matrix_rows.
+        rows=matrix_rows,
+
         sites=_get_sites(),
+
         filters={
             "q": search,
             "status": status,
@@ -479,7 +985,16 @@ def drivers_list():
             ),
             "per_page": per_page,
         },
+
         driver_statuses=DRIVER_STATUSES,
+
+        document_statuses=DOCUMENT_STATUSES,
+
+        driver_document_types=(
+            DRIVER_DOCUMENT_TYPES
+        ),
+
+        today=today,
     )
 
 

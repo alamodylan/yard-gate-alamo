@@ -1,8 +1,1837 @@
-{% extends "base.html" %}{% block title %}Choferes{% endblock %}{% block content %}{% include "transport/_styles.html" %}
-<div class="transport-shell">
-<div class="card card-pad"><div class="transport-head"><div><h2>Matriz de choferes</h2><p>Listado operativo con edición por fila.</p></div><div class="transport-actions">{% include "transport/_nav.html" %}{% if can('drivers.actions') %}<a class="btn success" href="{{ url_for('transport.driver_create') }}">+ Nuevo chofer</a>{% endif %}</div></div></div>
-<div class="card card-pad"><form method="get" class="transport-toolbar"><div class="transport-field"><label>Buscar</label><input name="q" value="{{ filters.q or '' }}" placeholder="Nombre, cédula, teléfono o placa"></div><div class="transport-field"><label>Estado</label><select name="status"><option value="">Todos</option>{% for v in driver_statuses|sort %}<option value="{{ v }}" {% if filters.status==v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div><div class="transport-field"><label>Predio habitual</label><select name="habitual_site_id"><option value="">Todos</option>{% for s in sites %}<option value="{{ s.id }}" {% if filters.habitual_site_id==s.id %}selected{% endif %}>{{ s.name or s.code }}</option>{% endfor %}</select></div><div class="transport-field"><label>Filas</label><select name="per_page">{% for n in [25,50,100] %}<option value="{{ n }}" {% if filters.per_page==n %}selected{% endif %}>{{ n }}</option>{% endfor %}</select></div><div class="transport-actions"><button class="btn primary">Filtrar</button><a class="btn" href="{{ url_for('transport.drivers_list') }}">Limpiar</a></div></form></div>
-<div class="card card-pad"><div class="transport-table-wrap"><table class="transport-table"><thead><tr><th>Chofer</th><th>Cédula</th><th>Residencia</th><th>Teléfono 1</th><th>Teléfono 2</th><th>Predio</th><th>Cabezal</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>
-{% for row in rows %}{% set d=row[0] %}{% set assignment_id=row[1] %}{% set truck_id=row[2] %}{% set truck_plate=row[3] %}<tr>
-{% if can('drivers.actions') %}<form method="post" action="{{ url_for('transport.driver_inline_update', driver_id=d.id) }}"><input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}"><td><input name="name" value="{{ d.name or '' }}" required></td><td><input name="identification" value="{{ d.identification or '' }}" required></td><td><input name="residence" value="{{ d.residence or '' }}"></td><td><input name="phone_1" value="{{ d.phone_1 or '' }}"></td><td><input name="phone_2" value="{{ d.phone_2 or '' }}"></td><td><select name="habitual_site_id"><option value="">—</option>{% for s in sites %}<option value="{{ s.id }}" {% if d.habitual_site_id==s.id %}selected{% endif %}>{{ s.name or s.code }}</option>{% endfor %}</select></td><td>{% if truck_id %}<a href="{{ url_for('transport.truck_detail', truck_id=truck_id) }}"><strong>{{ truck_plate }}</strong></a>{% else %}—{% endif %}</td><td><select name="status">{% for v in driver_statuses|sort %}<option value="{{ v }}" {% if d.status==v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></td><td><div class="transport-inline-actions"><button class="btn small primary">Guardar</button><a class="btn small" href="{{ url_for('transport.driver_detail', driver_id=d.id) }}">Detalle</a>{% if not assignment_id %}<a class="btn small success" href="{{ url_for('transport.assignment_create', driver_id=d.id) }}">Asignar</a>{% endif %}</div></td></form>{% else %}<td><strong>{{ d.name }}</strong></td><td>{{ d.identification }}</td><td>{{ d.residence or '—' }}</td><td>{{ d.phone_1 or '—' }}</td><td>{{ d.phone_2 or '—' }}</td><td>{{ d.habitual_site.name if d.habitual_site else '—' }}</td><td>{{ truck_plate or '—' }}</td><td>{{ d.status }}</td><td><a class="btn small" href="{{ url_for('transport.driver_detail', driver_id=d.id) }}">Detalle</a></td>{% endif %}</tr>{% else %}<tr><td colspan="9">No hay choferes.</td></tr>{% endfor %}
-</tbody></table></div>{% if pagination.pages>1 %}<div class="transport-pagination">{% if pagination.has_prev %}<a class="btn small" href="{{ url_for('transport.drivers_list', page=pagination.prev_num, q=filters.q, status=filters.status, habitual_site_id=filters.habitual_site_id, per_page=filters.per_page) }}">← Anterior</a>{% endif %}<span>Página {{ pagination.page }} de {{ pagination.pages }}</span>{% if pagination.has_next %}<a class="btn small" href="{{ url_for('transport.drivers_list', page=pagination.next_num, q=filters.q, status=filters.status, habitual_site_id=filters.habitual_site_id, per_page=filters.per_page) }}">Siguiente →</a>{% endif %}</div>{% endif %}</div></div>{% endblock %}
+{% extends "base.html" %}
+
+{% block title %}Control de Choferes{% endblock %}
+
+{% block content %}
+
+<div class="drivers-page">
+
+  <!-- =====================================================
+       ENCABEZADO
+       ===================================================== -->
+  <div class="card card-pad drivers-header">
+
+    <div>
+      <h2>Control de Choferes y Cabezales</h2>
+
+      <p>
+        Control documental y operativo de transportistas.
+        Los registros se muestran en orden alfabético por chofer.
+      </p>
+    </div>
+
+    <div class="drivers-header-actions">
+
+      {% if can('drivers.actions') %}
+        <a
+          href="{{ url_for('transport.driver_create') }}"
+          class="btn success"
+        >
+          + Nuevo registro
+        </a>
+      {% endif %}
+
+      {% if can('drivers.history.view') %}
+        <a
+          href="{{ url_for('transport.history') }}"
+          class="btn"
+        >
+          Historial
+        </a>
+      {% endif %}
+
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       FILTROS
+       ===================================================== -->
+  <div class="card card-pad">
+
+    <form
+      method="get"
+      class="drivers-filters"
+    >
+
+      <div class="filter-search">
+        <label>Buscar</label>
+
+        <input
+          type="text"
+          name="q"
+          value="{{ filters.q or '' }}"
+          placeholder="Chofer, cédula, placa, teléfono, propietario..."
+        >
+      </div>
+
+
+      <div>
+        <label>Estado</label>
+
+        <select name="status">
+          <option value="">Todos</option>
+
+          {% for status_value in driver_statuses|sort %}
+            <option
+              value="{{ status_value }}"
+              {% if filters.status == status_value %}selected{% endif %}
+            >
+              {{ status_value }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+
+      <div>
+        <label>Predio habitual</label>
+
+        <select name="habitual_site_id">
+          <option value="">Todos</option>
+
+          {% for site in sites %}
+            <option
+              value="{{ site.id }}"
+              {% if filters.habitual_site_id == site.id %}selected{% endif %}
+            >
+              {{ site.name or site.code }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+
+      <div>
+        <label>Filas</label>
+
+        <select name="per_page">
+          {% for number in [25, 50, 100] %}
+            <option
+              value="{{ number }}"
+              {% if filters.per_page == number %}selected{% endif %}
+            >
+              {{ number }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+
+      <div class="drivers-filter-actions">
+
+        <button
+          type="submit"
+          class="btn primary"
+        >
+          Buscar
+        </button>
+
+        <a
+          href="{{ url_for('transport.drivers_list') }}"
+          class="btn"
+        >
+          Limpiar
+        </a>
+
+      </div>
+
+    </form>
+
+  </div>
+
+
+  <!-- =====================================================
+       LEYENDA
+       ===================================================== -->
+  <div class="drivers-legend">
+
+    <div>
+      <span class="legend-dot ok"></span>
+      Al día
+    </div>
+
+    <div>
+      <span class="legend-dot warning"></span>
+      Pendiente
+    </div>
+
+    <div>
+      <span class="legend-dot danger"></span>
+      Vencido
+    </div>
+
+    <div class="drivers-legend-note">
+      Fecha de ingreso y Chofer permanecen fijos al desplazarse horizontalmente.
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       MATRIZ
+       ===================================================== -->
+  <div class="drivers-matrix-card">
+
+    {% if not rows %}
+
+      <div class="drivers-empty">
+        No existen registros con los filtros seleccionados.
+      </div>
+
+    {% else %}
+
+      <div class="drivers-table-wrap">
+
+        <table class="drivers-table">
+
+          <thead>
+
+            <tr>
+
+              <!-- FIJAS -->
+              <th class="sticky-col sticky-date">
+                Fecha ingreso
+              </th>
+
+              <th class="sticky-col sticky-driver">
+                Chofer
+              </th>
+
+              <!-- CHOFER -->
+              <th>Residencia</th>
+              <th>Cédula</th>
+              <th>Placa</th>
+              <th>Teléfono</th>
+
+              <!-- PERMISOS -->
+              <th>Permiso muelle chofer</th>
+              <th>Permiso muelle camión</th>
+
+              <th>Carnet</th>
+              <th>Vence carnet</th>
+
+              <th>Permiso químico</th>
+
+              <!-- APM -->
+              <th>Capacitación APM</th>
+              <th>Carnet APM</th>
+              <th>Vence APM</th>
+
+              <!-- OTROS DOCUMENTOS -->
+              <th>Licencia</th>
+              <th>HD</th>
+
+              <!-- PROPIETARIO -->
+              <th>Propietario</th>
+              <th>Tel. propietario</th>
+
+              <!-- CABEZAL -->
+              <th>TC</th>
+              <th>DEKRA mes</th>
+              <th>DEKRA año</th>
+
+              <th>Seguro</th>
+              <th>Vence seguro</th>
+
+              <th>AUT</th>
+
+              <th>RT</th>
+              <th>Vence RT</th>
+
+              <th>Pesos y dimensiones</th>
+              <th>N.º póliza</th>
+              <th>Caucionado</th>
+
+              <!-- RESULTADO -->
+              <th>Pendientes</th>
+
+              {% if can('drivers.actions') %}
+                <th class="actions-column">
+                  Acción
+                </th>
+              {% endif %}
+
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            {% for row in rows %}
+
+              {% set driver = row.driver %}
+              {% set truck = row.truck %}
+              {% set owner = row.owner %}
+              {% set docs = row.documents %}
+              {% set apm = row.apm %}
+
+              {% set dock = docs.get('DOCK_PERMIT') %}
+              {% set card = docs.get('GENERAL_CARD') %}
+              {% set chemical = docs.get('CHEMICAL_PERMIT') %}
+              {% set license = docs.get('LICENSE') %}
+              {% set criminal = docs.get('CRIMINAL_RECORD') %}
+
+              {% set editable = can('drivers.actions') %}
+
+              <tr>
+
+                <!-- =================================================
+                     FECHA INGRESO - FIJA
+                     ================================================= -->
+                <td class="sticky-col sticky-date">
+
+                  {% if editable and truck %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="truck_registration_date"
+                      value="{{
+                        row.registration_date.isoformat()
+                        if row.registration_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{
+                      row.registration_date.strftime("%d/%m/%Y")
+                      if row.registration_date
+                      else "—"
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     CHOFER - FIJA
+                     ================================================= -->
+                <td class="sticky-col sticky-driver driver-name-cell">
+
+                  {% if editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input driver-name-input"
+                      type="text"
+                      name="name"
+                      value="{{ driver.name or '' }}"
+                      required
+                    >
+
+                  {% else %}
+
+                    <strong>{{ driver.name }}</strong>
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- RESIDENCIA -->
+                <td>
+
+                  {% if editable %}
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input wide"
+                      name="residence"
+                      value="{{ driver.residence or '' }}"
+                    >
+                  {% else %}
+                    {{ driver.residence or '—' }}
+                  {% endif %}
+
+                </td>
+
+
+                <!-- CÉDULA -->
+                <td>
+
+                  {% if editable %}
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="identification"
+                      value="{{ driver.identification or '' }}"
+                      required
+                    >
+                  {% else %}
+                    {{ driver.identification or '—' }}
+                  {% endif %}
+
+                </td>
+
+
+                <!-- PLACA -->
+                <td>
+
+                  {% if truck %}
+
+                    {% if editable %}
+                      <input
+                        form="driver-form-{{ driver.id }}"
+                        class="matrix-input plate-input"
+                        name="truck_plate"
+                        value="{{ truck.plate or '' }}"
+                      >
+                    {% else %}
+                      <strong>{{ truck.plate }}</strong>
+                    {% endif %}
+
+                  {% else %}
+                    <span class="matrix-pending">
+                      SIN CABEZAL
+                    </span>
+                  {% endif %}
+
+                </td>
+
+
+                <!-- TELÉFONO -->
+                <td>
+
+                  {% if editable %}
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="phone_1"
+                      value="{{ driver.phone_1 or '' }}"
+                    >
+                  {% else %}
+                    {{ driver.phone_1 or '—' }}
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PERMISO MUELLE CHOFER
+                     ================================================= -->
+                <td class="{{ document_cell_class(dock, today) if document_cell_class is defined else '' }}">
+
+                  {% if editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="dock_permit_document_number"
+                      value="{{ dock.document_number if dock else '' }}"
+                      placeholder="Número"
+                    >
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select mini-select"
+                      name="dock_permit_status"
+                    >
+                      {% for value in document_statuses|sort %}
+                        <option
+                          value="{{ value }}"
+                          {% if dock and dock.status == value %}selected{% endif %}
+                        >
+                          {{ value }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                  {% else %}
+
+                    {{ dock.document_number if dock else 'PENDIENTE' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PERMISO MUELLE CAMIÓN
+                     ================================================= -->
+                <td>
+
+                  {% if truck %}
+
+                    {% if editable %}
+
+                      <input
+                        form="driver-form-{{ driver.id }}"
+                        class="matrix-input"
+                        name="truck_dock_permit_number"
+                        value="{{ truck.dock_permit_number or '' }}"
+                        placeholder="Número"
+                      >
+
+                      <input
+                        form="driver-form-{{ driver.id }}"
+                        class="matrix-input date-input"
+                        type="date"
+                        name="truck_dock_permit_expiry_date"
+                        value="{{
+                          truck.dock_permit_expiry_date.isoformat()
+                          if truck.dock_permit_expiry_date
+                          else ''
+                        }}"
+                      >
+
+                    {% else %}
+
+                      {{ truck.dock_permit_number or '—' }}
+
+                    {% endif %}
+
+                  {% else %}
+                    —
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     CARNET
+                     ================================================= -->
+                <td>
+
+                  {% if editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="general_card_document_number"
+                      value="{{ card.document_number if card else '' }}"
+                    >
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select mini-select"
+                      name="general_card_status"
+                    >
+                      {% for value in document_statuses|sort %}
+                        <option
+                          value="{{ value }}"
+                          {% if card and card.status == value %}selected{% endif %}
+                        >
+                          {{ value }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                  {% else %}
+
+                    {{ card.document_number if card else 'PENDIENTE' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- VENCE CARNET -->
+                <td class="{{
+                  'cell-expired'
+                  if card and card.expiry_date and card.expiry_date < today
+                  else ''
+                }}">
+
+                  {% if editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="general_card_expiry_date"
+                      value="{{
+                        card.expiry_date.isoformat()
+                        if card and card.expiry_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{
+                      card.expiry_date.strftime("%d/%m/%Y")
+                      if card and card.expiry_date
+                      else '—'
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PERMISO QUÍMICO
+                     ================================================= -->
+                <td>
+
+                  {% if editable %}
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select"
+                      name="chemical_permit_status"
+                    >
+                      {% for value in document_statuses|sort %}
+                        <option
+                          value="{{ value }}"
+                          {% if chemical and chemical.status == value %}selected{% endif %}
+                        >
+                          {{ value }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="chemical_permit_expiry_date"
+                      value="{{
+                        chemical.expiry_date.isoformat()
+                        if chemical and chemical.expiry_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{ chemical.status if chemical else 'PENDIENTE' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     CAPACITACIÓN APM
+                     ================================================= -->
+                <td>
+
+                  {% if editable %}
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select"
+                      name="apm_training_status"
+                    >
+                      <option
+                        value="PENDING"
+                        {% if not apm or apm.training_status == 'PENDING' %}selected{% endif %}
+                      >
+                        PENDIENTE
+                      </option>
+
+                      <option
+                        value="YES"
+                        {% if apm and apm.training_status == 'YES' %}selected{% endif %}
+                      >
+                        SI
+                      </option>
+                    </select>
+
+                  {% else %}
+
+                    {{
+                      'SI'
+                      if apm and apm.training_status == 'YES'
+                      else 'PENDIENTE'
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- CARNET APM -->
+                <td>
+
+                  {% if editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="apm_card_number"
+                      value="{{ apm.card_number if apm else '' }}"
+                    >
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select mini-select"
+                      name="apm_card_status"
+                    >
+                      <option
+                        value="PENDING"
+                        {% if not apm or apm.card_status == 'PENDING' %}selected{% endif %}
+                      >
+                        PENDIENTE
+                      </option>
+
+                      <option
+                        value="YES"
+                        {% if apm and apm.card_status == 'YES' %}selected{% endif %}
+                      >
+                        SI
+                      </option>
+
+                      <option
+                        value="EXPIRED"
+                        {% if apm and apm.card_status == 'EXPIRED' %}selected{% endif %}
+                      >
+                        VENCIDO
+                      </option>
+                    </select>
+
+                  {% else %}
+
+                    {{ apm.card_number if apm and apm.card_number else 'PENDIENTE' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- VENCE APM -->
+                <td class="{{
+                  'cell-expired'
+                  if apm and apm.expiry_date and apm.expiry_date < today
+                  else ''
+                }}">
+
+                  {% if editable %}
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select mini-select"
+                      name="apm_expiry_mode"
+                    >
+                      {% for value in ['PENDING', 'DATE', 'NO_EXPIRY', 'EXPIRED'] %}
+                        <option
+                          value="{{ value }}"
+                          {% if apm and apm.expiry_mode == value %}selected{% endif %}
+                        >
+                          {{ value }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="apm_expiry_date"
+                      value="{{
+                        apm.expiry_date.isoformat()
+                        if apm and apm.expiry_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{
+                      apm.expiry_date.strftime("%d/%m/%Y")
+                      if apm and apm.expiry_date
+                      else (
+                        'SIN VENCIMIENTO'
+                        if apm and apm.expiry_mode == 'NO_EXPIRY'
+                        else '—'
+                      )
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     LICENCIA
+                     ================================================= -->
+                <td>
+
+                  {% if editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="license_document_number"
+                      value="{{ license.document_number if license else '' }}"
+                    >
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="license_expiry_date"
+                      value="{{
+                        license.expiry_date.isoformat()
+                        if license and license.expiry_date
+                        else ''
+                      }}"
+                    >
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      type="hidden"
+                      name="license_status"
+                      value="{{ license.status if license else 'PENDING' }}"
+                    >
+
+                  {% else %}
+
+                    {{ license.document_number if license else 'PENDIENTE' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     HD / HOJA DELINCUENCIA
+                     ================================================= -->
+                <td>
+
+                  {% if editable %}
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select"
+                      name="criminal_record_status"
+                    >
+                      {% for value in document_statuses|sort %}
+                        <option
+                          value="{{ value }}"
+                          {% if criminal and criminal.status == value %}selected{% endif %}
+                        >
+                          {{ value }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="criminal_record_expiry_date"
+                      value="{{
+                        criminal.expiry_date.isoformat()
+                        if criminal and criminal.expiry_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{ criminal.status if criminal else 'PENDIENTE' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PROPIETARIO
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input wide"
+                      name="truck_owner_name"
+                      value="{{ owner.name if owner else '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ owner.name if owner else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- TEL PROPIETARIO -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="truck_owner_phone"
+                      value="{{ owner.phone if owner else '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ owner.phone if owner else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     TC
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="truck_circulation_card"
+                      value="{{ truck.circulation_card or '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ truck.circulation_card if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- DEKRA MES -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input numeric-small"
+                      type="number"
+                      min="1"
+                      max="12"
+                      name="truck_dekra_month"
+                      value="{{ truck.dekra_month or '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ truck.dekra_month if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- DEKRA AÑO -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input numeric-small"
+                      type="number"
+                      name="truck_dekra_year"
+                      value="{{ truck.dekra_year or '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ truck.dekra_year if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     SEGURO
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input wide"
+                      name="truck_insurance_name"
+                      value="{{ truck.insurance_name or '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ truck.insurance_name if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- VENCE SEGURO -->
+                <td class="{{
+                  'cell-expired'
+                  if truck
+                    and truck.insurance_expiry_date
+                    and truck.insurance_expiry_date < today
+                  else ''
+                }}">
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="truck_insurance_expiry_date"
+                      value="{{
+                        truck.insurance_expiry_date.isoformat()
+                        if truck.insurance_expiry_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{
+                      truck.insurance_expiry_date.strftime("%d/%m/%Y")
+                      if truck and truck.insurance_expiry_date
+                      else '—'
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     AUT
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select compact-select"
+                      name="truck_is_payroll"
+                    >
+                      <option
+                        value="0"
+                        {% if not truck.is_payroll %}selected{% endif %}
+                      >
+                        NO
+                      </option>
+
+                      <option
+                        value="1"
+                        {% if truck.is_payroll %}selected{% endif %}
+                      >
+                        SI
+                      </option>
+                    </select>
+
+                  {% else %}
+
+                    {{
+                      'SI'
+                      if truck and truck.is_payroll
+                      else 'NO'
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     RT
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input wide"
+                      name="truck_rt_name"
+                      value="{{ truck.rt_name or '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ truck.rt_name if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- VENCE RT -->
+                <td class="{{
+                  'cell-expired'
+                  if truck
+                    and truck.rt_expiry_date
+                    and truck.rt_expiry_date < today
+                  else ''
+                }}">
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input date-input"
+                      type="date"
+                      name="truck_rt_expiry_date"
+                      value="{{
+                        truck.rt_expiry_date.isoformat()
+                        if truck.rt_expiry_date
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{
+                      truck.rt_expiry_date.strftime("%d/%m/%Y")
+                      if truck and truck.rt_expiry_date
+                      else '—'
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PESOS DIMENSIONES
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      type="number"
+                      step="0.01"
+                      name="truck_weights_dimensions"
+                      value="{{
+                        truck.weights_dimensions
+                        if truck.weights_dimensions is not none
+                        else ''
+                      }}"
+                    >
+
+                  {% else %}
+
+                    {{
+                      truck.weights_dimensions
+                      if truck and truck.weights_dimensions is not none
+                      else '—'
+                    }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PÓLIZA
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <input
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-input"
+                      name="truck_policy_number"
+                      value="{{ truck.policy_number or '' }}"
+                    >
+
+                  {% else %}
+
+                    {{ truck.policy_number if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     CAUCIONADO
+                     ================================================= -->
+                <td>
+
+                  {% if truck and editable %}
+
+                    <select
+                      form="driver-form-{{ driver.id }}"
+                      class="matrix-select"
+                      name="truck_bonded_status"
+                    >
+
+                      <option
+                        value="PENDING"
+                        {% if truck.bonded_status == 'PENDING' %}selected{% endif %}
+                      >
+                        PENDIENTE
+                      </option>
+
+                      <option
+                        value="BONDED"
+                        {% if truck.bonded_status == 'BONDED' %}selected{% endif %}
+                      >
+                        CAUCIONADO
+                      </option>
+
+                    </select>
+
+                  {% else %}
+
+                    {{ truck.bonded_status if truck else '—' }}
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     PENDIENTES
+                     ================================================= -->
+                <td class="pending-cell">
+
+                  {% if row.pending_count == 0 %}
+
+                    <span class="status-pill ok">
+                      AL DÍA
+                    </span>
+
+                  {% else %}
+
+                    {% if row.expired_items %}
+
+                      <span class="status-pill danger">
+                        {{ row.expired_items|length }} VENCIDO(S)
+                      </span>
+
+                    {% endif %}
+
+
+                    {% if row.pending_items %}
+
+                      <span class="status-pill warning">
+                        {{ row.pending_items|length }} PENDIENTE(S)
+                      </span>
+
+                    {% endif %}
+
+
+                    <div class="pending-detail">
+
+                      {% for item in row.expired_items %}
+                        <div class="pending-expired">
+                          • {{ item }}
+                        </div>
+                      {% endfor %}
+
+                      {% for item in row.pending_items %}
+                        <div>
+                          • {{ item }}
+                        </div>
+                      {% endfor %}
+
+                    </div>
+
+                  {% endif %}
+
+                </td>
+
+
+                <!-- =================================================
+                     GUARDAR
+                     ================================================= -->
+                {% if editable %}
+
+                  <td class="actions-column">
+
+                    <form
+                      id="driver-form-{{ driver.id }}"
+                      method="post"
+                      action="{{ url_for(
+                        'transport.driver_inline_update',
+                        driver_id=driver.id
+                      ) }}"
+                    >
+
+                      <input
+                        type="hidden"
+                        name="next"
+                        value="{{
+                          request.full_path
+                          if request.query_string
+                          else request.path
+                        }}"
+                      >
+
+                      <input
+                        type="hidden"
+                        name="truck_id"
+                        value="{{ truck.id if truck else '' }}"
+                      >
+
+                      <input
+                        type="hidden"
+                        name="habitual_site_id"
+                        value="{{ driver.habitual_site_id or '' }}"
+                      >
+
+                      <input
+                        type="hidden"
+                        name="status"
+                        value="{{ driver.status }}"
+                      >
+
+                      <input
+                        type="hidden"
+                        name="phone_2"
+                        value="{{ driver.phone_2 or '' }}"
+                      >
+
+                      <button
+                        type="submit"
+                        class="btn small primary save-row-button"
+                      >
+                        Guardar
+                      </button>
+
+                    </form>
+
+
+                    <a
+                      class="btn small"
+                      href="{{ url_for(
+                        'transport.driver_detail',
+                        driver_id=driver.id
+                      ) }}"
+                    >
+                      Detalle
+                    </a>
+
+                  </td>
+
+                {% endif %}
+
+              </tr>
+
+            {% endfor %}
+
+          </tbody>
+
+        </table>
+
+      </div>
+
+    {% endif %}
+
+  </div>
+
+
+  <!-- =====================================================
+       PAGINACIÓN
+       ===================================================== -->
+  {% if pagination.pages > 1 %}
+
+    <div class="drivers-pagination">
+
+      {% if pagination.has_prev %}
+
+        <a
+          class="btn"
+          href="{{ url_for(
+            'transport.drivers_list',
+            page=pagination.prev_num,
+            q=filters.q,
+            status=filters.status,
+            habitual_site_id=filters.habitual_site_id,
+            per_page=filters.per_page
+          ) }}"
+        >
+          ← Anterior
+        </a>
+
+      {% endif %}
+
+
+      <strong>
+        Página {{ pagination.page }}
+        de {{ pagination.pages }}
+      </strong>
+
+
+      {% if pagination.has_next %}
+
+        <a
+          class="btn"
+          href="{{ url_for(
+            'transport.drivers_list',
+            page=pagination.next_num,
+            q=filters.q,
+            status=filters.status,
+            habitual_site_id=filters.habitual_site_id,
+            per_page=filters.per_page
+          ) }}"
+        >
+          Siguiente →
+        </a>
+
+      {% endif %}
+
+    </div>
+
+  {% endif %}
+
+</div>
+
+
+<style>
+
+.drivers-page{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+}
+
+.drivers-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+}
+
+.drivers-header h2{
+  margin:0;
+}
+
+.drivers-header p{
+  margin:5px 0 0;
+  color:#64748b;
+}
+
+.drivers-header-actions{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+
+/* =========================================================
+   FILTROS
+   ========================================================= */
+
+.drivers-filters{
+  display:grid;
+  grid-template-columns:minmax(260px,1fr) 170px 190px 100px auto;
+  gap:10px;
+  align-items:end;
+}
+
+.drivers-filters label{
+  display:block;
+  margin-bottom:5px;
+  font-size:12px;
+  font-weight:900;
+  color:#334155;
+}
+
+.drivers-filters input,
+.drivers-filters select{
+  width:100%;
+  box-sizing:border-box;
+}
+
+.drivers-filter-actions{
+  display:flex;
+  gap:8px;
+}
+
+
+/* =========================================================
+   LEYENDA
+   ========================================================= */
+
+.drivers-legend{
+  display:flex;
+  align-items:center;
+  gap:18px;
+  flex-wrap:wrap;
+  padding:10px 14px;
+  border-radius:12px;
+  border:1px solid #e2e8f0;
+  background:#ffffff;
+  color:#475569;
+  font-size:12px;
+  font-weight:800;
+}
+
+.drivers-legend > div{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.drivers-legend-note{
+  margin-left:auto;
+  font-weight:700 !important;
+  color:#64748b;
+}
+
+.legend-dot{
+  width:10px;
+  height:10px;
+  border-radius:999px;
+}
+
+.legend-dot.ok{
+  background:#22c55e;
+}
+
+.legend-dot.warning{
+  background:#f59e0b;
+}
+
+.legend-dot.danger{
+  background:#dc2626;
+}
+
+
+/* =========================================================
+   CONTENEDOR DE MATRIZ
+   ========================================================= */
+
+.drivers-matrix-card{
+  border:1px solid #dbe3ef;
+  border-radius:16px;
+  background:#ffffff;
+  overflow:hidden;
+  box-shadow:0 5px 20px rgba(15,23,42,.05);
+}
+
+.drivers-table-wrap{
+  width:100%;
+  max-height:calc(100vh - 270px);
+  overflow:auto;
+  position:relative;
+}
+
+
+/* =========================================================
+   TABLA
+   ========================================================= */
+
+.drivers-table{
+  border-collapse:separate;
+  border-spacing:0;
+  width:max-content;
+  min-width:100%;
+  background:#ffffff;
+}
+
+.drivers-table th{
+  position:sticky;
+  top:0;
+  z-index:20;
+
+  min-width:145px;
+  height:48px;
+
+  padding:8px 9px;
+
+  background:#0f3b63;
+  color:#ffffff;
+
+  border-right:1px solid rgba(255,255,255,.14);
+  border-bottom:1px solid #0b2e4d;
+
+  text-align:center;
+  vertical-align:middle;
+
+  font-size:11px;
+  font-weight:950;
+  line-height:1.15;
+
+  white-space:normal;
+}
+
+.drivers-table td{
+  min-width:145px;
+  max-width:220px;
+
+  padding:7px;
+
+  background:#ffffff;
+
+  border-right:1px solid #e2e8f0;
+  border-bottom:1px solid #e2e8f0;
+
+  vertical-align:top;
+
+  font-size:12px;
+  color:#0f172a;
+}
+
+.drivers-table tbody tr:hover td{
+  background:#f8fafc;
+}
+
+
+/* =========================================================
+   COLUMNAS FIJAS
+   ========================================================= */
+
+.sticky-col{
+  position:sticky !important;
+}
+
+.sticky-date{
+  left:0;
+  min-width:125px !important;
+  max-width:125px !important;
+  width:125px !important;
+}
+
+.sticky-driver{
+  left:125px;
+  min-width:220px !important;
+  max-width:220px !important;
+  width:220px !important;
+}
+
+thead .sticky-date,
+thead .sticky-driver{
+  z-index:40 !important;
+  background:#082f49 !important;
+}
+
+tbody .sticky-date,
+tbody .sticky-driver{
+  z-index:10 !important;
+  background:#ffffff !important;
+}
+
+tbody tr:hover .sticky-date,
+tbody tr:hover .sticky-driver{
+  background:#f8fafc !important;
+}
+
+.sticky-driver{
+  box-shadow:5px 0 8px rgba(15,23,42,.08);
+}
+
+
+/* =========================================================
+   INPUTS DE MATRIZ
+   ========================================================= */
+
+.matrix-input,
+.matrix-select{
+  width:100%;
+  box-sizing:border-box;
+
+  border:1px solid #cbd5e1;
+  border-radius:7px;
+
+  background:#ffffff;
+  color:#0f172a;
+
+  padding:6px 7px;
+
+  font-size:11px;
+  font-weight:700;
+
+  outline:none;
+}
+
+.matrix-input:focus,
+.matrix-select:focus{
+  border-color:#2563eb;
+  box-shadow:0 0 0 2px rgba(37,99,235,.12);
+}
+
+.matrix-input + .matrix-input,
+.matrix-input + .matrix-select,
+.matrix-select + .matrix-input{
+  margin-top:5px;
+}
+
+.driver-name-input{
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+.plate-input{
+  min-width:95px;
+  text-transform:uppercase;
+  font-weight:950;
+}
+
+.date-input{
+  min-width:128px;
+}
+
+.wide{
+  min-width:180px;
+}
+
+.numeric-small{
+  min-width:75px;
+}
+
+.mini-select{
+  margin-top:5px;
+  font-size:10px;
+}
+
+.compact-select{
+  min-width:65px;
+}
+
+
+/* =========================================================
+   ESTADOS
+   ========================================================= */
+
+.cell-expired{
+  background:#fff1f2 !important;
+}
+
+.matrix-pending{
+  display:inline-block;
+  padding:5px 8px;
+  border-radius:999px;
+  background:#fef3c7;
+  color:#92400e;
+  font-size:10px;
+  font-weight:950;
+}
+
+.status-pill{
+  display:inline-block;
+  margin:2px;
+  padding:5px 8px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.status-pill.ok{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.status-pill.warning{
+  background:#fef3c7;
+  color:#92400e;
+}
+
+.status-pill.danger{
+  background:#fee2e2;
+  color:#991b1b;
+}
+
+.pending-cell{
+  min-width:190px !important;
+}
+
+.pending-detail{
+  margin-top:6px;
+  max-width:200px;
+  color:#92400e;
+  font-size:10px;
+  line-height:1.35;
+}
+
+.pending-expired{
+  color:#b91c1c;
+  font-weight:900;
+}
+
+
+/* =========================================================
+   ACCIONES
+   ========================================================= */
+
+.actions-column{
+  position:sticky !important;
+  right:0;
+  z-index:15;
+
+  min-width:100px !important;
+  width:100px !important;
+
+  background:#f8fafc !important;
+
+  box-shadow:-5px 0 8px rgba(15,23,42,.07);
+}
+
+thead .actions-column{
+  z-index:40;
+  background:#082f49 !important;
+}
+
+.save-row-button{
+  width:100%;
+  margin-bottom:5px;
+}
+
+
+/* =========================================================
+   OTROS
+   ========================================================= */
+
+.drivers-empty{
+  padding:40px;
+  text-align:center;
+  color:#64748b;
+  font-weight:800;
+}
+
+.drivers-pagination{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  gap:12px;
+}
+
+@media(max-width:900px){
+
+  .drivers-header{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .drivers-filters{
+    grid-template-columns:1fr;
+  }
+
+  .drivers-filter-actions{
+    width:100%;
+  }
+
+  .drivers-filter-actions .btn{
+    flex:1;
+  }
+
+  .drivers-table-wrap{
+    max-height:calc(100vh - 340px);
+  }
+
+}
+
+</style>
+
+{% endblock %}
