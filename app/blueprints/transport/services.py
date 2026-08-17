@@ -11,7 +11,10 @@ from sqlalchemy.exc import IntegrityError
 from io import BytesIO
 from datetime import date, datetime, timedelta
 from sqlalchemy.orm import joinedload
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 from app.extensions import db
 from app.models.transport import (
     Driver,
@@ -3209,6 +3212,458 @@ def bulk_import_transport_excel(
     )
 
     return result
+
+def build_transport_bulk_template() -> BytesIO:
+    """
+    Genera la plantilla oficial para la carga masiva
+    de choferes y cabezales.
+
+    IMPORTANTE:
+    El importador actual procesa las columnas por posición,
+    por lo que NO se deben eliminar ni reordenar columnas.
+
+    La hoja principal conserva el nombre:
+        VIGENCIA PERMISOS CALDERA
+
+    Esto se mantiene por compatibilidad con
+    bulk_import_transport_excel().
+    """
+
+    # =====================================================
+    # 1. CREAR LIBRO
+    # =====================================================
+    workbook = Workbook()
+
+    worksheet = workbook.active
+    worksheet.title = "VIGENCIA PERMISOS CALDERA"
+
+    # =====================================================
+    # 2. ENCABEZADOS
+    #
+    # Deben mantenerse EXACTAMENTE en este orden.
+    #
+    # A  = 0
+    # B  = 1
+    # ...
+    # AF = 31
+    #
+    # bulk_import_transport_excel() trabaja por índice.
+    # =====================================================
+    headers = [
+        "ORDINAL",                    # A  - ignorado
+        "FECHA INGRESO",              # B
+        "CHOFERES",                   # C
+        "RESIDENCIA",                 # D
+        "CEDULA",                     # E
+        "PLACA",                      # F
+        "TELEFONO",                   # G
+
+        "VACUNA COVID 1 DOSIS",       # H  - ignorado
+        "VACUNA COVID 2 DOSIS",       # I  - ignorado
+        "CARTA INS",                  # J  - ignorado
+
+        "PERMISO MUELLE CHOFER",      # K
+        "PERMISO MUELLE CAMION",      # L
+
+        "CARNET",                     # M
+        "VENCIMIENTO CARNET",         # N
+
+        "PERMISO QUIMICO",            # O
+
+        "CAPACITACION APM",           # P
+        "CARNET APM",                 # Q
+        "VENCIMIENTO CARNET APM",     # R
+
+        "LICENCIA",                   # S
+        "HD",                         # T
+
+        "PROPIETARIO",                # U
+        "TELEFONO PROPIETARIO",       # V
+
+        "TC",                         # W
+        "RTV",                        # X
+
+        "RESERVADO",                  # Y - no procesado actualmente
+
+        "NOMBRE AUT",                 # Z
+        "RT ALAMO",                   # AA
+        "NOMBRE RT",                  # AB
+
+        "PESOS Y DIMENSIONES",        # AC
+        "NUMERO DE POLIZA",           # AD
+        "CAUCIONADO",                 # AE
+
+        "PENDIENTES",                 # AF - ignorado
+    ]
+
+    worksheet.append(headers)
+
+    # =====================================================
+    # 3. ESTILO DE ENCABEZADOS
+    # =====================================================
+    header_fill = PatternFill(
+        "solid",
+        fgColor="0F3B63",
+    )
+
+    header_font = Font(
+        color="FFFFFF",
+        bold=True,
+    )
+
+    header_alignment = Alignment(
+        horizontal="center",
+        vertical="center",
+        wrap_text=True,
+    )
+
+    for column_index, header in enumerate(
+        headers,
+        start=1,
+    ):
+        cell = worksheet.cell(
+            row=1,
+            column=column_index,
+        )
+
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_alignment
+
+    worksheet.row_dimensions[1].height = 42
+
+    # =====================================================
+    # 4. ANCHOS DE COLUMNAS
+    # =====================================================
+    widths = {
+        "A": 12,
+        "B": 16,
+        "C": 32,
+        "D": 24,
+        "E": 18,
+        "F": 16,
+        "G": 18,
+
+        "H": 18,
+        "I": 18,
+        "J": 18,
+
+        "K": 22,
+        "L": 22,
+
+        "M": 18,
+        "N": 20,
+
+        "O": 20,
+
+        "P": 22,
+        "Q": 18,
+        "R": 22,
+
+        "S": 18,
+        "T": 18,
+
+        "U": 28,
+        "V": 22,
+
+        "W": 20,
+        "X": 16,
+        "Y": 16,
+
+        "Z": 22,
+        "AA": 18,
+        "AB": 22,
+
+        "AC": 24,
+        "AD": 22,
+        "AE": 18,
+
+        "AF": 28,
+    }
+
+    for column_letter, width in widths.items():
+        worksheet.column_dimensions[
+            column_letter
+        ].width = width
+
+    # =====================================================
+    # 5. CONGELAR ENCABEZADO
+    # =====================================================
+    worksheet.freeze_panes = "A2"
+
+    worksheet.auto_filter.ref = (
+        f"A1:AF1"
+    )
+
+    # =====================================================
+    # 6. FORMATOS DE FECHA
+    #
+    # Columnas que bulk_import_transport_excel()
+    # interpreta como fecha.
+    # =====================================================
+    date_columns = [
+        "B",   # fecha ingreso
+        "K",   # permiso muelle chofer
+        "L",   # permiso muelle camión
+        "N",   # vence carnet
+        "O",   # permiso químico
+        "R",   # vence APM
+        "S",   # licencia
+        "T",   # HD
+        "X",   # RTV
+        "AA",  # RT Álamo
+    ]
+
+    for column_letter in date_columns:
+        for row_number in range(
+            2,
+            5001,
+        ):
+            worksheet[
+                f"{column_letter}{row_number}"
+            ].number_format = "yyyy-mm-dd"
+
+    # =====================================================
+    # 7. VALIDACIONES
+    # =====================================================
+
+    # Capacitación APM
+    apm_training_validation = DataValidation(
+        type="list",
+        formula1='"SI,PENDIENTE"',
+        allow_blank=True,
+    )
+
+    # Caucionado
+    bonded_validation = DataValidation(
+        type="list",
+        formula1='"CAUCIONADO,PENDIENTE"',
+        allow_blank=True,
+    )
+
+    worksheet.add_data_validation(
+        apm_training_validation
+    )
+
+    worksheet.add_data_validation(
+        bonded_validation
+    )
+
+    apm_training_validation.add(
+        "P2:P5000"
+    )
+
+    bonded_validation.add(
+        "AE2:AE5000"
+    )
+
+    # =====================================================
+    # 8. COMENTARIO VISUAL PARA COLUMNAS NO PROCESADAS
+    # =====================================================
+    ignored_fill = PatternFill(
+        "solid",
+        fgColor="E2E8F0",
+    )
+
+    ignored_font = Font(
+        color="64748B",
+        bold=True,
+    )
+
+    ignored_columns = {
+        "A",
+        "H",
+        "I",
+        "J",
+        "Y",
+        "AF",
+    }
+
+    for column_letter in ignored_columns:
+        cell = worksheet[
+            f"{column_letter}1"
+        ]
+
+        cell.fill = ignored_fill
+        cell.font = ignored_font
+
+    # =====================================================
+    # 9. HOJA DE INSTRUCCIONES
+    # =====================================================
+    instructions_sheet = workbook.create_sheet(
+        "INSTRUCCIONES"
+    )
+
+    instructions = [
+        [
+            "PLANTILLA DE CARGA MASIVA - CHOFERES Y CABEZALES",
+            "",
+        ],
+        [
+            "",
+            "",
+        ],
+        [
+            "REGLA IMPORTANTE",
+            (
+                "No elimine, agregue ni cambie de posición las columnas. "
+                "El importador actual procesa los datos por posición."
+            ),
+        ],
+        [
+            "Hoja que se importa",
+            "VIGENCIA PERMISOS CALDERA",
+        ],
+        [
+            "Fila de encabezados",
+            "Fila 1. Los datos deben comenzar en la fila 2.",
+        ],
+        [
+            "",
+            "",
+        ],
+        [
+            "CAMPOS OBLIGATORIOS",
+            "CHOFERES y CEDULA.",
+        ],
+        [
+            "PLACA",
+            (
+                "Opcional. Si se indica, el sistema crea o localiza "
+                "el cabezal y trata de ligarlo al chofer."
+            ),
+        ],
+        [
+            "FECHAS",
+            (
+                "Use preferiblemente formato YYYY-MM-DD. "
+                "Ejemplo: 2026-08-17."
+            ),
+        ],
+        [
+            "CEDULA",
+            (
+                "Puede contener guiones o espacios. "
+                "El sistema normaliza el valor al importar."
+            ),
+        ],
+        [
+            "PLACA",
+            (
+                "Puede contener guiones o espacios. "
+                "El sistema normaliza y convierte a mayúsculas."
+            ),
+        ],
+        [
+            "",
+            "",
+        ],
+        [
+            "CAPACITACION APM",
+            "Valores reconocidos como aprobado: SI, SÍ, YES, OK, VALIDO, VALID.",
+        ],
+        [
+            "CARNET APM",
+            (
+                "PENDIENTE = pendiente. "
+                "Un valor que contenga VENC se considera vencido. "
+                "Cualquier otro valor se toma como número de carnet."
+            ),
+        ],
+        [
+            "VENCIMIENTO CARNET APM",
+            (
+                "Puede ser una fecha, PENDIENTE, VENCIDO "
+                "o SIN VENCIMIENTO."
+            ),
+        ],
+        [
+            "CAUCIONADO",
+            (
+                "Un valor que contenga CAU se registra como CAUCIONADO. "
+                "Los demás valores quedan PENDIENTE."
+            ),
+        ],
+        [
+            "",
+            "",
+        ],
+        [
+            "COLUMNAS DE COMPATIBILIDAD",
+            (
+                "ORDINAL, VACUNA COVID 1 DOSIS, VACUNA COVID 2 DOSIS, "
+                "CARTA INS, RESERVADO y PENDIENTES no se guardan actualmente."
+            ),
+        ],
+        [
+            "IMPORTANTE",
+            (
+                "Estas columnas deben permanecer en la plantilla porque "
+                "mantienen las posiciones que espera el importador."
+            ),
+        ],
+        [
+            "",
+            "",
+        ],
+        [
+            "PENDIENTES",
+            (
+                "No se importa. La aplicación calcula los pendientes "
+                "a partir de documentos y vencimientos."
+            ),
+        ],
+        [
+            "PATIERO",
+            (
+                "La condición de patiero NO se define dentro del Excel. "
+                "Se selecciona desde la pantalla de carga masiva."
+            ),
+        ],
+    ]
+
+    for instruction_row in instructions:
+        instructions_sheet.append(
+            instruction_row
+        )
+
+    instructions_sheet.column_dimensions[
+        "A"
+    ].width = 34
+
+    instructions_sheet.column_dimensions[
+        "B"
+    ].width = 95
+
+    instructions_sheet[
+        "A1"
+    ].font = Font(
+        bold=True,
+        size=14,
+    )
+
+    for row in instructions_sheet.iter_rows(
+        min_row=1,
+        max_col=2,
+    ):
+        for cell in row:
+            cell.alignment = Alignment(
+                vertical="top",
+                wrap_text=True,
+            )
+
+    # =====================================================
+    # 10. GUARDAR EN MEMORIA
+    # =====================================================
+    output = BytesIO()
+
+    workbook.save(
+        output
+    )
+
+    output.seek(0)
+
+    return output
 
 def get_active_assignment_for_truck(
     truck_id: int,

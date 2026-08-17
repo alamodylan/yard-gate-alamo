@@ -10,6 +10,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 
@@ -62,6 +63,7 @@ from app.blueprints.transport.services import (
     upsert_truck_document,
     update_driver_complete_row,
     bulk_import_transport_excel,
+    build_transport_bulk_template,
 )
 from app.extensions import db
 from app.models.site import Site
@@ -1429,6 +1431,37 @@ def driver_apm_save(driver_id: int):
             "transport.driver_detail",
             driver_id=driver_id,
         )
+    )
+
+@transport_bp.get(
+    "/drivers/bulk-upload/template"
+)
+@login_required
+@require_permission("drivers.import")
+def drivers_bulk_template():
+    """
+    Descarga la plantilla oficial para la carga masiva
+    de choferes y cabezales.
+
+    No consulta PostgreSQL.
+    El Excel se genera directamente en memoria.
+    """
+
+    template_file = (
+        build_transport_bulk_template()
+    )
+
+    return send_file(
+        template_file,
+        as_attachment=True,
+        download_name=(
+            "plantilla_carga_masiva_choferes.xlsx"
+        ),
+        mimetype=(
+            "application/"
+            "vnd.openxmlformats-officedocument."
+            "spreadsheetml.sheet"
+        ),
     )
 
 @transport_bp.get("/drivers/bulk-upload")

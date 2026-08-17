@@ -1,42 +1,53 @@
 {% extends "base.html" %}
 
-{% block title %}Carga Masiva de Choferes{% endblock %}
+{% block title %}
+  Carga Masiva de Choferes
+{% endblock %}
 
 {% block content %}
 
-<div class="bulk-page">
+{% include "transport/_styles.html" %}
+
+<div class="transport-shell">
 
   <!-- =====================================================
        ENCABEZADO
        ===================================================== -->
-  <div class="card card-pad bulk-header">
+  <div class="card card-pad">
 
-    <div>
-      <h2>Carga Masiva de Choferes y Cabezales</h2>
+    <div class="transport-head">
 
-      <p>
-        Importa la información histórica desde la plantilla Excel
-        de control de transportistas.
-      </p>
-    </div>
+      <div>
 
-    <div class="bulk-header-actions">
+        <h2>
+          Carga Masiva de Choferes y Cabezales
+        </h2>
 
-      <a
-        href="{{ url_for('transport.drivers_list') }}"
-        class="btn"
-      >
-        ← Volver a la lista
-      </a>
+        <p>
+          Importe registros desde la plantilla oficial de Excel.
+        </p>
 
-      {% if can('drivers.actions') %}
+      </div>
+
+      <div class="bulk-header-actions">
+
+        <!-- DESCARGAR PLANTILLA -->
         <a
-          href="{{ url_for('transport.driver_create') }}"
-          class="btn success"
+          class="btn primary"
+          href="{{ url_for('transport.drivers_bulk_template') }}"
         >
-          + Nuevo registro
+          ↓ Descargar plantilla Excel
         </a>
-      {% endif %}
+
+        <!-- VOLVER -->
+        <a
+          class="btn"
+          href="{{ url_for('transport.drivers_list') }}"
+        >
+          ← Volver
+        </a>
+
+      </div>
 
     </div>
 
@@ -44,778 +55,387 @@
 
 
   <!-- =====================================================
-       INFORMACIÓN DE LA CARGA
+       INSTRUCCIONES
        ===================================================== -->
   <div class="bulk-info-grid">
 
-    <div class="bulk-info-card">
-      <div class="bulk-info-icon">1</div>
+    <div class="card card-pad bulk-info-card">
+
+      <div class="bulk-step-number">
+        1
+      </div>
 
       <div>
-        <strong>Seleccione el Excel</strong>
-
-        <span>
-          Se admite formato .xlsx o .xlsm.
-        </span>
-      </div>
-    </div>
-
-
-    <div class="bulk-info-card">
-      <div class="bulk-info-icon">2</div>
-
-      <div>
-        <strong>Marcar como patieros</strong>
-
-        <span>
-          Seleccione un predio únicamente si todos los choferes
-          el archivo son patieros de ese predio.
-        </span>
-      </div>
-    </div>
-
-
-    <div class="bulk-info-card">
-      <div class="bulk-info-icon">3</div>
-
-      <div>
-        <strong>Procesamiento automático</strong>
-
-        <span>
-          El sistema crea o actualiza choferes, cabezales,
-          documentos, APM y asignaciones.
-        </span>
-      </div>
-    </div>
-
-  </div>
-
-
-  <!-- =====================================================
-       FORMULARIO
-       ===================================================== -->
-  <div class="card card-pad">
-
-    <div class="bulk-section-head">
-
-      <div>
-        <h3>Importar archivo</h3>
-
-        <p>
-          Utilice el archivo correspondiente al control
-          de vigencia de permisos.
-        </p>
-      </div>
-
-    </div>
-
-
-    <form
-      method="post"
-      action="{{ url_for('transport.drivers_bulk_upload_post') }}"
-      enctype="multipart/form-data"
-      id="bulkUploadForm"
-    >
-
-      <div class="bulk-form-grid">
-
-        <!-- ===============================================
-             ARCHIVO
-             =============================================== -->
-        <div class="bulk-field bulk-file-field">
-
-          <label for="bulkFile">
-            Archivo Excel
-          </label>
-
-          <div
-            class="bulk-drop-zone"
-            id="bulkDropZone"
-          >
-
-            <input
-              type="file"
-              id="bulkFile"
-              name="file"
-              accept=".xlsx,.xlsm"
-              required
-            >
-
-            <div class="bulk-drop-content">
-
-              <div class="bulk-file-icon">
-                XLSX
-              </div>
-
-              <div>
-                <strong id="bulkFileTitle">
-                  Seleccionar archivo Excel
-                </strong>
-
-                <span id="bulkFileSubtitle">
-                  Presione aquí o arrastre el archivo
-                </span>
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-
-        <!-- ===============================================
-             PREDIO
-             =============================================== -->
-        <div class="bulk-field">
-
-          <label for="habitualSite">
-            Marcar choferes como patieros
-          </label>
-
-          <select
-            id="habitualSite"
-            name="habitual_site_id"
-          >
-
-            <option value="">
-              No marcar como patieros
-            </option>
-
-            {% for site in sites %}
-
-            <option value="{{ site.id }}">
-                Patieros de {{ site.name or site.code }}
-            </option>
-
-            {% endfor %}
-
-          </select>
-
-          <small>
-            Déjelo en “No marcar como patieros” para una carga normal.
-            Seleccione un predio solamente si todos los choferes del archivo
-            corresponden a patieros de ese predio.
-          </small>
-
-        </div>
-
-      </div>
-
-
-      <!-- =================================================
-           ADVERTENCIA
-           ================================================= -->
-      <div class="bulk-warning">
-
-        <div class="bulk-warning-icon">
-          !
-        </div>
-
-        <div>
-
-          <strong>
-            La carga puede actualizar información existente
-          </strong>
-
-          <p>
-            La identificación del chofer y la placa del cabezal
-            se utilizan para reconocer registros ya existentes.
-            Si existen, se actualizan; si no existen, se crean.
-
-            El selector de patiero es opcional y únicamente agrega
-            el distintivo del predio indicado.
-          </p>
-
-        </div>
-
-      </div>
-
-
-      <!-- =================================================
-           COLUMNAS MANEJADAS
-           ================================================= -->
-      <div class="bulk-columns">
-
-        <div class="bulk-columns-title">
-          Información que procesa la carga
-        </div>
-
-        <div class="bulk-columns-grid">
-
-          <span>Fecha de ingreso</span>
-          <span>Chofer</span>
-          <span>Residencia</span>
-          <span>Cédula</span>
-          <span>Placa</span>
-          <span>Teléfono</span>
-
-          <span>Permiso muelle chofer</span>
-          <span>Permiso muelle camión</span>
-
-          <span>Carnet</span>
-          <span>Vencimiento carnet</span>
-
-          <span>Permiso químico</span>
-
-          <span>Capacitación APM</span>
-          <span>Carnet APM</span>
-          <span>Vencimiento APM</span>
-
-          <span>Licencia</span>
-          <span>Hoja de delincuencia</span>
-
-          <span>Propietario</span>
-          <span>Teléfono propietario</span>
-
-          <span>Tarjeta circulación</span>
-          <span>RTV / DEKRA</span>
-
-          <span>Seguro / AUT</span>
-          <span>RT</span>
-
-          <span>Pesos y dimensiones</span>
-          <span>Número de póliza</span>
-          <span>Caucionado</span>
-
-        </div>
-
-      </div>
-
-
-      <!-- =================================================
-           COLUMNAS NO IMPORTADAS
-           ================================================= -->
-      <div class="bulk-ignored">
 
         <strong>
-          Columnas que no se importan actualmente
+          Descargue la plantilla
         </strong>
 
-        <div class="bulk-ignored-items">
-
-          <span>
-            Vacuna COVID 1 dosis
-          </span>
-
-          <span>
-            Vacuna COVID 2 dosis
-          </span>
-
-          <span>
-            Carta INS
-          </span>
-
-          <span>
-            Pendientes
-          </span>
-
-        </div>
-
-        <p>
-          La columna <b>Pendientes</b> no se carga porque el sistema
-          la calcula automáticamente según los documentos y
-          vencimientos registrados.
-        </p>
-
-      </div>
-
-
-      <!-- =================================================
-           BOTONES
-           ================================================= -->
-      <div class="bulk-actions">
-
-        <a
-          href="{{ url_for('transport.drivers_list') }}"
-          class="btn"
-        >
-          Cancelar
-        </a>
-
-        <button
-          type="submit"
-          class="btn primary bulk-submit"
-          id="bulkSubmitBtn"
-        >
-          Procesar carga masiva
-        </button>
-
-      </div>
-
-    </form>
-
-  </div>
-
-
-  <!-- =====================================================
-       RESULTADO
-       ===================================================== -->
-  {% if result %}
-
-    <div class="card card-pad bulk-result-card">
-
-      <div class="bulk-result-head">
-
-        <div>
-
-          <h3>
-            Resultado de la carga
-          </h3>
-
-          <p>
-            Resumen del procesamiento realizado.
-          </p>
-
-        </div>
-
-
-        {% if result.error_count == 0 %}
-
-          <span class="bulk-status-badge success">
-            Carga completada
-          </span>
-
-        {% else %}
-
-          <span class="bulk-status-badge warning">
-            Completada con observaciones
-          </span>
-
-        {% endif %}
-
-      </div>
-
-
-      <!-- =================================================
-           CONTADORES
-           ================================================= -->
-      <div class="bulk-stats">
-
-        <div class="bulk-stat">
-          <span>Filas procesadas</span>
-          <strong>
-            {{ result.processed or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Choferes creados</span>
-          <strong>
-            {{ result.created_drivers or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Choferes actualizados</span>
-          <strong>
-            {{ result.updated_drivers or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Cabezales creados</span>
-          <strong>
-            {{ result.created_trucks or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Cabezales actualizados</span>
-          <strong>
-            {{ result.updated_trucks or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Asignaciones creadas</span>
-          <strong>
-            {{ result.created_assignments or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Documentos procesados</span>
-          <strong>
-            {{ result.updated_documents or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Registros APM</span>
-          <strong>
-            {{ result.updated_apm or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat">
-          <span>Filas omitidas</span>
-          <strong>
-            {{ result.skipped or 0 }}
-          </strong>
-        </div>
-
-
-        <div class="bulk-stat {% if result.error_count %}has-error{% endif %}">
-          <span>Observaciones</span>
-
-          <strong>
-            {{ result.error_count or 0 }}
-          </strong>
-        </div>
-
-      </div>
-
-
-      <!-- =================================================
-           ERRORES / OBSERVACIONES
-           ================================================= -->
-      {% if result.errors %}
-
-        <div class="bulk-errors">
-
-          <div class="bulk-errors-head">
-
-            <div>
-              <h4>
-                Observaciones encontradas
-              </h4>
-
-              <p>
-                Estas filas requieren revisión.
-              </p>
-            </div>
-
-
-            <span>
-              {{ result.error_count }}
-              registro(s)
-            </span>
-
-          </div>
-
-
-          <div class="bulk-errors-table-wrap">
-
-            <table class="bulk-errors-table">
-
-              <thead>
-                <tr>
-                  <th>Fila Excel</th>
-                  <th>Detalle</th>
-                </tr>
-              </thead>
-
-              <tbody>
-
-                {% for error in result.errors %}
-
-                  <tr>
-
-                    <td>
-                      <strong>
-                        {{ error.row }}
-                      </strong>
-                    </td>
-
-                    <td>
-                      {{ error.message }}
-                    </td>
-
-                  </tr>
-
-                {% endfor %}
-
-              </tbody>
-
-            </table>
-
-          </div>
-
-
-          {% if result.error_count > result.errors|length %}
-
-            <div class="bulk-errors-more">
-
-              Se muestran las primeras
-              {{ result.errors|length }}
-              observaciones de
-              {{ result.error_count }}.
-
-            </div>
-
-          {% endif %}
-
-        </div>
-
-      {% endif %}
-
-
-      <!-- =================================================
-           FINAL
-           ================================================= -->
-      <div class="bulk-result-actions">
-
-        <a
-          href="{{ url_for('transport.drivers_list') }}"
-          class="btn primary"
-        >
-          Ver matriz de choferes
-        </a>
-
-        <a
-          href="{{ url_for('transport.drivers_bulk_upload') }}"
-          class="btn"
-        >
-          Cargar otro archivo
-        </a>
+        <span>
+          Utilice la plantilla oficial para mantener las
+          columnas y el orden que espera el sistema.
+        </span>
 
       </div>
 
     </div>
 
-  {% endif %}
+
+    <div class="card card-pad bulk-info-card">
+
+      <div class="bulk-step-number">
+        2
+      </div>
+
+      <div>
+
+        <strong>
+          Complete la información
+        </strong>
+
+        <span>
+          Ingrese los datos de los choferes y cabezales.
+          No elimine ni cambie de posición las columnas.
+        </span>
+
+      </div>
+
+    </div>
+
+
+    <div class="card card-pad bulk-info-card">
+
+      <div class="bulk-step-number">
+        3
+      </div>
+
+      <div>
+
+        <strong>
+          Marcar como patieros
+        </strong>
+
+        <span>
+          Seleccione un predio únicamente si todos los
+          choferes del archivo son patieros de ese predio.
+        </span>
+
+      </div>
+
+    </div>
+
+
+    <div class="card card-pad bulk-info-card">
+
+      <div class="bulk-step-number">
+        4
+      </div>
+
+      <div>
+
+        <strong>
+          Procese el archivo
+        </strong>
+
+        <span>
+          El sistema buscará registros existentes y procesará
+          la información de la plantilla.
+        </span>
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- =====================================================
+       FORMULARIO DE CARGA
+       ===================================================== -->
+  <form
+    method="post"
+    enctype="multipart/form-data"
+    class="card card-pad bulk-form"
+    id="bulkUploadForm"
+  >
+
+    <div class="bulk-form-title">
+
+      <div>
+        <h3>
+          Archivo a procesar
+        </h3>
+
+        <p>
+          Seleccione el Excel previamente completado.
+        </p>
+      </div>
+
+      <span class="bulk-format-badge">
+        XLSX
+      </span>
+
+    </div>
+
+
+    <!-- ===================================================
+         ARCHIVO
+         =================================================== -->
+    <div class="bulk-field">
+
+      <label for="bulkFile">
+        Archivo Excel
+      </label>
+
+      <div
+        class="bulk-file-box"
+        id="bulkFileBox"
+      >
+
+        <div class="bulk-file-icon">
+          XLSX
+        </div>
+
+        <div class="bulk-file-content">
+
+          <strong id="bulkFileName">
+            Seleccione un archivo
+          </strong>
+
+          <span id="bulkFileDescription">
+            Solo archivos Excel .xlsx
+          </span>
+
+        </div>
+
+        <label
+          for="bulkFile"
+          class="btn bulk-file-button"
+        >
+          Examinar
+        </label>
+
+        <input
+          id="bulkFile"
+          type="file"
+          name="file"
+          accept=".xlsx"
+          required
+        >
+
+      </div>
+
+    </div>
+
+
+    <!-- ===================================================
+         PATIERO
+         =================================================== -->
+    <div class="bulk-field">
+
+      <label for="habitualSite">
+        Marcar choferes como patieros
+      </label>
+
+      <select
+        id="habitualSite"
+        name="habitual_site_id"
+      >
+
+        <option value="">
+          No marcar como patieros
+        </option>
+
+        {% for site in sites %}
+
+          <option value="{{ site.id }}">
+            Patieros de {{ site.name or site.code }}
+          </option>
+
+        {% endfor %}
+
+      </select>
+
+      <small>
+        Déjelo en “No marcar como patieros” para una carga
+        normal. Seleccione un predio solamente si todos los
+        choferes incluidos en este archivo son patieros de ese
+        predio.
+      </small>
+
+    </div>
+
+
+    <!-- ===================================================
+         ADVERTENCIA
+         =================================================== -->
+    <div class="bulk-warning">
+
+      <div class="bulk-warning-icon">
+        !
+      </div>
+
+      <div>
+
+        <strong>
+          Importante
+        </strong>
+
+        <p>
+          Utilice la plantilla oficial descargada desde esta
+          pantalla. No elimine, agregue ni cambie de posición
+          las columnas.
+        </p>
+
+        <p>
+          La identificación del chofer y la placa del cabezal
+          se utilizan para reconocer registros ya existentes.
+          Si existen, el sistema actualizará la información
+          correspondiente; si no existen, podrá crear los
+          registros según la información suministrada.
+        </p>
+
+        <p>
+          El selector de patiero es opcional y únicamente
+          identifica a los choferes como patieros del predio
+          seleccionado. No restringe su visualización a ese
+          predio.
+        </p>
+
+      </div>
+
+    </div>
+
+
+    <!-- ===================================================
+         ACCIONES
+         =================================================== -->
+    <div class="bulk-actions">
+
+      <a
+        class="btn"
+        href="{{ url_for('transport.drivers_list') }}"
+      >
+        Cancelar
+      </a>
+
+      <button
+        type="submit"
+        class="btn primary bulk-submit"
+        id="bulkSubmitButton"
+      >
+        Procesar carga masiva
+      </button>
+
+    </div>
+
+  </form>
+
+
+  <!-- =====================================================
+       AYUDA DE CAMPOS
+       ===================================================== -->
+  <div class="card card-pad bulk-help">
+
+    <div class="bulk-help-header">
+
+      <div>
+
+        <h3>
+          Información procesada
+        </h3>
+
+        <p>
+          La plantilla permite cargar información de chofer,
+          cabezal, propietario y documentación.
+        </p>
+
+      </div>
+
+    </div>
+
+
+    <div class="bulk-help-grid">
+
+      <div class="bulk-help-group">
+
+        <strong>
+          Chofer
+        </strong>
+
+        <span>Fecha de ingreso</span>
+        <span>Nombre</span>
+        <span>Residencia</span>
+        <span>Cédula</span>
+        <span>Teléfono</span>
+
+      </div>
+
+
+      <div class="bulk-help-group">
+
+        <strong>
+          Permisos
+        </strong>
+
+        <span>Permiso muelle chofer</span>
+        <span>Permiso muelle camión</span>
+        <span>Carnet</span>
+        <span>Permiso químico</span>
+        <span>Licencia</span>
+        <span>HD</span>
+
+      </div>
+
+
+      <div class="bulk-help-group">
+
+        <strong>
+          APM
+        </strong>
+
+        <span>Capacitación APM</span>
+        <span>Carnet APM</span>
+        <span>Vencimiento APM</span>
+
+      </div>
+
+
+      <div class="bulk-help-group">
+
+        <strong>
+          Cabezal
+        </strong>
+
+        <span>Placa</span>
+        <span>Propietario</span>
+        <span>Teléfono propietario</span>
+        <span>TC</span>
+        <span>DEKRA / RTV</span>
+        <span>Seguro</span>
+        <span>RT</span>
+        <span>Pesos y dimensiones</span>
+        <span>Póliza</span>
+        <span>Caucionado</span>
+
+      </div>
+
+    </div>
+
+  </div>
 
 </div>
 
 
-<!-- =========================================================
-     JS
-     ========================================================= -->
-<script>
-
-document.addEventListener("DOMContentLoaded", function () {
-
-  const fileInput = document.getElementById("bulkFile");
-  const dropZone = document.getElementById("bulkDropZone");
-
-  const fileTitle = document.getElementById("bulkFileTitle");
-  const fileSubtitle = document.getElementById("bulkFileSubtitle");
-
-  const form = document.getElementById("bulkUploadForm");
-  const submitBtn = document.getElementById("bulkSubmitBtn");
-
-
-  /* =======================================================
-     MOSTRAR ARCHIVO SELECCIONADO
-     ======================================================= */
-
-  function updateFileDisplay(file) {
-
-    if (!file) {
-
-      fileTitle.textContent =
-        "Seleccionar archivo Excel";
-
-      fileSubtitle.textContent =
-        "Presione aquí o arrastre el archivo";
-
-      dropZone.classList.remove(
-        "has-file"
-      );
-
-      return;
-    }
-
-
-    const sizeMb = (
-      file.size / 1024 / 1024
-    ).toFixed(2);
-
-
-    fileTitle.textContent =
-      file.name;
-
-
-    fileSubtitle.textContent =
-      `${sizeMb} MB`;
-
-
-    dropZone.classList.add(
-      "has-file"
-    );
-
-  }
-
-
-  fileInput.addEventListener(
-    "change",
-    function () {
-
-      updateFileDisplay(
-        this.files[0]
-      );
-
-    }
-  );
-
-
-  /* =======================================================
-     DRAG AND DROP
-     ======================================================= */
-
-  dropZone.addEventListener(
-    "dragover",
-    function (event) {
-
-      event.preventDefault();
-
-      dropZone.classList.add(
-        "is-dragging"
-      );
-
-    }
-  );
-
-
-  dropZone.addEventListener(
-    "dragleave",
-    function () {
-
-      dropZone.classList.remove(
-        "is-dragging"
-      );
-
-    }
-  );
-
-
-  dropZone.addEventListener(
-    "drop",
-    function (event) {
-
-      event.preventDefault();
-
-      dropZone.classList.remove(
-        "is-dragging"
-      );
-
-
-      const files =
-        event.dataTransfer.files;
-
-
-      if (!files || !files.length) {
-        return;
-      }
-
-
-      const file =
-        files[0];
-
-
-      const lowerName =
-        file.name.toLowerCase();
-
-
-      if (
-        !lowerName.endsWith(".xlsx")
-        &&
-        !lowerName.endsWith(".xlsm")
-      ) {
-
-        alert(
-          "El archivo debe ser .xlsx o .xlsm."
-        );
-
-        return;
-      }
-
-
-      const transfer =
-        new DataTransfer();
-
-
-      transfer.items.add(
-        file
-      );
-
-
-      fileInput.files =
-        transfer.files;
-
-
-      updateFileDisplay(
-        file
-      );
-
-    }
-  );
-
-
-  /* =======================================================
-     BLOQUEAR DOBLE ENVÍO
-     ======================================================= */
-
-  form.addEventListener(
-    "submit",
-    function () {
-
-      if (!fileInput.files.length) {
-        return;
-      }
-
-
-      submitBtn.disabled = true;
-
-      submitBtn.textContent =
-        "Procesando archivo...";
-
-
-      submitBtn.classList.add(
-        "is-loading"
-      );
-
-    }
-  );
-
-});
-
-</script>
-
-
-<!-- =========================================================
-     ESTILOS
-     ========================================================= -->
 <style>
 
-.bulk-page{
-  display:flex;
-  flex-direction:column;
-  gap:16px;
-}
-
-
 /* =========================================================
-   ENCABEZADO
+   HEADER
    ========================================================= */
-
-.bulk-header{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:16px;
-}
-
-.bulk-header h2{
-  margin:0;
-}
-
-.bulk-header p{
-  margin:6px 0 0;
-  color:#64748b;
-}
 
 .bulk-header-actions{
   display:flex;
+  align-items:center;
   gap:8px;
   flex-wrap:wrap;
 }
@@ -827,74 +447,49 @@ document.addEventListener("DOMContentLoaded", function () {
 
 .bulk-info-grid{
   display:grid;
-  grid-template-columns:repeat(3,1fr);
+  grid-template-columns:repeat(4, 1fr);
   gap:12px;
 }
 
 .bulk-info-card{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   gap:12px;
-
-  padding:14px 16px;
-
-  background:#ffffff;
-
-  border:1px solid #dbe3ef;
-  border-radius:14px;
-
-  box-shadow:0 4px 14px rgba(15,23,42,.04);
 }
 
-.bulk-info-icon{
-  width:34px;
-  height:34px;
-
-  border-radius:999px;
-
+.bulk-step-number{
   display:flex;
   align-items:center;
   justify-content:center;
 
-  flex:0 0 auto;
+  min-width:34px;
+  width:34px;
+  height:34px;
+
+  border-radius:10px;
 
   background:#0f3b63;
   color:#ffffff;
 
+  font-size:14px;
   font-weight:950;
 }
 
 .bulk-info-card strong{
   display:block;
+  margin-bottom:5px;
+
   color:#0f172a;
   font-size:13px;
+  font-weight:950;
 }
 
 .bulk-info-card span{
   display:block;
-  margin-top:3px;
 
   color:#64748b;
   font-size:11px;
-  line-height:1.35;
-}
-
-
-/* =========================================================
-   SECCIÓN
-   ========================================================= */
-
-.bulk-section-head{
-  margin-bottom:16px;
-}
-
-.bulk-section-head h3{
-  margin:0;
-}
-
-.bulk-section-head p{
-  margin:5px 0 0;
-  color:#64748b;
+  line-height:1.4;
 }
 
 
@@ -902,49 +497,126 @@ document.addEventListener("DOMContentLoaded", function () {
    FORMULARIO
    ========================================================= */
 
-.bulk-form-grid{
-  display:grid;
-  grid-template-columns:minmax(360px,1.4fr) minmax(240px,.6fr);
-  gap:18px;
+.bulk-form{
+  display:flex;
+  flex-direction:column;
+  gap:22px;
 }
 
-.bulk-field label{
-  display:block;
+.bulk-form-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
 
-  margin-bottom:7px;
+  padding-bottom:14px;
+
+  border-bottom:1px solid #e2e8f0;
+}
+
+.bulk-form-title h3{
+  margin:0;
+
+  color:#0f172a;
+  font-size:17px;
+  font-weight:950;
+}
+
+.bulk-form-title p{
+  margin:4px 0 0;
+
+  color:#64748b;
+  font-size:12px;
+}
+
+.bulk-format-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  padding:5px 10px;
+
+  border-radius:999px;
+
+  background:#dcfce7;
+  color:#166534;
+
+  font-size:10px;
+  font-weight:950;
+}
+
+
+/* =========================================================
+   CAMPOS
+   ========================================================= */
+
+.bulk-field{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+}
+
+.bulk-field > label{
+  color:#334155;
 
   font-size:12px;
   font-weight:950;
-  color:#334155;
 }
 
 .bulk-field select{
   width:100%;
+  max-width:440px;
+
   box-sizing:border-box;
+
+  padding:10px 11px;
+
+  border:1px solid #cbd5e1;
+  border-radius:9px;
+
+  background:#ffffff;
+  color:#0f172a;
+
+  font-size:12px;
+  font-weight:700;
+}
+
+.bulk-field select:focus{
+  outline:none;
+
+  border-color:#2563eb;
+
+  box-shadow:
+    0 0 0 3px rgba(37,99,235,.10);
 }
 
 .bulk-field small{
   display:block;
 
-  margin-top:7px;
+  max-width:720px;
 
   color:#64748b;
+
   font-size:11px;
-  line-height:1.35;
+  line-height:1.45;
 }
 
 
 /* =========================================================
-   ARCHIVO
+   SELECTOR DE ARCHIVO
    ========================================================= */
 
-.bulk-drop-zone{
-  position:relative;
+.bulk-file-box{
+  display:flex;
+  align-items:center;
+  gap:14px;
 
-  min-height:125px;
+  min-height:78px;
 
-  border:2px dashed #cbd5e1;
-  border-radius:14px;
+  padding:14px;
+
+  border:1px dashed #94a3b8;
+  border-radius:12px;
 
   background:#f8fafc;
 
@@ -953,81 +625,67 @@ document.addEventListener("DOMContentLoaded", function () {
     background .15s ease;
 }
 
-.bulk-drop-zone:hover,
-.bulk-drop-zone.is-dragging{
-  border-color:#2563eb;
-  background:#eff6ff;
-}
+.bulk-file-box.has-file{
+  border-style:solid;
+  border-color:#22c55e;
 
-.bulk-drop-zone.has-file{
-  border-color:#16a34a;
   background:#f0fdf4;
 }
 
-.bulk-drop-zone input{
-  position:absolute;
-
-  inset:0;
-
-  width:100%;
-  height:100%;
-
-  opacity:0;
-
-  cursor:pointer;
-
-  z-index:2;
-}
-
-.bulk-drop-content{
-  position:absolute;
-
-  inset:0;
-
-  display:flex;
-  justify-content:center;
-  align-items:center;
-
-  gap:14px;
-
-  padding:20px;
-}
-
 .bulk-file-icon{
-  width:55px;
-  height:55px;
-
-  border-radius:13px;
-
   display:flex;
   align-items:center;
   justify-content:center;
 
-  flex:0 0 auto;
+  width:48px;
+  height:48px;
+  min-width:48px;
+
+  border-radius:10px;
 
   background:#dcfce7;
   color:#166534;
 
-  font-size:12px;
+  font-size:10px;
   font-weight:950;
 }
 
-.bulk-drop-content strong{
+.bulk-file-content{
+  flex:1;
+  min-width:0;
+}
+
+.bulk-file-content strong{
   display:block;
+
+  overflow:hidden;
 
   color:#0f172a;
 
-  font-size:14px;
+  font-size:13px;
   font-weight:950;
+
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 
-.bulk-drop-content span{
+.bulk-file-content span{
   display:block;
 
   margin-top:4px;
 
   color:#64748b;
-  font-size:12px;
+
+  font-size:11px;
+}
+
+.bulk-file-button{
+  cursor:pointer;
+  white-space:nowrap;
+}
+
+#bulkFile{
+  display:none;
 }
 
 
@@ -1037,134 +695,57 @@ document.addEventListener("DOMContentLoaded", function () {
 
 .bulk-warning{
   display:flex;
+  align-items:flex-start;
   gap:12px;
 
-  margin-top:20px;
   padding:14px;
 
-  background:#fffbeb;
-
   border:1px solid #fde68a;
-  border-radius:13px;
+  border-radius:12px;
+
+  background:#fffbeb;
 }
 
 .bulk-warning-icon{
-  width:28px;
-  height:28px;
-
   display:flex;
   align-items:center;
   justify-content:center;
 
-  flex:0 0 auto;
+  min-width:30px;
+  width:30px;
+  height:30px;
 
   border-radius:999px;
 
   background:#f59e0b;
   color:#ffffff;
 
+  font-size:16px;
   font-weight:950;
 }
 
 .bulk-warning strong{
+  display:block;
+
+  margin-bottom:5px;
+
   color:#92400e;
-}
-
-.bulk-warning p{
-  margin:4px 0 0;
-
-  color:#a16207;
-
-  font-size:12px;
-  line-height:1.4;
-}
-
-
-/* =========================================================
-   COLUMNAS
-   ========================================================= */
-
-.bulk-columns{
-  margin-top:20px;
-}
-
-.bulk-columns-title{
-  margin-bottom:9px;
-
-  color:#334155;
 
   font-size:12px;
   font-weight:950;
 }
 
-.bulk-columns-grid{
-  display:flex;
-  flex-wrap:wrap;
-  gap:6px;
-}
+.bulk-warning p{
+  margin:0 0 7px;
 
-.bulk-columns-grid span{
-  padding:5px 9px;
-
-  border-radius:999px;
-
-  background:#eff6ff;
-  color:#1e40af;
-
-  font-size:10px;
-  font-weight:850;
-}
-
-
-/* =========================================================
-   IGNORADAS
-   ========================================================= */
-
-.bulk-ignored{
-  margin-top:20px;
-
-  padding:13px 14px;
-
-  background:#f8fafc;
-
-  border:1px solid #e2e8f0;
-  border-radius:12px;
-}
-
-.bulk-ignored > strong{
-  display:block;
-
-  margin-bottom:8px;
-
-  color:#475569;
-  font-size:12px;
-}
-
-.bulk-ignored-items{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-}
-
-.bulk-ignored-items span{
-  padding:4px 8px;
-
-  border-radius:999px;
-
-  background:#e2e8f0;
-  color:#475569;
-
-  font-size:10px;
-  font-weight:850;
-}
-
-.bulk-ignored p{
-  margin:9px 0 0;
-
-  color:#64748b;
+  color:#78350f;
 
   font-size:11px;
-  line-height:1.4;
+  line-height:1.45;
+}
+
+.bulk-warning p:last-child{
+  margin-bottom:0;
 }
 
 
@@ -1174,10 +755,9 @@ document.addEventListener("DOMContentLoaded", function () {
 
 .bulk-actions{
   display:flex;
+  align-items:center;
   justify-content:flex-end;
-  gap:8px;
-
-  margin-top:20px;
+  gap:10px;
 
   padding-top:16px;
 
@@ -1195,212 +775,62 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 /* =========================================================
-   RESULTADO
+   AYUDA
    ========================================================= */
 
-.bulk-result-card{
-  margin-bottom:20px;
+.bulk-help-header{
+  margin-bottom:16px;
 }
 
-.bulk-result-head{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  gap:12px;
-
-  margin-bottom:17px;
-}
-
-.bulk-result-head h3{
+.bulk-help-header h3{
   margin:0;
+
+  color:#0f172a;
+
+  font-size:15px;
+  font-weight:950;
 }
 
-.bulk-result-head p{
+.bulk-help-header p{
   margin:4px 0 0;
 
   color:#64748b;
 
-  font-size:12px;
-}
-
-.bulk-status-badge{
-  display:inline-flex;
-
-  padding:6px 10px;
-
-  border-radius:999px;
-
   font-size:11px;
-  font-weight:950;
 }
 
-.bulk-status-badge.success{
-  background:#dcfce7;
-  color:#166534;
-}
-
-.bulk-status-badge.warning{
-  background:#fef3c7;
-  color:#92400e;
-}
-
-
-/* =========================================================
-   ESTADÍSTICAS
-   ========================================================= */
-
-.bulk-stats{
+.bulk-help-grid{
   display:grid;
-  grid-template-columns:repeat(5,1fr);
-  gap:10px;
+  grid-template-columns:repeat(4, 1fr);
+  gap:14px;
 }
 
-.bulk-stat{
-  padding:13px;
+.bulk-help-group{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+
+  padding:12px;
 
   border:1px solid #e2e8f0;
-  border-radius:12px;
+  border-radius:10px;
 
   background:#f8fafc;
 }
 
-.bulk-stat span{
-  display:block;
+.bulk-help-group strong{
+  margin-bottom:3px;
 
-  color:#64748b;
+  color:#0f3b63;
 
-  font-size:10px;
-  font-weight:850;
-  line-height:1.25;
-}
-
-.bulk-stat strong{
-  display:block;
-
-  margin-top:5px;
-
-  color:#0f172a;
-
-  font-size:24px;
+  font-size:12px;
   font-weight:950;
 }
 
-.bulk-stat.has-error{
-  background:#fff7ed;
-  border-color:#fed7aa;
-}
-
-.bulk-stat.has-error strong{
-  color:#c2410c;
-}
-
-
-/* =========================================================
-   ERRORES
-   ========================================================= */
-
-.bulk-errors{
-  margin-top:20px;
-
-  border:1px solid #fed7aa;
-  border-radius:13px;
-
-  overflow:hidden;
-}
-
-.bulk-errors-head{
-  display:flex;
-  justify-content:space-between;
-  gap:12px;
-
-  padding:12px 14px;
-
-  background:#fff7ed;
-
-  border-bottom:1px solid #fed7aa;
-}
-
-.bulk-errors-head h4{
-  margin:0;
-
-  color:#9a3412;
-}
-
-.bulk-errors-head p{
-  margin:3px 0 0;
-
-  color:#c2410c;
-  font-size:11px;
-}
-
-.bulk-errors-head > span{
-  color:#9a3412;
+.bulk-help-group span{
+  color:#475569;
 
   font-size:11px;
-  font-weight:950;
-}
-
-.bulk-errors-table-wrap{
-  overflow:auto;
-
-  max-height:350px;
-}
-
-.bulk-errors-table{
-  width:100%;
-
-  border-collapse:collapse;
-}
-
-.bulk-errors-table th,
-.bulk-errors-table td{
-  padding:9px 11px;
-
-  border-bottom:1px solid #ffedd5;
-
-  text-align:left;
-  vertical-align:top;
-
-  font-size:11px;
-}
-
-.bulk-errors-table th{
-  position:sticky;
-  top:0;
-
-  background:#fffaf5;
-
-  color:#9a3412;
-
-  font-weight:950;
-}
-
-.bulk-errors-table td:first-child{
-  width:90px;
-}
-
-.bulk-errors-more{
-  padding:10px 14px;
-
-  background:#fff7ed;
-
-  color:#9a3412;
-
-  font-size:11px;
-  font-weight:850;
-}
-
-
-/* =========================================================
-   RESULT ACTIONS
-   ========================================================= */
-
-.bulk-result-actions{
-  display:flex;
-  justify-content:flex-end;
-  gap:8px;
-
-  margin-top:18px;
 }
 
 
@@ -1408,45 +838,62 @@ document.addEventListener("DOMContentLoaded", function () {
    RESPONSIVE
    ========================================================= */
 
-@media(max-width:1000px){
+@media(max-width:1100px){
 
   .bulk-info-grid{
-    grid-template-columns:1fr;
+    grid-template-columns:repeat(2, 1fr);
   }
 
-  .bulk-form-grid{
-    grid-template-columns:1fr;
-  }
-
-  .bulk-stats{
-    grid-template-columns:repeat(2,1fr);
+  .bulk-help-grid{
+    grid-template-columns:repeat(2, 1fr);
   }
 
 }
 
 
-@media(max-width:700px){
-
-  .bulk-header{
-    flex-direction:column;
-    align-items:flex-start;
-  }
+@media(max-width:760px){
 
   .bulk-header-actions{
     width:100%;
   }
 
-  .bulk-stats{
+  .bulk-header-actions .btn{
+    flex:1;
+    text-align:center;
+  }
+
+  .bulk-info-grid{
     grid-template-columns:1fr;
   }
 
-  .bulk-actions,
-  .bulk-result-actions{
+  .bulk-help-grid{
+    grid-template-columns:1fr;
+  }
+
+  .bulk-file-box{
+    align-items:flex-start;
+    flex-wrap:wrap;
+  }
+
+  .bulk-file-content{
+    min-width:calc(100% - 70px);
+  }
+
+  .bulk-file-button{
+    width:100%;
+    box-sizing:border-box;
+    text-align:center;
+  }
+
+  .bulk-field select{
+    max-width:none;
+  }
+
+  .bulk-actions{
     flex-direction:column-reverse;
   }
 
-  .bulk-actions .btn,
-  .bulk-result-actions .btn{
+  .bulk-actions .btn{
     width:100%;
     box-sizing:border-box;
     text-align:center;
@@ -1455,5 +902,117 @@ document.addEventListener("DOMContentLoaded", function () {
 }
 
 </style>
+
+
+<script>
+
+document.addEventListener(
+  "DOMContentLoaded",
+  function () {
+
+    const fileInput =
+      document.getElementById("bulkFile");
+
+    const fileBox =
+      document.getElementById("bulkFileBox");
+
+    const fileName =
+      document.getElementById("bulkFileName");
+
+    const fileDescription =
+      document.getElementById(
+        "bulkFileDescription"
+      );
+
+    const form =
+      document.getElementById("bulkUploadForm");
+
+    const submitButton =
+      document.getElementById(
+        "bulkSubmitButton"
+      );
+
+
+    /* =====================================================
+       MOSTRAR ARCHIVO SELECCIONADO
+       ===================================================== */
+
+    if (fileInput) {
+
+      fileInput.addEventListener(
+        "change",
+        function () {
+
+          const file =
+            fileInput.files &&
+            fileInput.files.length
+              ? fileInput.files[0]
+              : null;
+
+
+          if (!file) {
+
+            fileName.textContent =
+              "Seleccione un archivo";
+
+            fileDescription.textContent =
+              "Solo archivos Excel .xlsx";
+
+            fileBox.classList.remove(
+              "has-file"
+            );
+
+            return;
+          }
+
+
+          fileName.textContent =
+            file.name;
+
+
+          const sizeMb =
+            file.size /
+            (1024 * 1024);
+
+
+          fileDescription.textContent =
+            sizeMb.toFixed(2) +
+            " MB · Listo para procesar";
+
+
+          fileBox.classList.add(
+            "has-file"
+          );
+
+        }
+      );
+
+    }
+
+
+    /* =====================================================
+       EVITAR DOBLE ENVÍO
+       ===================================================== */
+
+    if (form && submitButton) {
+
+      form.addEventListener(
+        "submit",
+        function () {
+
+          submitButton.disabled = true;
+
+          submitButton.textContent =
+            "Procesando...";
+
+        }
+      );
+
+    }
+
+  }
+);
+
+</script>
 
 {% endblock %}
