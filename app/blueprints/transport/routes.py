@@ -268,21 +268,20 @@ def index():
 @require_permission("drivers.view")
 def drivers_list():
     """
-    Matriz principal de choferes y cabezales.
+    Matriz principal global de choferes y cabezales.
 
-    La lista es GLOBAL para todos los predios.
+    Reglas:
+    - La lista es global para Caldera, Coyol y Limón.
+    - habitual_site_id solo identifica/filtra patieros.
+    - No se filtra automáticamente por predio activo.
 
-    habitual_site_id:
-        Se utiliza únicamente como distintivo/filtro de patiero.
-
-    Diseño de rendimiento:
-    ----------------------
-    1. Se pagina primero únicamente por ID de chofer.
-    2. Luego se consulta la información completa solamente de
-       los choferes visibles en esa página.
-    3. Documentos se cargan en una única consulta.
-    4. APM se carga en una única consulta.
-    5. Se evita N+1.
+    Rendimiento:
+    - Primero pagina únicamente los IDs de choferes.
+    - Los JOIN de cabezal/propietario solo se usan en la
+      consulta de paginación cuando existe una búsqueda.
+    - Luego carga los datos completos únicamente de los
+      choferes visibles en la página.
+    - Documentos y APM se resuelven en consultas agrupadas.
     """
 
     # =====================================================
@@ -322,80 +321,86 @@ def drivers_list():
     # 3. CONSULTA BASE PARA PAGINACIÓN
     #
     # IMPORTANTE:
-    # db.paginate() debe trabajar aquí únicamente con
-    # Driver.id.
     #
-    # No intentamos paginar Driver + columnas adicionales,
-    # porque Flask-SQLAlchemy devuelve solamente el primer
-    # objeto escalar.
+    # Incluimos Driver.name en el SELECT porque PostgreSQL
+    # exige que las expresiones del ORDER BY formen parte
+    # del SELECT cuando se usa DISTINCT.
+    #
+    # Flask-SQLAlchemy .scalars() devolverá igualmente
+    # la primera columna: Driver.id.
     # =====================================================
-    page_stmt = (
-        select(
-            Driver.id
-        )
-        .outerjoin(
-            active_assignment,
-            (
-                active_assignment.driver_id
-                == Driver.id
-            )
-            & (
-                active_assignment.status
-                == "ACTIVE"
-            ),
-        )
-        .outerjoin(
-            assigned_truck,
-            assigned_truck.id
-            == active_assignment.truck_id,
-        )
-        .outerjoin(
-            assigned_owner,
-            assigned_owner.id
-            == assigned_truck.owner_id,
-        )
+    page_stmt = select(
+        Driver.id,
+        Driver.name,
     )
 
     # =====================================================
     # 4. BÚSQUEDA
+    #
+    # Solo hacemos estos JOIN cuando realmente son necesarios
+    # para buscar por placa o propietario.
     # =====================================================
     if search:
         like_value = f"%{search}%"
 
-        page_stmt = page_stmt.where(
-            or_(
-                Driver.name.ilike(
-                    like_value
+        page_stmt = (
+            page_stmt
+            .outerjoin(
+                active_assignment,
+                (
+                    active_assignment.driver_id
+                    == Driver.id
+                )
+                & (
+                    active_assignment.status
+                    == "ACTIVE"
                 ),
+            )
+            .outerjoin(
+                assigned_truck,
+                assigned_truck.id
+                == active_assignment.truck_id,
+            )
+            .outerjoin(
+                assigned_owner,
+                assigned_owner.id
+                == assigned_truck.owner_id,
+            )
+            .where(
+                or_(
+                    Driver.name.ilike(
+                        like_value
+                    ),
 
-                Driver.identification.ilike(
-                    like_value
-                ),
+                    Driver.identification.ilike(
+                        like_value
+                    ),
 
-                Driver.residence.ilike(
-                    like_value
-                ),
+                    Driver.residence.ilike(
+                        like_value
+                    ),
 
-                Driver.phone_1.ilike(
-                    like_value
-                ),
+                    Driver.phone_1.ilike(
+                        like_value
+                    ),
 
-                Driver.phone_2.ilike(
-                    like_value
-                ),
+                    Driver.phone_2.ilike(
+                        like_value
+                    ),
 
-                assigned_truck.plate.ilike(
-                    like_value
-                ),
+                    assigned_truck.plate.ilike(
+                        like_value
+                    ),
 
-                assigned_owner.name.ilike(
-                    like_value
-                ),
+                    assigned_owner.name.ilike(
+                        like_value
+                    ),
+                )
             )
         )
 
     # =====================================================
-    # 5. FILTRO ESTADO
+    # 5. FILTRO DE ESTADO
     # =====================================================
     if status in DRIVER_STATUSES:
         page_stmt = page_stmt.where(
@@ -403,12 +408,10 @@ def drivers_list():
         )
 
     # =====================================================
-    # 6. FILTRO PATIERO
+    # 6. FILTRO DE PATIERO
     #
-    # No limita la lista por predio activo.
-    #
-    # Solamente cuando el usuario selecciona expresamente
-    # "Patiero X" se aplica este filtro.
+    # habitual_site_id NO significa predio de visibilidad.
+    # Solamente identifica al patiero.
     # =====================================================
     if habitual_site_id:
         page_stmt = page_stmt.where(
@@ -417,19 +420,29 @@ def drivers_list():
         )
 
     # =====================================================
-    # 7. ORDEN ALFABÉTICO
+    # 7. ORDEN Y DISTINCT
+    #
+    # Driver.name ahora sí forma parte del SELECT,
+    # por lo que PostgreSQL acepta este ORDER BY.
     # =====================================================
     page_stmt = (
         page_stmt
+        .distinct()
         .order_by(
             Driver.name.asc(),
             Driver.id.asc(),
         )
-        .distinct()
     )
 
     # =====================================================
-    # 8. PAGINAR IDS
+    # 8. PAGINACIÓN
+    #
+    # Flask-SQLAlchemy usa .scalars(), por lo tanto,
+    # aunque SELECT tenga:
+    #
+    #   Driver.id, Driver.name
+    #
+    # pagination.items contendrá solamente Driver.id.
     # =====================================================
     pagination = db.paginate(
         page_stmt,
@@ -438,13 +451,12 @@ def drivers_list():
         error_out=False,
     )
 
-    # pagination.items contiene IDs escalares.
     driver_ids = list(
         pagination.items
     )
 
     # =====================================================
-    # 9. SIN REGISTROS
+    # 9. SI NO HAY RESULTADOS
     # =====================================================
     if not driver_ids:
         return render_template(
@@ -464,8 +476,14 @@ def drivers_list():
                 "per_page": per_page,
             },
 
-            driver_statuses=DRIVER_STATUSES,
-            document_statuses=DOCUMENT_STATUSES,
+            driver_statuses=(
+                DRIVER_STATUSES
+            ),
+
+            document_statuses=(
+                DOCUMENT_STATUSES
+            ),
+
             driver_document_types=(
                 DRIVER_DOCUMENT_TYPES
             ),
@@ -474,16 +492,7 @@ def drivers_list():
         )
 
     # =====================================================
-    # 10. CONSULTA COMPLETA DE LA PÁGINA
-    #
-    # Aquí sí obtenemos:
-    #
-    # Driver
-    # + asignación
-    # + cabezal
-    # + propietario
-    #
-    # Solamente para los IDs visibles.
+    # 10. CONSULTA COMPLETA SOLO PARA LA PÁGINA ACTUAL
     # =====================================================
     rows_stmt = (
         select(
@@ -524,7 +533,7 @@ def drivers_list():
             ),
 
             # ---------------------------------------------
-            # Permiso muelle cabezal
+            # Permiso muelle del cabezal
             # ---------------------------------------------
             assigned_truck.dock_permit_number.label(
                 "truck_dock_permit_number"
@@ -535,7 +544,7 @@ def drivers_list():
             ),
 
             # ---------------------------------------------
-            # TC
+            # Tarjeta circulación
             # ---------------------------------------------
             assigned_truck.circulation_card.label(
                 "circulation_card"
@@ -579,7 +588,7 @@ def drivers_list():
             ),
 
             # ---------------------------------------------
-            # Otros datos cabezal
+            # Otros datos
             # ---------------------------------------------
             assigned_truck.weights_dimensions.label(
                 "weights_dimensions"
@@ -609,6 +618,9 @@ def drivers_list():
             ),
         )
 
+        # =================================================
+        # Asignación activa
+        # =================================================
         .outerjoin(
             active_assignment,
             (
@@ -621,24 +633,36 @@ def drivers_list():
             ),
         )
 
+        # =================================================
+        # Cabezal
+        # =================================================
         .outerjoin(
             assigned_truck,
             assigned_truck.id
             == active_assignment.truck_id,
         )
 
+        # =================================================
+        # Propietario
+        # =================================================
         .outerjoin(
             assigned_owner,
             assigned_owner.id
             == assigned_truck.owner_id,
         )
 
+        # =================================================
+        # Únicamente los registros de la página actual
+        # =================================================
         .where(
             Driver.id.in_(
                 driver_ids
             )
         )
 
+        # =================================================
+        # Evitar relaciones innecesarias
+        # =================================================
         .options(
             joinedload(
                 Driver.habitual_site
@@ -665,6 +689,9 @@ def drivers_list():
             ),
         )
 
+        # =================================================
+        # Orden alfabético
+        # =================================================
         .order_by(
             Driver.name.asc(),
             Driver.id.asc(),
@@ -680,9 +707,9 @@ def drivers_list():
     )
 
     # =====================================================
-    # 11. DOCUMENTOS DE LOS CHOFERES DE ESTA PÁGINA
+    # 11. DOCUMENTOS
     #
-    # Una sola consulta.
+    # Una sola consulta para toda la página.
     # =====================================================
     documents_by_driver: dict[
         int,
@@ -748,10 +775,8 @@ def drivers_list():
                 document_row.expiry_date
             ),
 
-            "no_expiry": (
-                bool(
-                    document_row.no_expiry
-                )
+            "no_expiry": bool(
+                document_row.no_expiry
             ),
 
             "notes": (
@@ -762,7 +787,7 @@ def drivers_list():
     # =====================================================
     # 12. APM
     #
-    # Una sola consulta.
+    # Una sola consulta para toda la página.
     # =====================================================
     apm_by_driver: dict[
         int,
@@ -852,7 +877,6 @@ def drivers_list():
     }
 
     for row in raw_rows:
-        # Aquí SÍ es una Row de SQLAlchemy.
         driver = row[0]
 
         documents = (
@@ -897,18 +921,12 @@ def drivers_list():
                 or "PENDING"
             )
 
-            if (
-                document_status
-                == "PENDING"
-            ):
+            if document_status == "PENDING":
                 pending_items.append(
                     document_label
                 )
 
-            elif (
-                document_status
-                == "EXPIRED"
-            ):
+            elif document_status == "EXPIRED":
                 expired_items.append(
                     document_label
                 )
@@ -960,18 +978,12 @@ def drivers_list():
                 or "PENDING"
             )
 
-            if (
-                card_status
-                == "PENDING"
-            ):
+            if card_status == "PENDING":
                 pending_items.append(
                     "Carnet APM"
                 )
 
-            elif (
-                card_status
-                == "EXPIRED"
-            ):
+            elif card_status == "EXPIRED":
                 expired_items.append(
                     "Carnet APM"
                 )
@@ -1001,24 +1013,15 @@ def drivers_list():
             )
 
         # =================================================
-        # OBJETO PARA TEMPLATE
+        # FILA FINAL
         # =================================================
         matrix_rows.append({
-            # ---------------------------------------------
-            # Chofer
-            # ---------------------------------------------
             "driver": driver,
 
-            # ---------------------------------------------
-            # Fecha ingreso
-            # ---------------------------------------------
             "registration_date": (
                 row.registration_date
             ),
 
-            # ---------------------------------------------
-            # Asignación
-            # ---------------------------------------------
             "active_assignment_id": (
                 row.active_assignment_id
             ),
@@ -1027,9 +1030,6 @@ def drivers_list():
                 row.assignment_started_at
             ),
 
-            # ---------------------------------------------
-            # Cabezal
-            # ---------------------------------------------
             "truck": (
                 {
                     "id": (
@@ -1076,10 +1076,8 @@ def drivers_list():
                         row.insurance_expiry_date
                     ),
 
-                    "is_payroll": (
-                        bool(
-                            row.is_payroll
-                        )
+                    "is_payroll": bool(
+                        row.is_payroll
                     ),
 
                     "rt_name": (
@@ -1106,9 +1104,6 @@ def drivers_list():
                 else None
             ),
 
-            # ---------------------------------------------
-            # Propietario
-            # ---------------------------------------------
             "owner": (
                 {
                     "id": (
@@ -1127,19 +1122,14 @@ def drivers_list():
                 else None
             ),
 
-            # ---------------------------------------------
-            # Documentos
-            # ---------------------------------------------
-            "documents": documents,
+            "documents": (
+                documents
+            ),
 
-            # ---------------------------------------------
-            # APM
-            # ---------------------------------------------
-            "apm": apm,
+            "apm": (
+                apm
+            ),
 
-            # ---------------------------------------------
-            # Pendientes
-            # ---------------------------------------------
             "pending_items": (
                 pending_items
             ),
@@ -1179,9 +1169,7 @@ def drivers_list():
                 habitual_site_id
             ),
 
-            "per_page": (
-                per_page
-            ),
+            "per_page": per_page,
         },
 
         driver_statuses=(
