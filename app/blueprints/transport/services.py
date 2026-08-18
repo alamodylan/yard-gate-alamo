@@ -2260,37 +2260,37 @@ def bulk_import_transport_excel(
     habitual_site_id: int | None = None,
 ) -> dict[str, Any]:
     """
-    Importa la matriz histórica de transportes/choferes.
+    Importa choferes/cabezales desde la plantilla Excel.
 
-    Conceptos separados:
+    Diseño optimizado para Render + PostgreSQL:
+
+    - Excel en read_only=True.
+    - No precarga tablas completas.
+    - Procesa en bloques pequeños.
+    - No usa SAVEPOINT por fila.
+    - No hace flush por cada objeto.
+    - Consulta únicamente cédulas, placas y propietarios
+      presentes en cada bloque.
+    - 1 flush principal por bloque.
+    - 1 commit por bloque.
+    - Documentos/APM/asignaciones se crean después de
+      obtener los IDs del bloque.
+
+    Conceptos:
 
     registered_site_id
-        Predio técnico utilizado únicamente para registrar
-        cabezales nuevos. Es obligatorio por estructura de BD,
-        pero NO limita visibilidad ni significa que el chofer
-        pertenezca a ese predio.
+        Dato técnico obligatorio para cabezales nuevos.
 
     habitual_site_id
-        Se utiliza únicamente como distintivo de patiero.
-        None significa que el chofer NO es patiero.
-
-    Rendimiento:
-    - openpyxl read_only=True
-    - data_only=True
-    - lectura secuencial
-    - precarga de choferes
-    - precarga de cabezales
-    - precarga de propietarios
-    - precarga de documentos
-    - precarga de APM
-    - precarga de asignaciones activas
-    - un COMMIT final
-    - SAVEPOINT por fila para no perder todo el lote si falla una fila
+        Únicamente distintivo de patiero.
+        None = chofer normal.
     """
 
     # =====================================================
-    # VALIDACIÓN DEL PREDIO TÉCNICO
+    # CONFIGURACIÓN
     # =====================================================
+    BATCH_SIZE = 20
+
     if not registered_site_id:
         raise TransportValidationError(
             "No fue posible determinar el predio técnico "
@@ -2352,8 +2352,11 @@ def bulk_import_transport_excel(
             try:
                 return (
                     datetime(1899, 12, 30)
-                    + timedelta(days=float(value))
+                    + timedelta(
+                        days=float(value)
+                    )
                 ).date()
+
             except Exception:
                 return None
 
@@ -2372,6 +2375,7 @@ def bulk_import_transport_excel(
                     raw,
                     fmt,
                 ).date()
+
             except ValueError:
                 continue
 
@@ -2398,8 +2402,22 @@ def bulk_import_transport_excel(
         number=None,
         expiry=None,
         no_expiry=False,
-    ):
-        expiry_date = excel_date(expiry)
+    ) -> dict[str, Any]:
+        expiry_date = excel_date(
+            expiry
+        )
+
+        if no_expiry:
+            status = "VALID"
+
+        elif expiry_date is None:
+            status = "PENDING"
+
+        elif expiry_date < date.today():
+            status = "EXPIRED"
+
+        else:
+            status = "VALID"
 
         return {
             "document_number": (
@@ -2408,24 +2426,1198 @@ def bulk_import_transport_excel(
             ),
             "issue_date": None,
             "expiry_date": expiry_date,
-            "no_expiry": no_expiry,
-            "status": (
-                "VALID"
-                if (
-                    no_expiry
-                    or (
-                        expiry_date
-                        and expiry_date >= date.today()
-                    )
-                )
-                else (
-                    "EXPIRED"
-                    if expiry_date
-                    else "PENDING"
-                )
+            "no_expiry": bool(
+                no_expiry
             ),
+            "status": status,
             "notes": None,
         }
+
+    # =====================================================
+    # RESULTADO GLOBAL
+    # =====================================================
+    result = {
+        "processed": 0,
+        "created_drivers": 0,
+        "updated_drivers": 0,
+        "created_trucks": 0,
+        "updated_trucks": 0,
+        "created_assignments": 0,
+        "updated_documents": 0,
+        "updated_apm": 0,
+        "skipped": 0,
+        "errors": [],
+    }
+
+    # =====================================================
+    # PROCESAR UN BLOQUE
+    # =====================================================
+    def process_batch(
+        batch: list[dict[str, Any]],
+    ) -> None:
+        """
+        Procesa un bloque completo dentro de una transacción.
+
+        Si PostgreSQL rechaza el bloque, se revierte únicamente
+        este bloque. Los bloques previamente confirmados permanecen.
+        """
+
+        if not batch:
+            return
+
+        # =================================================
+        # ESTADÍSTICAS LOCALES
+        #
+        # Solo se suman al resultado global después del COMMIT.
+        # =================================================
+        batch_stats = {
+            "processed": len(batch),
+            "created_drivers": 0,
+            "updated_drivers": 0,
+            "created_trucks": 0,
+            "updated_trucks": 0,
+            "created_assignments": 0,
+            "updated_documents": 0,
+            "updated_apm": 0,
+        }
+
+        batch_observations: list[
+            dict[str, Any]
+        ] = []
+
+        try:
+            # =================================================
+            # 1. VALORES PRESENTES EN EL BLOQUE
+            # =================================================
+            identifications = {
+                item["identification"]
+                for item in batch
+                if item["identification"]
+            }
+
+            plates = {
+                item["plate"]
+                for item in batch
+                if item["plate"]
+            }
+
+            owner_names = {
+                item["owner_name"]
+                for item in batch
+                if item["owner_name"]
+            }
+
+            # =================================================
+            # 2. CHOFERES EXISTENTES
+            # =================================================
+            drivers_by_identification: dict[
+                str,
+                Driver,
+            ] = {}
+
+            if identifications:
+                existing_drivers = list(
+                    db.session.scalars(
+                        select(Driver)
+                        .where(
+                            Driver.identification.in_(
+                                identifications
+                            )
+                        )
+                    ).all()
+                )
+
+                drivers_by_identification = {
+                    driver.identification: driver
+                    for driver in existing_drivers
+                }
+
+            # =================================================
+            # 3. CABEZALES EXISTENTES
+            # =================================================
+            trucks_by_plate: dict[
+                str,
+                Truck,
+            ] = {}
+
+            if plates:
+                existing_trucks = list(
+                    db.session.scalars(
+                        select(Truck)
+                        .where(
+                            Truck.plate.in_(
+                                plates
+                            )
+                        )
+                    )
+                    .unique()
+                    .all()
+                )
+
+                trucks_by_plate = {
+                    normalize_plate(
+                        truck.plate
+                    ): truck
+                    for truck in existing_trucks
+                }
+
+            # =================================================
+            # 4. PROPIETARIOS EXISTENTES
+            #
+            # El modelo realmente usa UNIQUE(name, phone),
+            # por lo que la clave correcta incluye ambos.
+            # =================================================
+            owners_by_key: dict[
+                tuple[str, str],
+                TruckOwner,
+            ] = {}
+
+            if owner_names:
+                existing_owners = list(
+                    db.session.scalars(
+                        select(TruckOwner)
+                        .where(
+                            func.upper(
+                                TruckOwner.name
+                            ).in_(
+                                owner_names
+                            )
+                        )
+                    ).all()
+                )
+
+                owners_by_key = {
+                    (
+                        clean_upper(
+                            owner.name
+                        ),
+                        clean(
+                            owner.phone
+                        ),
+                    ): owner
+                    for owner in existing_owners
+                }
+
+            # =================================================
+            # 5. IDS EXISTENTES PARA CONSULTAS DEPENDIENTES
+            # =================================================
+            existing_driver_ids = {
+                driver.id
+                for driver
+                in drivers_by_identification.values()
+            }
+
+            existing_truck_ids = {
+                truck.id
+                for truck
+                in trucks_by_plate.values()
+            }
+
+            # =================================================
+            # 6. DOCUMENTOS EXISTENTES
+            # =================================================
+            documents_by_key: dict[
+                tuple[int, str],
+                DriverDocument,
+            ] = {}
+
+            if existing_driver_ids:
+                existing_documents = list(
+                    db.session.scalars(
+                        select(DriverDocument)
+                        .where(
+                            DriverDocument.driver_id.in_(
+                                existing_driver_ids
+                            )
+                        )
+                    ).all()
+                )
+
+                documents_by_key = {
+                    (
+                        document.driver_id,
+                        document.document_type,
+                    ): document
+                    for document
+                    in existing_documents
+                }
+
+            # =================================================
+            # 7. APM EXISTENTE
+            # =================================================
+            apm_by_driver: dict[
+                int,
+                DriverApmRecord,
+            ] = {}
+
+            if existing_driver_ids:
+                existing_apm = list(
+                    db.session.scalars(
+                        select(DriverApmRecord)
+                        .where(
+                            DriverApmRecord.driver_id.in_(
+                                existing_driver_ids
+                            )
+                        )
+                    ).all()
+                )
+
+                apm_by_driver = {
+                    record.driver_id: record
+                    for record in existing_apm
+                }
+
+            # =================================================
+            # 8. ASIGNACIONES ACTIVAS EXISTENTES
+            # =================================================
+            assignment_by_driver: dict[
+                int,
+                DriverTruckAssignment,
+            ] = {}
+
+            assignment_by_truck: dict[
+                int,
+                DriverTruckAssignment,
+            ] = {}
+
+            assignment_conditions = []
+
+            if existing_driver_ids:
+                assignment_conditions.append(
+                    DriverTruckAssignment.driver_id.in_(
+                        existing_driver_ids
+                    )
+                )
+
+            if existing_truck_ids:
+                assignment_conditions.append(
+                    DriverTruckAssignment.truck_id.in_(
+                        existing_truck_ids
+                    )
+                )
+
+            if assignment_conditions:
+                active_assignments = list(
+                    db.session.scalars(
+                        select(
+                            DriverTruckAssignment
+                        )
+                        .where(
+                            DriverTruckAssignment.status
+                            == "ACTIVE",
+                            or_(
+                                *assignment_conditions
+                            ),
+                        )
+                    ).all()
+                )
+
+                assignment_by_driver = {
+                    assignment.driver_id: assignment
+                    for assignment
+                    in active_assignments
+                }
+
+                assignment_by_truck = {
+                    assignment.truck_id: assignment
+                    for assignment
+                    in active_assignments
+                }
+
+            # =================================================
+            # 9. PRIMERA FASE
+            #
+            # Driver + Truck + Owner.
+            #
+            # No hacemos flush dentro del loop.
+            # =================================================
+            row_objects: list[
+                dict[str, Any]
+            ] = []
+
+            now = datetime.utcnow()
+
+            for item in batch:
+                # =============================================
+                # DRIVER
+                # =============================================
+                driver = (
+                    drivers_by_identification.get(
+                        item[
+                            "identification"
+                        ]
+                    )
+                )
+
+                new_driver = False
+
+                if driver is None:
+                    driver = Driver(
+                        name=(
+                            item["name"]
+                        ),
+
+                        residence=(
+                            item["residence"]
+                            or None
+                        ),
+
+                        identification=(
+                            item[
+                                "identification"
+                            ]
+                        ),
+
+                        phone_1=(
+                            item["phone"]
+                            or None
+                        ),
+
+                        habitual_site_id=(
+                            habitual_site_id
+                        ),
+
+                        status="ACTIVE",
+
+                        created_by_user_id=(
+                            user_id
+                        ),
+
+                        updated_by_user_id=(
+                            user_id
+                        ),
+                    )
+
+                    db.session.add(
+                        driver
+                    )
+
+                    # Cache local para duplicados
+                    # dentro del mismo Excel.
+                    drivers_by_identification[
+                        item["identification"]
+                    ] = driver
+
+                    new_driver = True
+
+                    batch_stats[
+                        "created_drivers"
+                    ] += 1
+
+                else:
+                    driver.name = (
+                        item["name"]
+                    )
+
+                    if item["residence"]:
+                        driver.residence = (
+                            item["residence"]
+                        )
+
+                    if item["phone"]:
+                        driver.phone_1 = (
+                            item["phone"]
+                        )
+
+                    # None significa:
+                    # no cambiar condición existente.
+                    if habitual_site_id:
+                        driver.habitual_site_id = (
+                            habitual_site_id
+                        )
+
+                    driver.updated_by_user_id = (
+                        user_id
+                    )
+
+                    driver.updated_at = (
+                        now
+                    )
+
+                    batch_stats[
+                        "updated_drivers"
+                    ] += 1
+
+                # =============================================
+                # TRUCK
+                # =============================================
+                truck = None
+                new_truck = False
+
+                if item["plate"]:
+                    truck = (
+                        trucks_by_plate.get(
+                            item["plate"]
+                        )
+                    )
+
+                    if truck is None:
+                        truck = Truck(
+                            plate=(
+                                item["plate"]
+                            ),
+
+                            registration_date=(
+                                item[
+                                    "registration_date"
+                                ]
+                                or date.today()
+                            ),
+
+                            # Dato técnico.
+                            registered_site_id=(
+                                registered_site_id
+                            ),
+
+                            status="ACTIVE",
+
+                            bonded_status=(
+                                "PENDING"
+                            ),
+
+                            created_by_user_id=(
+                                user_id
+                            ),
+
+                            updated_by_user_id=(
+                                user_id
+                            ),
+                        )
+
+                        db.session.add(
+                            truck
+                        )
+
+                        trucks_by_plate[
+                            item["plate"]
+                        ] = truck
+
+                        new_truck = True
+
+                        batch_stats[
+                            "created_trucks"
+                        ] += 1
+
+                    else:
+                        if item[
+                            "registration_date"
+                        ]:
+                            truck.registration_date = (
+                                item[
+                                    "registration_date"
+                                ]
+                            )
+
+                        truck.updated_by_user_id = (
+                            user_id
+                        )
+
+                        truck.updated_at = (
+                            now
+                        )
+
+                        batch_stats[
+                            "updated_trucks"
+                        ] += 1
+
+                    # =========================================
+                    # OWNER
+                    # =========================================
+                    owner = None
+
+                    if item["owner_name"]:
+                        owner_key = (
+                            item["owner_name"],
+                            item["owner_phone"],
+                        )
+
+                        owner = (
+                            owners_by_key.get(
+                                owner_key
+                            )
+                        )
+
+                        if owner is None:
+                            owner = TruckOwner(
+                                name=(
+                                    item[
+                                        "owner_name"
+                                    ]
+                                ),
+
+                                phone=(
+                                    item[
+                                        "owner_phone"
+                                    ]
+                                    or None
+                                ),
+
+                                is_active=True,
+                            )
+
+                            db.session.add(
+                                owner
+                            )
+
+                            owners_by_key[
+                                owner_key
+                            ] = owner
+
+                        else:
+                            if (
+                                item["owner_phone"]
+                                and owner.phone
+                                != item[
+                                    "owner_phone"
+                                ]
+                            ):
+                                owner.phone = (
+                                    item[
+                                        "owner_phone"
+                                    ]
+                                )
+
+                            if not owner.is_active:
+                                owner.is_active = (
+                                    True
+                                )
+
+                            owner.updated_at = (
+                                now
+                            )
+
+                        # Usar relación ORM.
+                        # SQLAlchemy resuelve el owner_id
+                        # en el mismo flush.
+                        truck.owner = owner
+
+                    # =========================================
+                    # DATOS DEL CABEZAL
+                    # =========================================
+
+                    if item[
+                        "truck_dock_expiry"
+                    ]:
+                        truck.dock_permit_expiry_date = (
+                            item[
+                                "truck_dock_expiry"
+                            ]
+                        )
+
+                    if item[
+                        "circulation_card"
+                    ]:
+                        truck.circulation_card = (
+                            item[
+                                "circulation_card"
+                            ]
+                        )
+
+                    if item["rtv_date"]:
+                        truck.dekra_month = (
+                            item[
+                                "rtv_date"
+                            ].month
+                        )
+
+                        truck.dekra_year = (
+                            item[
+                                "rtv_date"
+                            ].year
+                        )
+
+                    if item[
+                        "insurance_name"
+                    ]:
+                        truck.insurance_name = (
+                            item[
+                                "insurance_name"
+                            ]
+                        )
+
+                    if item[
+                        "rt_expiry"
+                    ]:
+                        truck.rt_expiry_date = (
+                            item[
+                                "rt_expiry"
+                            ]
+                        )
+
+                    if item["rt_name"]:
+                        truck.rt_name = (
+                            item["rt_name"]
+                        )
+
+                    if item[
+                        "weights_dimensions"
+                    ] is not None:
+                        truck.weights_dimensions = (
+                            item[
+                                "weights_dimensions"
+                            ]
+                        )
+
+                    if item[
+                        "policy_number"
+                    ]:
+                        truck.policy_number = (
+                            item[
+                                "policy_number"
+                            ]
+                        )
+
+                    if item[
+                        "bonded_status"
+                    ]:
+                        truck.bonded_status = (
+                            item[
+                                "bonded_status"
+                            ]
+                        )
+
+                row_objects.append({
+                    "row": item["row"],
+                    "raw": item,
+                    "driver": driver,
+                    "truck": truck,
+                    "new_driver": (
+                        new_driver
+                    ),
+                    "new_truck": (
+                        new_truck
+                    ),
+                })
+
+            # =================================================
+            # 10. ÚNICO FLUSH EXPLÍCITO DEL BLOQUE
+            #
+            # Obtiene:
+            # - driver.id
+            # - truck.id
+            # - owner.id
+            #
+            # y envía juntos los cambios principales.
+            # =================================================
+            db.session.flush()
+
+            # =================================================
+            # 11. SEGUNDA FASE
+            #
+            # Documentos + APM + asignaciones.
+            #
+            # Ahora todos los IDs están disponibles.
+            # =================================================
+            for row_data in row_objects:
+                item = (
+                    row_data["raw"]
+                )
+
+                driver = (
+                    row_data["driver"]
+                )
+
+                truck = (
+                    row_data["truck"]
+                )
+
+                # =============================================
+                # DOCUMENTOS
+                # =============================================
+                document_values = {
+                    "DOCK_PERMIT": (
+                        document_payload(
+                            expiry=(
+                                item[
+                                    "driver_dock_expiry"
+                                ]
+                            )
+                        )
+                    ),
+
+                    "GENERAL_CARD": (
+                        document_payload(
+                            number=(
+                                item[
+                                    "general_card_number"
+                                ]
+                            ),
+
+                            expiry=(
+                                item[
+                                    "general_card_expiry"
+                                ]
+                            ),
+                        )
+                    ),
+
+                    "CHEMICAL_PERMIT": (
+                        document_payload(
+                            expiry=(
+                                item[
+                                    "chemical_expiry"
+                                ]
+                            )
+                        )
+                    ),
+
+                    "LICENSE": (
+                        document_payload(
+                            expiry=(
+                                item[
+                                    "license_expiry"
+                                ]
+                            )
+                        )
+                    ),
+
+                    "CRIMINAL_RECORD": (
+                        document_payload(
+                            expiry=(
+                                item[
+                                    "criminal_expiry"
+                                ]
+                            )
+                        )
+                    ),
+                }
+
+                for (
+                    document_type,
+                    payload,
+                ) in document_values.items():
+
+                    key = (
+                        driver.id,
+                        document_type,
+                    )
+
+                    document = (
+                        documents_by_key.get(
+                            key
+                        )
+                    )
+
+                    # Igual que el importador anterior:
+                    # no crear documento nuevo completamente vacío.
+                    if (
+                        document is None
+                        and not payload[
+                            "document_number"
+                        ]
+                        and not payload[
+                            "expiry_date"
+                        ]
+                    ):
+                        continue
+
+                    if document is None:
+                        document = (
+                            DriverDocument(
+                                driver_id=(
+                                    driver.id
+                                ),
+
+                                document_type=(
+                                    document_type
+                                ),
+
+                                # DriverDocument NO tiene
+                                # created_by_user_id.
+                                updated_by_user_id=(
+                                    user_id
+                                ),
+                            )
+                        )
+
+                        db.session.add(
+                            document
+                        )
+
+                        documents_by_key[
+                            key
+                        ] = document
+
+                    document.document_number = (
+                        payload[
+                            "document_number"
+                        ]
+                    )
+
+                    document.issue_date = (
+                        payload[
+                            "issue_date"
+                        ]
+                    )
+
+                    document.expiry_date = (
+                        payload[
+                            "expiry_date"
+                        ]
+                    )
+
+                    document.no_expiry = (
+                        payload[
+                            "no_expiry"
+                        ]
+                    )
+
+                    document.status = (
+                        payload[
+                            "status"
+                        ]
+                    )
+
+                    document.notes = (
+                        payload[
+                            "notes"
+                        ]
+                    )
+
+                    document.updated_by_user_id = (
+                        user_id
+                    )
+
+                    document.updated_at = (
+                        now
+                    )
+
+                    if (
+                        payload[
+                            "document_number"
+                        ]
+                        or payload[
+                            "expiry_date"
+                        ]
+                    ):
+                        batch_stats[
+                            "updated_documents"
+                        ] += 1
+
+                # =============================================
+                # APM
+                # =============================================
+                if (
+                    item["apm_training"]
+                    or item["apm_card"]
+                    or item["apm_expiry_raw"]
+                ):
+                    record = (
+                        apm_by_driver.get(
+                            driver.id
+                        )
+                    )
+
+                    if record is None:
+                        record = (
+                            DriverApmRecord(
+                                driver_id=(
+                                    driver.id
+                                ),
+
+                                # DriverApmRecord NO tiene
+                                # created_by_user_id.
+                                updated_by_user_id=(
+                                    user_id
+                                ),
+                            )
+                        )
+
+                        db.session.add(
+                            record
+                        )
+
+                        apm_by_driver[
+                            driver.id
+                        ] = record
+
+                    record.training_status = (
+                        yes_pending(
+                            item[
+                                "apm_training"
+                            ]
+                        )
+                    )
+
+                    card_upper = (
+                        item[
+                            "apm_card"
+                        ].upper()
+                    )
+
+                    if card_upper in {
+                        "",
+                        "PENDIENTE",
+                    }:
+                        record.card_status = (
+                            "PENDING"
+                        )
+
+                        record.card_number = (
+                            None
+                        )
+
+                    elif "VENC" in card_upper:
+                        record.card_status = (
+                            "EXPIRED"
+                        )
+
+                        record.card_number = (
+                            None
+                        )
+
+                    else:
+                        record.card_status = (
+                            "YES"
+                        )
+
+                        record.card_number = (
+                            item["apm_card"]
+                        )
+
+                    apm_expiry_text = (
+                        clean_upper(
+                            item[
+                                "apm_expiry_raw"
+                            ]
+                        )
+                    )
+
+                    if (
+                        "SIN VENCIMIENTO"
+                        in apm_expiry_text
+                    ):
+                        record.expiry_mode = (
+                            "NO_EXPIRY"
+                        )
+
+                        record.expiry_date = (
+                            None
+                        )
+
+                    elif (
+                        "PENDIENTE"
+                        in apm_expiry_text
+                    ):
+                        record.expiry_mode = (
+                            "PENDING"
+                        )
+
+                        record.expiry_date = (
+                            None
+                        )
+
+                    elif (
+                        "VENCIDO"
+                        in apm_expiry_text
+                    ):
+                        record.expiry_mode = (
+                            "EXPIRED"
+                        )
+
+                        record.card_status = (
+                            "EXPIRED"
+                        )
+
+                        record.expiry_date = (
+                            None
+                        )
+
+                    elif item[
+                        "apm_expiry_date"
+                    ]:
+                        record.expiry_date = (
+                            item[
+                                "apm_expiry_date"
+                            ]
+                        )
+
+                        if (
+                            item[
+                                "apm_expiry_date"
+                            ]
+                            < date.today()
+                        ):
+                            record.expiry_mode = (
+                                "EXPIRED"
+                            )
+
+                            record.card_status = (
+                                "EXPIRED"
+                            )
+
+                        else:
+                            record.expiry_mode = (
+                                "DATE"
+                            )
+
+                    else:
+                        record.expiry_mode = (
+                            "PENDING"
+                        )
+
+                        record.expiry_date = (
+                            None
+                        )
+
+                    record.updated_by_user_id = (
+                        user_id
+                    )
+
+                    record.updated_at = (
+                        now
+                    )
+
+                    batch_stats[
+                        "updated_apm"
+                    ] += 1
+
+                # =============================================
+                # ASIGNACIÓN CHOFER - CABEZAL
+                # =============================================
+                if truck is not None:
+                    current_driver_assignment = (
+                        assignment_by_driver.get(
+                            driver.id
+                        )
+                    )
+
+                    current_truck_assignment = (
+                        assignment_by_truck.get(
+                            truck.id
+                        )
+                    )
+
+                    if (
+                        current_driver_assignment
+                        is None
+                        and current_truck_assignment
+                        is None
+                    ):
+                        assignment = (
+                            DriverTruckAssignment(
+                                driver_id=(
+                                    driver.id
+                                ),
+
+                                truck_id=(
+                                    truck.id
+                                ),
+
+                                status="ACTIVE",
+
+                                started_at=(
+                                    datetime.combine(
+                                        item[
+                                            "registration_date"
+                                        ]
+                                        or date.today(),
+
+                                        datetime.min.time(),
+                                    )
+                                ),
+
+                                notes=(
+                                    "Carga masiva inicial"
+                                ),
+
+                                created_by_user_id=(
+                                    user_id
+                                ),
+                            )
+                        )
+
+                        db.session.add(
+                            assignment
+                        )
+
+                        # Actualizar cache local inmediatamente
+                        # para detectar duplicados dentro del bloque.
+                        assignment_by_driver[
+                            driver.id
+                        ] = assignment
+
+                        assignment_by_truck[
+                            truck.id
+                        ] = assignment
+
+                        batch_stats[
+                            "created_assignments"
+                        ] += 1
+
+                    elif (
+                        current_driver_assignment
+                        is not None
+                        and
+                        current_driver_assignment.truck_id
+                        == truck.id
+                    ):
+                        # Ya está correctamente ligado.
+                        pass
+
+                    else:
+                        batch_observations.append({
+                            "row": (
+                                item["row"]
+                            ),
+                            "message": (
+                                f"No se cambió la asignación "
+                                f"de {item['name']}: "
+                                f"el chofer o la placa "
+                                f"{item['plate']} ya tienen "
+                                "una asignación activa distinta."
+                            ),
+                        })
+
+            # =================================================
+            # 12. COMMIT DEL BLOQUE
+            #
+            # SQLAlchemy realiza aquí el flush final de:
+            # - documentos
+            # - APM
+            # - asignaciones
+            #
+            # No necesitamos llamar db.session.flush()
+            # nuevamente.
+            # =================================================
+            db.session.commit()
+
+            # =================================================
+            # 13. SOLO AHORA SUMAR CONTADORES
+            # =================================================
+            for key, value in (
+                batch_stats.items()
+            ):
+                result[key] += value
+
+            result["errors"].extend(
+                batch_observations
+            )
+
+        except Exception as exc:
+            # =================================================
+            # Falla solamente este bloque.
+            #
+            # Los bloques anteriores ya hicieron COMMIT.
+            # =================================================
+            db.session.rollback()
+
+            result["skipped"] += (
+                len(batch)
+            )
+
+            # No contamos como procesadas las filas
+            # de un bloque que fue revertido.
+            for item in batch:
+                result["errors"].append({
+                    "row": (
+                        item["row"]
+                    ),
+                    "message": (
+                        "El bloque de importación fue revertido. "
+                        f"Motivo: {exc}"
+                    ),
+                })
 
     # =====================================================
     # ABRIR EXCEL
@@ -2452,9 +3644,19 @@ def bulk_import_transport_excel(
 
     worksheet = None
 
-    for sheet_name in allowed_sheet_names:
-        if sheet_name in workbook.sheetnames:
-            worksheet = workbook[sheet_name]
+    for sheet_name in (
+        allowed_sheet_names
+    ):
+        if (
+            sheet_name
+            in workbook.sheetnames
+        ):
+            worksheet = (
+                workbook[
+                    sheet_name
+                ]
+            )
+
             break
 
     if worksheet is None:
@@ -2463,136 +3665,20 @@ def bulk_import_transport_excel(
         raise TransportValidationError(
             "No se encontró una hoja válida. "
             "La hoja debe llamarse "
-            "'VIGENCIA PERMISOS CALDERA' o 'TRANSPORTES'."
+            "'VIGENCIA PERMISOS CALDERA' "
+            "o 'TRANSPORTES'."
         )
 
     # =====================================================
-    # PRECARGAR CHOFERES
+    # LEER SECUENCIALMENTE
+    #
+    # No guardamos todo el Excel en memoria.
+    # Solo mantenemos máximo BATCH_SIZE registros.
     # =====================================================
-    existing_drivers = list(
-        db.session.scalars(
-            select(Driver)
-        ).all()
-    )
+    batch: list[
+        dict[str, Any]
+    ] = []
 
-    drivers_by_identification = {
-        normalize_identification(
-            driver.identification
-        ): driver
-        for driver in existing_drivers
-        if driver.identification
-    }
-
-    # =====================================================
-    # PRECARGAR CABEZALES
-    # =====================================================
-    existing_trucks = list(
-        db.session.scalars(
-            select(Truck)
-            .options(
-                joinedload(Truck.owner)
-            )
-        )
-        .unique()
-        .all()
-    )
-
-    trucks_by_plate = {
-        normalize_plate(
-            truck.plate
-        ): truck
-        for truck in existing_trucks
-        if truck.plate
-    }
-
-    # =====================================================
-    # PRECARGAR PROPIETARIOS
-    # =====================================================
-    existing_owners = list(
-        db.session.scalars(
-            select(TruckOwner)
-        ).all()
-    )
-
-    owners_by_name = {
-        clean_upper(owner.name): owner
-        for owner in existing_owners
-        if owner.name
-    }
-
-    # =====================================================
-    # PRECARGAR DOCUMENTOS
-    # =====================================================
-    existing_documents = list(
-        db.session.scalars(
-            select(DriverDocument)
-        ).all()
-    )
-
-    documents_by_key = {
-        (
-            document.driver_id,
-            document.document_type,
-        ): document
-        for document in existing_documents
-    }
-
-    # =====================================================
-    # PRECARGAR APM
-    # =====================================================
-    existing_apm = list(
-        db.session.scalars(
-            select(DriverApmRecord)
-        ).all()
-    )
-
-    apm_by_driver = {
-        record.driver_id: record
-        for record in existing_apm
-    }
-
-    # =====================================================
-    # PRECARGAR ASIGNACIONES ACTIVAS
-    # =====================================================
-    active_assignments = list(
-        db.session.scalars(
-            select(DriverTruckAssignment)
-            .where(
-                DriverTruckAssignment.status
-                == "ACTIVE"
-            )
-        ).all()
-    )
-
-    assignment_by_driver = {
-        assignment.driver_id: assignment
-        for assignment in active_assignments
-    }
-
-    assignment_by_truck = {
-        assignment.truck_id: assignment
-        for assignment in active_assignments
-    }
-
-    # =====================================================
-    # RESULTADO
-    # =====================================================
-    result = {
-        "processed": 0,
-        "created_drivers": 0,
-        "updated_drivers": 0,
-        "created_trucks": 0,
-        "updated_trucks": 0,
-        "created_assignments": 0,
-        "updated_documents": 0,
-        "updated_apm": 0,
-        "skipped": 0,
-        "errors": [],
-    }
-
-    # =====================================================
-    # PROCESAR FILAS
-    # =====================================================
     try:
         for excel_row, values in enumerate(
             worksheet.iter_rows(
@@ -2601,18 +3687,26 @@ def bulk_import_transport_excel(
             ),
             start=2,
         ):
-            values = tuple(values)
+            values = tuple(
+                values
+            )
 
+            # Necesitamos como mínimo hasta AE (índice 30).
             if len(values) < 31:
                 values = (
                     values
-                    + (None,) * (31 - len(values))
+                    + (
+                        None,
+                    ) * (
+                        31
+                        - len(values)
+                    )
                 )
 
             # =================================================
-            # DATOS BÁSICOS
+            # DATOS PRINCIPALES
             # =================================================
-            name = clean(
+            name = clean_upper(
                 values[2]
             )
 
@@ -2626,7 +3720,7 @@ def bulk_import_transport_excel(
                 values[5]
             )
 
-            # Fila vacía.
+            # Fila completamente vacía.
             if (
                 not name
                 and not identification
@@ -2634,7 +3728,9 @@ def bulk_import_transport_excel(
             ):
                 continue
 
-            # Nombre y cédula obligatorios.
+            # =================================================
+            # VALIDACIONES QUE NO NECESITAN BD
+            # =================================================
             if (
                 not name
                 or not identification
@@ -2651,875 +3747,255 @@ def bulk_import_transport_excel(
 
                 continue
 
-            # Variables inicializadas fuera del SAVEPOINT
-            # para poder actualizar caches después.
-            driver = None
-            truck = None
-            owner = None
-            record = None
+            # =================================================
+            # PESOS Y DIMENSIONES
+            # =================================================
+            weights_dimensions = None
 
-            new_driver_created = False
-            new_truck_created = False
-            new_owner_created = False
-            new_apm_created = False
-            new_assignment = None
+            raw_weights = (
+                values[28]
+            )
 
-            owner_name = ""
-            pending_document_cache = []
-            document_values = {}
-
-            try:
-                with db.session.begin_nested():
-
-                    result["processed"] += 1
-
-                    # =========================================
-                    # CHOFER
-                    # =========================================
-                    driver = (
-                        drivers_by_identification.get(
-                            identification
+            if raw_weights not in (
+                None,
+                "",
+            ):
+                try:
+                    weights_dimensions = (
+                        Decimal(
+                            str(
+                                raw_weights
+                            )
                         )
                     )
 
-                    if driver is None:
-                        driver = Driver(
-                            name=name.upper(),
-
-                            residence=(
-                                clean(
-                                    values[3]
-                                ).upper()
-                                or None
-                            ),
-
-                            identification=(
-                                identification
-                            ),
-
-                            phone_1=(
-                                clean(
-                                    values[6]
-                                )
-                                or None
-                            ),
-
-                            habitual_site_id=(
-                                habitual_site_id
-                            ),
-
-                            status="ACTIVE",
-
-                            created_by_user_id=(
-                                user_id
-                            ),
-
-                            updated_by_user_id=(
-                                user_id
-                            ),
-                        )
-
-                        db.session.add(
-                            driver
-                        )
-
-                        db.session.flush()
-
-                        new_driver_created = True
-
-                    else:
-                        driver.name = (
-                            name.upper()
-                        )
-
-                        residence = clean(
-                            values[3]
-                        )
-
-                        if residence:
-                            driver.residence = (
-                                residence.upper()
-                            )
-
-                        phone = clean(
-                            values[6]
-                        )
-
-                        if phone:
-                            driver.phone_1 = (
-                                phone
-                            )
-
-                        # No borrar condición existente si
-                        # la carga no marca patiero.
-                        if habitual_site_id:
-                            driver.habitual_site_id = (
-                                habitual_site_id
-                            )
-
-                        driver.updated_by_user_id = (
-                            user_id
-                        )
-
-                        driver.updated_at = (
-                            datetime.utcnow()
-                        )
-
-                    # =========================================
-                    # CABEZAL
-                    # =========================================
-                    if plate:
-                        truck = (
-                            trucks_by_plate.get(
-                                plate
-                            )
-                        )
-
-                        registration_date = (
-                            excel_date(
-                                values[1]
-                            )
-                        )
-
-                        if truck is None:
-                            truck = Truck(
-                                plate=plate,
-
-                                registration_date=(
-                                    registration_date
-                                    or date.today()
-                                ),
-
-                                registered_site_id=(
-                                    registered_site_id
-                                ),
-
-                                status="ACTIVE",
-
-                                bonded_status=(
-                                    "PENDING"
-                                ),
-
-                                created_by_user_id=(
-                                    user_id
-                                ),
-
-                                updated_by_user_id=(
-                                    user_id
-                                ),
-                            )
-
-                            db.session.add(
-                                truck
-                            )
-
-                            db.session.flush()
-
-                            new_truck_created = True
-
-                        else:
-                            if registration_date:
-                                truck.registration_date = (
-                                    registration_date
-                                )
-
-                            truck.updated_by_user_id = (
-                                user_id
-                            )
-
-                            truck.updated_at = (
-                                datetime.utcnow()
-                            )
-
-                        # =====================================
-                        # PROPIETARIO
-                        # =====================================
-                        owner_name = clean(
-                            values[20]
-                        )
-
-                        owner_phone = clean(
-                            values[21]
-                        )
-
-                        if owner_name:
-                            owner_key = (
-                                owner_name.upper()
-                            )
-
-                            owner = (
-                                owners_by_name.get(
-                                    owner_key
-                                )
-                            )
-
-                            if owner is None:
-                                owner = TruckOwner(
-                                    name=owner_key,
-
-                                    phone=(
-                                        owner_phone
-                                        or None
-                                    ),
-
-                                    is_active=True,
-                                )
-
-                                db.session.add(
-                                    owner
-                                )
-
-                                db.session.flush()
-
-                                new_owner_created = True
-
-                            else:
-                                if owner_phone:
-                                    owner.phone = (
-                                        owner_phone
-                                    )
-
-                                if not owner.is_active:
-                                    owner.is_active = (
-                                        True
-                                    )
-
-                                owner.updated_at = (
-                                    datetime.utcnow()
-                                )
-
-                            truck.owner_id = (
-                                owner.id
-                            )
-
-                        # =====================================
-                        # DATOS DEL CABEZAL
-                        # =====================================
-
-                        # Permiso muelle camión
-                        dock_expiry = excel_date(
-                            values[11]
-                        )
-
-                        if dock_expiry:
-                            truck.dock_permit_expiry_date = (
-                                dock_expiry
-                            )
-
-                        # TC
-                        circulation_card = clean(
-                            values[22]
-                        )
-
-                        if circulation_card:
-                            truck.circulation_card = (
-                                circulation_card.upper()
-                            )
-
-                        # RTV / DEKRA
-                        rtv_date = excel_date(
-                            values[23]
-                        )
-
-                        if rtv_date:
-                            truck.dekra_month = (
-                                rtv_date.month
-                            )
-
-                            truck.dekra_year = (
-                                rtv_date.year
-                            )
-
-                        # Nombre AUT / seguro
-                        insurance_name = clean(
-                            values[25]
-                        )
-
-                        if insurance_name:
-                            truck.insurance_name = (
-                                insurance_name.upper()
-                            )
-
-                        # RT Álamo
-                        rt_expiry = excel_date(
-                            values[26]
-                        )
-
-                        if rt_expiry:
-                            truck.rt_expiry_date = (
-                                rt_expiry
-                            )
-
-                        # Nombre RT
-                        rt_name = clean(
-                            values[27]
-                        )
-
-                        if rt_name:
-                            truck.rt_name = (
-                                rt_name.upper()
-                            )
-
-                        # Pesos y dimensiones
-                        if values[28] not in (
-                            None,
-                            "",
-                        ):
-                            try:
-                                truck.weights_dimensions = (
-                                    Decimal(
-                                        str(
-                                            values[28]
-                                        )
-                                    )
-                                )
-
-                            except (
-                                InvalidOperation,
-                                TypeError,
-                                ValueError,
-                            ):
-                                result["errors"].append({
-                                    "row": excel_row,
-                                    "message": (
-                                        "Pesos y dimensiones "
-                                        "no contiene un valor "
-                                        "numérico válido."
-                                    ),
-                                })
-
-                        # Póliza
-                        policy_number = clean(
-                            values[29]
-                        )
-
-                        if policy_number:
-                            truck.policy_number = (
-                                policy_number.upper()
-                            )
-
-                        # Caucionado
-                        bonded = clean_upper(
-                            values[30]
-                        )
-
-                        if bonded:
-                            truck.bonded_status = (
-                                "BONDED"
-                                if "CAU" in bonded
-                                else "PENDING"
-                            )
-
-                    # =========================================
-                    # DOCUMENTOS DEL CHOFER
-                    # =========================================
-                    document_values = {
-                        "DOCK_PERMIT": (
-                            document_payload(
-                                expiry=values[10]
-                            )
-                        ),
-
-                        "GENERAL_CARD": (
-                            document_payload(
-                                number=values[12],
-                                expiry=values[13],
-                            )
-                        ),
-
-                        "CHEMICAL_PERMIT": (
-                            document_payload(
-                                expiry=values[14]
-                            )
-                        ),
-
-                        "LICENSE": (
-                            document_payload(
-                                expiry=values[18]
-                            )
-                        ),
-
-                        "CRIMINAL_RECORD": (
-                            document_payload(
-                                expiry=values[19]
-                            )
-                        ),
-                    }
-
-                    for (
-                        document_type,
-                        payload,
-                    ) in document_values.items():
-
-                        key = (
-                            driver.id,
-                            document_type,
-                        )
-
-                        document = (
-                            documents_by_key.get(
-                                key
-                            )
-                        )
-
-                        # No crear documentos completamente vacíos.
-                        if (
-                            document is None
-                            and not payload[
-                                "document_number"
-                            ]
-                            and not payload[
-                                "expiry_date"
-                            ]
-                        ):
-                            continue
-
-                        if document is None:
-                            # IMPORTANTE:
-                            # DriverDocument NO tiene
-                            # created_by_user_id.
-                            document = DriverDocument(
-                                driver_id=(
-                                    driver.id
-                                ),
-
-                                document_type=(
-                                    document_type
-                                ),
-
-                                updated_by_user_id=(
-                                    user_id
-                                ),
-                            )
-
-                            db.session.add(
-                                document
-                            )
-
-                            db.session.flush()
-
-                            pending_document_cache.append(
-                                (
-                                    key,
-                                    document,
-                                )
-                            )
-
-                        document.document_number = (
-                            payload[
-                                "document_number"
-                            ]
-                        )
-
-                        document.issue_date = (
-                            payload[
-                                "issue_date"
-                            ]
-                        )
-
-                        document.expiry_date = (
-                            payload[
-                                "expiry_date"
-                            ]
-                        )
-
-                        document.no_expiry = (
-                            payload[
-                                "no_expiry"
-                            ]
-                        )
-
-                        document.status = (
-                            payload[
-                                "status"
-                            ]
-                        )
-
-                        document.notes = (
-                            payload[
-                                "notes"
-                            ]
-                        )
-
-                        document.updated_by_user_id = (
-                            user_id
-                        )
-
-                        document.updated_at = (
-                            datetime.utcnow()
-                        )
-
-                    # =========================================
-                    # APM
-                    # =========================================
-                    apm_training = clean_upper(
-                        values[15]
-                    )
-
-                    apm_card_raw = clean(
-                        values[16]
-                    )
-
-                    apm_expiry_raw = (
-                        values[17]
-                    )
-
-                    if (
-                        apm_training
-                        or apm_card_raw
-                        or apm_expiry_raw
-                    ):
-                        record = (
-                            apm_by_driver.get(
-                                driver.id
-                            )
-                        )
-
-                        if record is None:
-                            # IMPORTANTE:
-                            # DriverApmRecord NO tiene
-                            # created_by_user_id.
-                            record = (
-                                DriverApmRecord(
-                                    driver_id=(
-                                        driver.id
-                                    ),
-
-                                    updated_by_user_id=(
-                                        user_id
-                                    ),
-                                )
-                            )
-
-                            db.session.add(
-                                record
-                            )
-
-                            db.session.flush()
-
-                            new_apm_created = True
-
-                        record.training_status = (
-                            yes_pending(
-                                apm_training
-                            )
-                        )
-
-                        card_upper = (
-                            apm_card_raw.upper()
-                        )
-
-                        if card_upper in {
-                            "PENDIENTE",
-                            "",
-                        }:
-                            record.card_status = (
-                                "PENDING"
-                            )
-
-                            record.card_number = (
-                                None
-                            )
-
-                        elif "VENC" in card_upper:
-                            record.card_status = (
-                                "EXPIRED"
-                            )
-
-                            record.card_number = (
-                                None
-                            )
-
-                        else:
-                            record.card_status = (
-                                "YES"
-                            )
-
-                            record.card_number = (
-                                apm_card_raw
-                            )
-
-                        apm_expiry_text = (
-                            clean_upper(
-                                apm_expiry_raw
-                            )
-                        )
-
-                        if (
-                            "SIN VENCIMIENTO"
-                            in apm_expiry_text
-                        ):
-                            record.expiry_mode = (
-                                "NO_EXPIRY"
-                            )
-
-                            record.expiry_date = (
-                                None
-                            )
-
-                        elif (
-                            "PENDIENTE"
-                            in apm_expiry_text
-                        ):
-                            record.expiry_mode = (
-                                "PENDING"
-                            )
-
-                            record.expiry_date = (
-                                None
-                            )
-
-                        elif (
-                            "VENCIDO"
-                            in apm_expiry_text
-                        ):
-                            record.expiry_mode = (
-                                "EXPIRED"
-                            )
-
-                            record.card_status = (
-                                "EXPIRED"
-                            )
-
-                            record.expiry_date = (
-                                None
-                            )
-
-                        else:
-                            parsed_apm_date = (
-                                excel_date(
-                                    apm_expiry_raw
-                                )
-                            )
-
-                            if parsed_apm_date:
-                                record.expiry_date = (
-                                    parsed_apm_date
-                                )
-
-                                if (
-                                    parsed_apm_date
-                                    < date.today()
-                                ):
-                                    record.expiry_mode = (
-                                        "EXPIRED"
-                                    )
-
-                                    record.card_status = (
-                                        "EXPIRED"
-                                    )
-
-                                else:
-                                    record.expiry_mode = (
-                                        "DATE"
-                                    )
-
-                            else:
-                                record.expiry_mode = (
-                                    "PENDING"
-                                )
-
-                                record.expiry_date = (
-                                    None
-                                )
-
-                        record.updated_by_user_id = (
-                            user_id
-                        )
-
-                        record.updated_at = (
-                            datetime.utcnow()
-                        )
-
-                    # =========================================
-                    # ASIGNACIÓN
-                    # =========================================
-                    if truck is not None:
-                        current_driver_assignment = (
-                            assignment_by_driver.get(
-                                driver.id
-                            )
-                        )
-
-                        current_truck_assignment = (
-                            assignment_by_truck.get(
-                                truck.id
-                            )
-                        )
-
-                        if (
-                            current_driver_assignment
-                            is None
-                            and current_truck_assignment
-                            is None
-                        ):
-                            new_assignment = (
-                                DriverTruckAssignment(
-                                    driver_id=(
-                                        driver.id
-                                    ),
-
-                                    truck_id=(
-                                        truck.id
-                                    ),
-
-                                    status="ACTIVE",
-
-                                    started_at=(
-                                        datetime.combine(
-                                            excel_date(
-                                                values[1]
-                                            )
-                                            or date.today(),
-
-                                            datetime.min.time(),
-                                        )
-                                    ),
-
-                                    notes=(
-                                        "Carga masiva inicial"
-                                    ),
-
-                                    created_by_user_id=(
-                                        user_id
-                                    ),
-                                )
-                            )
-
-                            db.session.add(
-                                new_assignment
-                            )
-
-                            db.session.flush()
-
-                        elif (
-                            current_driver_assignment
-                            and
-                            current_driver_assignment.truck_id
-                            == truck.id
-                        ):
-                            pass
-
-                        else:
-                            result["errors"].append({
-                                "row": excel_row,
-                                "message": (
-                                    f"No se cambió la asignación "
-                                    f"de {name}: el chofer o "
-                                    f"la placa {plate} ya tienen "
-                                    "una asignación activa distinta."
-                                ),
-                            })
-
-                    # =========================================
-                    # FLUSH FINAL
-                    # =========================================
-                    db.session.flush()
-
-                # =================================================
-                # ACTUALIZAR CACHES SOLO SI LA FILA TERMINÓ BIEN
-                # =================================================
-                if new_driver_created:
-                    drivers_by_identification[
-                        identification
-                    ] = driver
-
-                    result[
-                        "created_drivers"
-                    ] += 1
-
-                else:
-                    result[
-                        "updated_drivers"
-                    ] += 1
-
-                if truck is not None:
-                    if new_truck_created:
-                        trucks_by_plate[
-                            plate
-                        ] = truck
-
-                        result[
-                            "created_trucks"
-                        ] += 1
-
-                    else:
-                        result[
-                            "updated_trucks"
-                        ] += 1
-
-                if (
-                    truck is not None
-                    and owner_name
-                    and new_owner_created
+                except (
+                    InvalidOperation,
+                    TypeError,
+                    ValueError,
                 ):
-                    owners_by_name[
-                        owner_name.upper()
-                    ] = owner
+                    result["errors"].append({
+                        "row": excel_row,
+                        "message": (
+                            "Pesos y dimensiones contiene "
+                            "un valor no numérico. "
+                            "Ese campo se ignorará."
+                        ),
+                    })
 
-                for (
-                    document_key,
-                    document_object,
-                ) in pending_document_cache:
-                    documents_by_key[
-                        document_key
-                    ] = document_object
+                    weights_dimensions = (
+                        None
+                    )
 
-                result[
-                    "updated_documents"
-                ] += len(
-                    [
-                        payload
-                        for payload
-                        in document_values.values()
-                        if (
-                            payload[
-                                "document_number"
-                            ]
-                            or payload[
-                                "expiry_date"
-                            ]
-                        )
-                    ]
+            # =================================================
+            # CAUCIONADO
+            # =================================================
+            bonded_raw = clean_upper(
+                values[30]
+            )
+
+            bonded_status = None
+
+            if bonded_raw:
+                bonded_status = (
+                    "BONDED"
+                    if "CAU" in bonded_raw
+                    else "PENDING"
                 )
 
-                if record is not None:
-                    if new_apm_created:
-                        apm_by_driver[
-                            driver.id
-                        ] = record
+            # =================================================
+            # REGISTRO NORMALIZADO
+            # =================================================
+            item = {
+                "row": excel_row,
 
-                    result[
-                        "updated_apm"
-                    ] += 1
+                # ---------------------------------------------
+                # Driver
+                # ---------------------------------------------
+                "name": name,
 
-                if new_assignment is not None:
-                    assignment_by_driver[
-                        driver.id
-                    ] = new_assignment
+                "residence": (
+                    clean_upper(
+                        values[3]
+                    )
+                ),
 
-                    assignment_by_truck[
-                        truck.id
-                    ] = new_assignment
+                "identification": (
+                    identification
+                ),
 
-                    result[
-                        "created_assignments"
-                    ] += 1
+                "phone": clean(
+                    values[6]
+                ),
 
-            except Exception as exc:
-                result["skipped"] += 1
+                # ---------------------------------------------
+                # Truck
+                # ---------------------------------------------
+                "plate": plate,
 
-                result["errors"].append({
-                    "row": excel_row,
-                    "message": (
-                        f"No se pudo procesar la fila: {exc}"
-                    ),
-                })
+                "registration_date": (
+                    excel_date(
+                        values[1]
+                    )
+                ),
+
+                # ---------------------------------------------
+                # Documentos driver
+                # ---------------------------------------------
+                "driver_dock_expiry": (
+                    excel_date(
+                        values[10]
+                    )
+                ),
+
+                "general_card_number": (
+                    clean_upper(
+                        values[12]
+                    )
+                ),
+
+                "general_card_expiry": (
+                    excel_date(
+                        values[13]
+                    )
+                ),
+
+                "chemical_expiry": (
+                    excel_date(
+                        values[14]
+                    )
+                ),
+
+                "license_expiry": (
+                    excel_date(
+                        values[18]
+                    )
+                ),
+
+                "criminal_expiry": (
+                    excel_date(
+                        values[19]
+                    )
+                ),
+
+                # ---------------------------------------------
+                # APM
+                # ---------------------------------------------
+                "apm_training": (
+                    clean_upper(
+                        values[15]
+                    )
+                ),
+
+                "apm_card": (
+                    clean(
+                        values[16]
+                    )
+                ),
+
+                "apm_expiry_raw": (
+                    values[17]
+                ),
+
+                "apm_expiry_date": (
+                    excel_date(
+                        values[17]
+                    )
+                ),
+
+                # ---------------------------------------------
+                # Owner
+                # ---------------------------------------------
+                "owner_name": (
+                    clean_upper(
+                        values[20]
+                    )
+                ),
+
+                "owner_phone": (
+                    clean(
+                        values[21]
+                    )
+                ),
+
+                # ---------------------------------------------
+                # Truck documentos/datos
+                # ---------------------------------------------
+                "truck_dock_expiry": (
+                    excel_date(
+                        values[11]
+                    )
+                ),
+
+                "circulation_card": (
+                    clean_upper(
+                        values[22]
+                    )
+                ),
+
+                "rtv_date": (
+                    excel_date(
+                        values[23]
+                    )
+                ),
+
+                "insurance_name": (
+                    clean_upper(
+                        values[25]
+                    )
+                ),
+
+                "rt_expiry": (
+                    excel_date(
+                        values[26]
+                    )
+                ),
+
+                "rt_name": (
+                    clean_upper(
+                        values[27]
+                    )
+                ),
+
+                "weights_dimensions": (
+                    weights_dimensions
+                ),
+
+                "policy_number": (
+                    clean_upper(
+                        values[29]
+                    )
+                ),
+
+                "bonded_status": (
+                    bonded_status
+                ),
+            }
+
+            batch.append(
+                item
+            )
+
+            # =================================================
+            # BLOQUE LLENO
+            # =================================================
+            if (
+                len(batch)
+                >= BATCH_SIZE
+            ):
+                process_batch(
+                    batch
+                )
+
+                batch = []
 
         # =====================================================
-        # COMMIT FINAL
+        # ÚLTIMO BLOQUE
         # =====================================================
-        db.session.commit()
+        if batch:
+            process_batch(
+                batch
+            )
 
     except Exception as exc:
         db.session.rollback()
@@ -3532,12 +4008,16 @@ def bulk_import_transport_excel(
         workbook.close()
 
     # =====================================================
-    # RESULTADO
+    # RESULTADO FINAL
     # =====================================================
-    result["error_count"] = len(
-        result["errors"]
+    result["error_count"] = (
+        len(
+            result["errors"]
+        )
     )
 
+    # Evitar mandar una cantidad enorme de texto
+    # al navegador.
     result["errors"] = (
         result["errors"][:100]
     )
