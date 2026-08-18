@@ -331,6 +331,319 @@
 
   </form>
 
+    <!-- =====================================================
+       RESULTADO DE LA CARGA
+       ===================================================== -->
+  {% if result %}
+
+    <div class="card card-pad bulk-result-card">
+
+      <div class="bulk-result-header">
+
+        <div>
+
+          <h3>
+            Resultado de la carga
+          </h3>
+
+          <p>
+            Detalle de los registros procesados durante la importación.
+          </p>
+
+        </div>
+
+
+        {% if result.error_count %}
+
+          <span class="bulk-result-status warning">
+            Con observaciones
+          </span>
+
+        {% else %}
+
+          <span class="bulk-result-status success">
+            Completada
+          </span>
+
+        {% endif %}
+
+      </div>
+
+
+      <!-- =================================================
+           RESUMEN
+           ================================================= -->
+      <div class="bulk-result-stats">
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Procesadas
+          </span>
+
+          <strong>
+            {{ result.processed or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Choferes creados
+          </span>
+
+          <strong>
+            {{ result.created_drivers or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Choferes actualizados
+          </span>
+
+          <strong>
+            {{ result.updated_drivers or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Cabezales creados
+          </span>
+
+          <strong>
+            {{ result.created_trucks or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Cabezales actualizados
+          </span>
+
+          <strong>
+            {{ result.updated_trucks or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Asignaciones creadas
+          </span>
+
+          <strong>
+            {{ result.created_assignments or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            Documentos
+          </span>
+
+          <strong>
+            {{ result.updated_documents or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat">
+
+          <span>
+            APM
+          </span>
+
+          <strong>
+            {{ result.updated_apm or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat skipped">
+
+          <span>
+            Omitidas
+          </span>
+
+          <strong>
+            {{ result.skipped or 0 }}
+          </strong>
+
+        </div>
+
+
+        <div class="bulk-result-stat errors">
+
+          <span>
+            Observaciones
+          </span>
+
+          <strong>
+            {{ result.error_count or 0 }}
+          </strong>
+
+        </div>
+
+      </div>
+
+
+      <!-- =================================================
+           OBSERVACIONES / ERRORES
+           ================================================= -->
+      {% if result.errors %}
+
+        <div class="bulk-error-section">
+
+          <div class="bulk-error-header">
+
+            <div>
+
+              <h4>
+                Filas que requieren revisión
+              </h4>
+
+              <p>
+                El mensaje indica exactamente por qué cada fila
+                no pudo procesarse correctamente.
+              </p>
+
+            </div>
+
+            <span>
+              {{ result.error_count }}
+              observación(es)
+            </span>
+
+          </div>
+
+
+          <div class="bulk-error-table-wrap">
+
+            <table class="bulk-error-table">
+
+              <thead>
+
+                <tr>
+
+                  <th>
+                    Fila Excel
+                  </th>
+
+                  <th>
+                    Motivo
+                  </th>
+
+                </tr>
+
+              </thead>
+
+
+              <tbody>
+
+                {% for error in result.errors %}
+
+                  <tr>
+
+                    <td>
+
+                      <strong>
+                        {{ error.row }}
+                      </strong>
+
+                    </td>
+
+                    <td>
+                      {{ error.message }}
+                    </td>
+
+                  </tr>
+
+                {% endfor %}
+
+              </tbody>
+
+            </table>
+
+          </div>
+
+
+          {% if result.error_count > result.errors|length %}
+
+            <div class="bulk-error-footer">
+
+              Se muestran las primeras
+              {{ result.errors|length }}
+              observaciones de
+              {{ result.error_count }}.
+
+            </div>
+
+          {% endif %}
+
+        </div>
+
+      {% else %}
+
+        <div class="bulk-success-message">
+
+          <strong>
+            La carga no presentó observaciones.
+          </strong>
+
+          <span>
+            Todos los registros procesados terminaron correctamente.
+          </span>
+
+        </div>
+
+      {% endif %}
+
+
+      <!-- =================================================
+           ACCIONES
+           ================================================= -->
+      <div class="bulk-result-actions">
+
+        <a
+          href="{{ url_for('transport.drivers_list') }}"
+          class="btn primary"
+        >
+          Ver lista de choferes
+        </a>
+
+        <a
+          href="{{ url_for('transport.drivers_bulk_upload') }}"
+          class="btn"
+        >
+          Cargar otro archivo
+        </a>
+
+      </div>
+
+    </div>
+
+  {% endif %}
+
 
   <!-- =====================================================
        AYUDA DE CAMPOS
@@ -833,6 +1146,265 @@
   font-size:11px;
 }
 
+/* =========================================================
+   RESULTADO DE CARGA
+   ========================================================= */
+
+.bulk-result-card{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.bulk-result-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+}
+
+.bulk-result-header h3{
+  margin:0;
+
+  color:#0f172a;
+
+  font-size:17px;
+  font-weight:950;
+}
+
+.bulk-result-header p{
+  margin:4px 0 0;
+
+  color:#64748b;
+
+  font-size:11px;
+}
+
+.bulk-result-status{
+  display:inline-flex;
+  align-items:center;
+
+  padding:6px 10px;
+
+  border-radius:999px;
+
+  font-size:10px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.bulk-result-status.success{
+  background:#dcfce7;
+  color:#166534;
+}
+
+.bulk-result-status.warning{
+  background:#fef3c7;
+  color:#92400e;
+}
+
+
+/* =========================================================
+   ESTADÍSTICAS
+   ========================================================= */
+
+.bulk-result-stats{
+  display:grid;
+  grid-template-columns:repeat(5, minmax(0,1fr));
+  gap:10px;
+}
+
+.bulk-result-stat{
+  padding:12px;
+
+  border:1px solid #e2e8f0;
+  border-radius:11px;
+
+  background:#f8fafc;
+}
+
+.bulk-result-stat span{
+  display:block;
+
+  color:#64748b;
+
+  font-size:10px;
+  font-weight:850;
+}
+
+.bulk-result-stat strong{
+  display:block;
+
+  margin-top:5px;
+
+  color:#0f172a;
+
+  font-size:23px;
+  font-weight:950;
+}
+
+.bulk-result-stat.skipped{
+  background:#fffbeb;
+  border-color:#fde68a;
+}
+
+.bulk-result-stat.skipped strong{
+  color:#92400e;
+}
+
+.bulk-result-stat.errors{
+  background:#fff7ed;
+  border-color:#fed7aa;
+}
+
+.bulk-result-stat.errors strong{
+  color:#c2410c;
+}
+
+
+/* =========================================================
+   TABLA DE ERRORES
+   ========================================================= */
+
+.bulk-error-section{
+  border:1px solid #fed7aa;
+  border-radius:12px;
+
+  overflow:hidden;
+}
+
+.bulk-error-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+
+  padding:12px 14px;
+
+  background:#fff7ed;
+
+  border-bottom:1px solid #fed7aa;
+}
+
+.bulk-error-header h4{
+  margin:0;
+
+  color:#9a3412;
+
+  font-size:13px;
+  font-weight:950;
+}
+
+.bulk-error-header p{
+  margin:4px 0 0;
+
+  color:#c2410c;
+
+  font-size:10px;
+}
+
+.bulk-error-header > span{
+  color:#9a3412;
+
+  font-size:10px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.bulk-error-table-wrap{
+  max-height:360px;
+  overflow:auto;
+}
+
+.bulk-error-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.bulk-error-table th,
+.bulk-error-table td{
+  padding:9px 11px;
+
+  border-bottom:1px solid #ffedd5;
+
+  text-align:left;
+  vertical-align:top;
+
+  font-size:11px;
+}
+
+.bulk-error-table th{
+  position:sticky;
+  top:0;
+
+  background:#fffaf5;
+  color:#9a3412;
+
+  font-weight:950;
+}
+
+.bulk-error-table th:first-child,
+.bulk-error-table td:first-child{
+  width:90px;
+}
+
+.bulk-error-table td:last-child{
+  color:#7c2d12;
+
+  white-space:normal;
+  word-break:break-word;
+}
+
+.bulk-error-footer{
+  padding:9px 12px;
+
+  background:#fff7ed;
+  color:#9a3412;
+
+  font-size:10px;
+  font-weight:800;
+}
+
+
+/* =========================================================
+   CARGA EXITOSA
+   ========================================================= */
+
+.bulk-success-message{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+
+  padding:12px 14px;
+
+  border:1px solid #bbf7d0;
+  border-radius:11px;
+
+  background:#f0fdf4;
+}
+
+.bulk-success-message strong{
+  color:#166534;
+
+  font-size:12px;
+}
+
+.bulk-success-message span{
+  color:#15803d;
+
+  font-size:10px;
+}
+
+
+/* =========================================================
+   ACCIONES RESULTADO
+   ========================================================= */
+
+.bulk-result-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
 
 /* =========================================================
    RESPONSIVE
@@ -894,6 +1466,24 @@
   }
 
   .bulk-actions .btn{
+    width:100%;
+    box-sizing:border-box;
+    text-align:center;
+  }
+
+  .bulk-result-stats{
+    grid-template-columns:repeat(2, minmax(0,1fr));
+  }
+
+  .bulk-result-header{
+    flex-direction:column;
+  }
+
+  .bulk-result-actions{
+    flex-direction:column;
+  }
+
+  .bulk-result-actions .btn{
     width:100%;
     box-sizing:border-box;
     text-align:center;
