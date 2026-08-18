@@ -2274,7 +2274,7 @@ def bulk_import_transport_excel(
         Se utiliza únicamente como distintivo de patiero.
         None significa que el chofer NO es patiero.
 
-    Optimización:
+    Rendimiento:
     - openpyxl read_only=True
     - data_only=True
     - lectura secuencial
@@ -2284,8 +2284,8 @@ def bulk_import_transport_excel(
     - precarga de documentos
     - precarga de APM
     - precarga de asignaciones activas
-    - no hace COMMIT por fila
-    - COMMIT único al final
+    - un COMMIT final
+    - SAVEPOINT por fila para no perder todo el lote si falla una fila
     """
 
     # =====================================================
@@ -2339,13 +2339,6 @@ def bulk_import_transport_excel(
         )
 
     def excel_date(value):
-        """
-        Excel puede entregar:
-        - datetime
-        - date
-        - número serial
-        - texto
-        """
         if value in (None, ""):
             return None
 
@@ -2410,17 +2403,20 @@ def bulk_import_transport_excel(
 
         return {
             "document_number": (
-                clean_upper(number) or None
+                clean_upper(number)
+                or None
             ),
             "issue_date": None,
             "expiry_date": expiry_date,
             "no_expiry": no_expiry,
             "status": (
                 "VALID"
-                if no_expiry
-                or (
-                    expiry_date
-                    and expiry_date >= date.today()
+                if (
+                    no_expiry
+                    or (
+                        expiry_date
+                        and expiry_date >= date.today()
+                    )
                 )
                 else (
                     "EXPIRED"
@@ -2432,7 +2428,7 @@ def bulk_import_transport_excel(
         }
 
     # =====================================================
-    # ABRIR LIBRO DE FORMA LIVIANA
+    # ABRIR EXCEL
     # =====================================================
     try:
         workbook = load_workbook(
@@ -2448,9 +2444,6 @@ def bulk_import_transport_excel(
 
     # =====================================================
     # HOJA
-    #
-    # Conservamos compatibilidad con el Excel histórico
-    # y permitimos también el nombre futuro TRANSPORTES.
     # =====================================================
     allowed_sheet_names = (
         "VIGENCIA PERMISOS CALDERA",
@@ -2469,8 +2462,8 @@ def bulk_import_transport_excel(
 
         raise TransportValidationError(
             "No se encontró una hoja válida. "
-            "La hoja debe llamarse 'VIGENCIA PERMISOS CALDERA' "
-            "o 'TRANSPORTES'."
+            "La hoja debe llamarse "
+            "'VIGENCIA PERMISOS CALDERA' o 'TRANSPORTES'."
         )
 
     # =====================================================
@@ -2514,8 +2507,6 @@ def bulk_import_transport_excel(
 
     # =====================================================
     # PRECARGAR PROPIETARIOS
-    #
-    # Evita SELECT por cada fila del Excel.
     # =====================================================
     existing_owners = list(
         db.session.scalars(
@@ -2600,40 +2591,7 @@ def bulk_import_transport_excel(
     }
 
     # =====================================================
-    # LEER FILAS
-    #
-    # A  ordinal
-    # B  fecha ingreso
-    # C  chofer
-    # D  residencia
-    # E  cédula
-    # F  placa
-    # G  teléfono
-    # H  vacuna 1                  IGNORADO
-    # I  vacuna 2                  IGNORADO
-    # J  carta INS                 IGNORADO
-    # K  permiso muelle chofer
-    # L  permiso muelle camión
-    # M  carnet
-    # N  vence carnet
-    # O  permiso químico
-    # P  capacitación APM
-    # Q  carnet APM
-    # R  vence carnet APM
-    # S  licencia
-    # T  HD
-    # U  propietario
-    # V  teléfono propietario
-    # W  TC
-    # X  RTV
-    # Y  reservado                 IGNORADO
-    # Z  nombre AUT
-    # AA RT Álamo
-    # AB nombre RT
-    # AC pesos/dimensiones
-    # AD póliza
-    # AE caucionado
-    # AF pendientes                IGNORADO
+    # PROCESAR FILAS
     # =====================================================
     try:
         for excel_row, values in enumerate(
@@ -2643,14 +2601,12 @@ def bulk_import_transport_excel(
             ),
             start=2,
         ):
-            # Evita errores si una fila viene corta.
             values = tuple(values)
 
             if len(values) < 31:
-                values = values + (
-                    None,
-                ) * (
-                    31 - len(values)
+                values = (
+                    values
+                    + (None,) * (31 - len(values))
                 )
 
             # =================================================
@@ -2670,7 +2626,7 @@ def bulk_import_transport_excel(
                 values[5]
             )
 
-            # Fila totalmente vacía.
+            # Fila vacía.
             if (
                 not name
                 and not identification
@@ -2678,8 +2634,11 @@ def bulk_import_transport_excel(
             ):
                 continue
 
-            # Nombre y cédula son obligatorios.
-            if not name or not identification:
+            # Nombre y cédula obligatorios.
+            if (
+                not name
+                or not identification
+            ):
                 result["skipped"] += 1
 
                 result["errors"].append({
@@ -2692,12 +2651,23 @@ def bulk_import_transport_excel(
 
                 continue
 
-            # =================================================
-            # SAVEPOINT POR FILA
-            #
-            # Si una fila genera un error SQL, solamente se
-            # revierte esa fila y no destruye el lote completo.
-            # =================================================
+            # Variables inicializadas fuera del SAVEPOINT
+            # para poder actualizar caches después.
+            driver = None
+            truck = None
+            owner = None
+            record = None
+
+            new_driver_created = False
+            new_truck_created = False
+            new_owner_created = False
+            new_apm_created = False
+            new_assignment = None
+
+            owner_name = ""
+            pending_document_cache = []
+            document_values = {}
+
             try:
                 with db.session.begin_nested():
 
@@ -2711,8 +2681,6 @@ def bulk_import_transport_excel(
                             identification
                         )
                     )
-
-                    new_driver_created = False
 
                     if driver is None:
                         driver = Driver(
@@ -2736,7 +2704,6 @@ def bulk_import_transport_excel(
                                 or None
                             ),
 
-                            # SOLO distintivo de patiero.
                             habitual_site_id=(
                                 habitual_site_id
                             ),
@@ -2779,10 +2746,12 @@ def bulk_import_transport_excel(
                         )
 
                         if phone:
-                            driver.phone_1 = phone
+                            driver.phone_1 = (
+                                phone
+                            )
 
-                        # Si no se seleccionó patiero,
-                        # NO borramos un distintivo existente.
+                        # No borrar condición existente si
+                        # la carga no marca patiero.
                         if habitual_site_id:
                             driver.habitual_site_id = (
                                 habitual_site_id
@@ -2799,9 +2768,6 @@ def bulk_import_transport_excel(
                     # =========================================
                     # CABEZAL
                     # =========================================
-                    truck = None
-                    new_truck_created = False
-
                     if plate:
                         truck = (
                             trucks_by_plate.get(
@@ -2824,8 +2790,6 @@ def bulk_import_transport_excel(
                                     or date.today()
                                 ),
 
-                                # IMPORTANTE:
-                                # Esto ya NO usa habitual_site_id.
                                 registered_site_id=(
                                     registered_site_id
                                 ),
@@ -2878,33 +2842,26 @@ def bulk_import_transport_excel(
                             values[21]
                         )
 
-                        owner = None
-                        new_owner_created = False
-
                         if owner_name:
                             owner_key = (
                                 owner_name.upper()
                             )
 
-                            # Los propietarios ya fueron precargados
-                            # antes de comenzar a recorrer el Excel.
-                            owner = owners_by_name.get(
-                                owner_key
+                            owner = (
+                                owners_by_name.get(
+                                    owner_key
+                                )
                             )
 
                             if owner is None:
-                                # IMPORTANTE:
-                                # TruckOwner NO tiene:
-                                # - created_by_user_id
-                                # - updated_by_user_id
-                                #
-                                # No deben enviarse al constructor.
                                 owner = TruckOwner(
                                     name=owner_key,
+
                                     phone=(
                                         owner_phone
                                         or None
                                     ),
+
                                     is_active=True,
                                 )
 
@@ -2917,15 +2874,15 @@ def bulk_import_transport_excel(
                                 new_owner_created = True
 
                             else:
-                                # Si ya existe, solo actualizamos
-                                # información que realmente viene en Excel.
                                 if owner_phone:
                                     owner.phone = (
                                         owner_phone
                                     )
 
                                 if not owner.is_active:
-                                    owner.is_active = True
+                                    owner.is_active = (
+                                        True
+                                    )
 
                                 owner.updated_at = (
                                     datetime.utcnow()
@@ -2936,10 +2893,10 @@ def bulk_import_transport_excel(
                             )
 
                         # =====================================
-                        # DATOS CABEZAL
+                        # DATOS DEL CABEZAL
                         # =====================================
 
-                        # Permiso muelle camión.
+                        # Permiso muelle camión
                         dock_expiry = excel_date(
                             values[11]
                         )
@@ -2949,7 +2906,7 @@ def bulk_import_transport_excel(
                                 dock_expiry
                             )
 
-                        # TC.
+                        # TC
                         circulation_card = clean(
                             values[22]
                         )
@@ -2959,7 +2916,7 @@ def bulk_import_transport_excel(
                                 circulation_card.upper()
                             )
 
-                        # RTV / DEKRA.
+                        # RTV / DEKRA
                         rtv_date = excel_date(
                             values[23]
                         )
@@ -2973,7 +2930,7 @@ def bulk_import_transport_excel(
                                 rtv_date.year
                             )
 
-                        # Nombre AUT / seguro.
+                        # Nombre AUT / seguro
                         insurance_name = clean(
                             values[25]
                         )
@@ -2983,7 +2940,7 @@ def bulk_import_transport_excel(
                                 insurance_name.upper()
                             )
 
-                        # RT Álamo.
+                        # RT Álamo
                         rt_expiry = excel_date(
                             values[26]
                         )
@@ -2993,7 +2950,7 @@ def bulk_import_transport_excel(
                                 rt_expiry
                             )
 
-                        # Nombre RT.
+                        # Nombre RT
                         rt_name = clean(
                             values[27]
                         )
@@ -3003,7 +2960,7 @@ def bulk_import_transport_excel(
                                 rt_name.upper()
                             )
 
-                        # Pesos y dimensiones.
+                        # Pesos y dimensiones
                         if values[28] not in (
                             None,
                             "",
@@ -3016,22 +2973,22 @@ def bulk_import_transport_excel(
                                         )
                                     )
                                 )
+
                             except (
                                 InvalidOperation,
                                 TypeError,
                                 ValueError,
                             ):
-                                result[
-                                    "errors"
-                                ].append({
+                                result["errors"].append({
                                     "row": excel_row,
                                     "message": (
                                         "Pesos y dimensiones "
-                                        "no contiene un valor numérico válido."
+                                        "no contiene un valor "
+                                        "numérico válido."
                                     ),
                                 })
 
-                        # Póliza.
+                        # Póliza
                         policy_number = clean(
                             values[29]
                         )
@@ -3041,7 +2998,7 @@ def bulk_import_transport_excel(
                                 policy_number.upper()
                             )
 
-                        # Caucionado.
+                        # Caucionado
                         bonded = clean_upper(
                             values[30]
                         )
@@ -3089,8 +3046,6 @@ def bulk_import_transport_excel(
                         ),
                     }
 
-                    pending_document_cache = []
-
                     for (
                         document_type,
                         payload,
@@ -3107,7 +3062,7 @@ def bulk_import_transport_excel(
                             )
                         )
 
-                        # No crear documento vacío.
+                        # No crear documentos completamente vacíos.
                         if (
                             document is None
                             and not payload[
@@ -3120,24 +3075,21 @@ def bulk_import_transport_excel(
                             continue
 
                         if document is None:
-                            document = (
-                                DriverDocument(
-                                    driver_id=(
-                                        driver.id
-                                    ),
+                            # IMPORTANTE:
+                            # DriverDocument NO tiene
+                            # created_by_user_id.
+                            document = DriverDocument(
+                                driver_id=(
+                                    driver.id
+                                ),
 
-                                    document_type=(
-                                        document_type
-                                    ),
+                                document_type=(
+                                    document_type
+                                ),
 
-                                    created_by_user_id=(
-                                        user_id
-                                    ),
-
-                                    updated_by_user_id=(
-                                        user_id
-                                    ),
-                                )
+                                updated_by_user_id=(
+                                    user_id
+                                ),
                             )
 
                             db.session.add(
@@ -3159,6 +3111,12 @@ def bulk_import_transport_excel(
                             ]
                         )
 
+                        document.issue_date = (
+                            payload[
+                                "issue_date"
+                            ]
+                        )
+
                         document.expiry_date = (
                             payload[
                                 "expiry_date"
@@ -3174,6 +3132,12 @@ def bulk_import_transport_excel(
                         document.status = (
                             payload[
                                 "status"
+                            ]
+                        )
+
+                        document.notes = (
+                            payload[
+                                "notes"
                             ]
                         )
 
@@ -3200,9 +3164,6 @@ def bulk_import_transport_excel(
                         values[17]
                     )
 
-                    new_apm_created = False
-                    record = None
-
                     if (
                         apm_training
                         or apm_card_raw
@@ -3215,14 +3176,13 @@ def bulk_import_transport_excel(
                         )
 
                         if record is None:
+                            # IMPORTANTE:
+                            # DriverApmRecord NO tiene
+                            # created_by_user_id.
                             record = (
                                 DriverApmRecord(
                                     driver_id=(
                                         driver.id
-                                    ),
-
-                                    created_by_user_id=(
-                                        user_id
                                     ),
 
                                     updated_by_user_id=(
@@ -3256,6 +3216,7 @@ def bulk_import_transport_excel(
                             record.card_status = (
                                 "PENDING"
                             )
+
                             record.card_number = (
                                 None
                             )
@@ -3264,6 +3225,7 @@ def bulk_import_transport_excel(
                             record.card_status = (
                                 "EXPIRED"
                             )
+
                             record.card_number = (
                                 None
                             )
@@ -3272,6 +3234,7 @@ def bulk_import_transport_excel(
                             record.card_status = (
                                 "YES"
                             )
+
                             record.card_number = (
                                 apm_card_raw
                             )
@@ -3289,6 +3252,7 @@ def bulk_import_transport_excel(
                             record.expiry_mode = (
                                 "NO_EXPIRY"
                             )
+
                             record.expiry_date = (
                                 None
                             )
@@ -3300,6 +3264,7 @@ def bulk_import_transport_excel(
                             record.expiry_mode = (
                                 "PENDING"
                             )
+
                             record.expiry_date = (
                                 None
                             )
@@ -3311,6 +3276,11 @@ def bulk_import_transport_excel(
                             record.expiry_mode = (
                                 "EXPIRED"
                             )
+
+                            record.card_status = (
+                                "EXPIRED"
+                            )
+
                             record.expiry_date = (
                                 None
                             )
@@ -3323,6 +3293,10 @@ def bulk_import_transport_excel(
                             )
 
                             if parsed_apm_date:
+                                record.expiry_date = (
+                                    parsed_apm_date
+                                )
+
                                 if (
                                     parsed_apm_date
                                     < date.today()
@@ -3330,25 +3304,21 @@ def bulk_import_transport_excel(
                                     record.expiry_mode = (
                                         "EXPIRED"
                                     )
+
                                     record.card_status = (
                                         "EXPIRED"
-                                    )
-                                    record.expiry_date = (
-                                        parsed_apm_date
                                     )
 
                                 else:
                                     record.expiry_mode = (
                                         "DATE"
                                     )
-                                    record.expiry_date = (
-                                        parsed_apm_date
-                                    )
 
                             else:
                                 record.expiry_mode = (
                                     "PENDING"
                                 )
+
                                 record.expiry_date = (
                                     None
                                 )
@@ -3364,8 +3334,6 @@ def bulk_import_transport_excel(
                     # =========================================
                     # ASIGNACIÓN
                     # =========================================
-                    new_assignment = None
-
                     if truck is not None:
                         current_driver_assignment = (
                             assignment_by_driver.get(
@@ -3430,32 +3398,27 @@ def bulk_import_transport_excel(
                             current_driver_assignment.truck_id
                             == truck.id
                         ):
-                            # Ya está correctamente ligado.
                             pass
 
                         else:
-                            result[
-                                "errors"
-                            ].append({
+                            result["errors"].append({
                                 "row": excel_row,
                                 "message": (
                                     f"No se cambió la asignación "
-                                    f"de {name}: el chofer o la placa "
-                                    f"{plate} ya tienen una "
-                                    "asignación activa distinta."
+                                    f"de {name}: el chofer o "
+                                    f"la placa {plate} ya tienen "
+                                    "una asignación activa distinta."
                                 ),
                             })
 
                     # =========================================
-                    # FLUSH FINAL DE LA FILA
+                    # FLUSH FINAL
                     # =========================================
                     db.session.flush()
 
                 # =================================================
-                # SOLO DESPUÉS DE QUE EL SAVEPOINT TERMINÓ BIEN
-                # ACTUALIZAMOS LOS DICCIONARIOS LOCALES.
+                # ACTUALIZAR CACHES SOLO SI LA FILA TERMINÓ BIEN
                 # =================================================
-
                 if new_driver_created:
                     drivers_by_identification[
                         identification
@@ -3554,7 +3517,7 @@ def bulk_import_transport_excel(
                 })
 
         # =====================================================
-        # COMMIT ÚNICO
+        # COMMIT FINAL
         # =====================================================
         db.session.commit()
 
@@ -3575,7 +3538,6 @@ def bulk_import_transport_excel(
         result["errors"]
     )
 
-    # Máximo 100 detalles enviados al HTML.
     result["errors"] = (
         result["errors"][:100]
     )
